@@ -641,7 +641,22 @@ export function createPanel(app, mount) {
 
     /* ---- 悬挂读数：3 行，按阈值绿/黄/红着色 + tooltip ---- */
     suspReadout.innerHTML = '';
-    const sr = app.chassis.suspensionReadout();
+    const chassis = app.chassis;
+    // 底盘尚未完成 derive（rideHeight 仍为 0）时，先显示「计算中…」并强制 neutral 色，
+    // 避免 derive 完成前的那一帧误报 danger 红；derive 完成后 rideHeight>0 再显示真实数值 + 三色状态。
+    if (!chassis.derived && chassis.p.rideHeight <= 0) {
+      for (const label of ['离地间隙', '轮拱间隙', '降低量 Δ']) {
+        suspReadout.appendChild(
+          el(
+            'div',
+            { class: 'susp-row' },
+            el('span', { class: 'susp-label' }, label),
+            el('span', { class: 'susp-val' }, '计算中…')
+          )
+        );
+      }
+    } else {
+      const sr = chassis.suspensionReadout();
     const suspRows = [
       {
         label: '离地间隙',
@@ -692,6 +707,7 @@ export function createPanel(app, mount) {
       if (row.tip) lineEl.appendChild(el('span', { class: 'susp-tip' }, row.tip));
       suspReadout.appendChild(lineEl);
     }
+    } // end else (chassis 已 derive)
   }
 
   return {

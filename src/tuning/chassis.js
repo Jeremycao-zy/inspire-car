@@ -278,6 +278,8 @@ export class Chassis {
     this.metrics = null;
     /** @type {{front:Object, rear:Object}|null} */
     this.axleParams = null;
+    /** 是否已完成 derive（rideHeight 等主参数是否已算出）。面板据此判断是否跳过红字误报。 */
+    this.derived = false;
     this.visible = true;
 
     /** @type {THREE.Mesh[]} */
@@ -303,6 +305,7 @@ export class Chassis {
       carLength: metrics.lengthNorm ?? this.p.carLength,
       shellLiftUser: this.p.shellLiftUser,
     }).derive(metrics, axleParams);
+    this.derived = true;
     return this.p;
   }
 
@@ -570,6 +573,10 @@ export class Chassis {
   /**
    * 计算悬挂读数（前端读数的唯一入口，面板不得自行算）。
    * 基准量来自当前底盘参数：基准离地 = rideHeight、基准轮拱 = ARCH_CLEARANCE。
+   *
+   * ⚠️ 尚未 derive 时 rideHeight 为 0，baseGroundClearanceMm 随之 0。
+   *    本函数仍返回结构完整（全 0）的占位对象，但调用方（panel.updateReadout）
+   *    必须以 `chassis.derived` / `rideHeight > 0` 判定是否展示，禁止据此着 danger 红。
    * @returns {{groundClearance:number, fenderGap:number, wheelExposureRatio:number, deltaMm:number, tireDiameterMm:number}}
    */
   suspensionReadout() {
