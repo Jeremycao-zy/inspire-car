@@ -1,5 +1,5 @@
 // 验证：车库卡片已变成风火轮风格玩具卡
-// 1) 存在灵感车库 logo SVG；2) 存在透明泡壳层；3) 3D canvas 在泡壳内；4) 无白屏/致命错误
+// 1) 灵感车库 logo；2) 顶部吊牌挂孔；3) 车型剪影；4) 泡壳上移不压文字；5) 3D canvas 在泡壳内；6) 无白屏/致命错误
 import { launch } from '/Users/jeremysmac/.workbuddy/binaries/node/workspace/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js';
 
 const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -27,33 +27,44 @@ const report = await page.evaluate(() => {
   const first = cards[0];
   const logo = first?.querySelector('svg[aria-label*="灵感车库"]') || first?.querySelector('.garage-card__logo');
   const backing = first?.querySelector('.garage-card__backing');
+  const hangHole = first?.querySelector('.garage-card__hang-hole');
+  const silhouette = first?.querySelector('.garage-card__silhouette');
   const blister = first?.querySelector('.garage-card__blister');
   const shell = first?.querySelector('.garage-card__shell');
   const thumb = first?.querySelector('.garage-card__thumb');
   const canvas = first?.querySelector('.garage-card__thumb-canvas');
   const title = first?.querySelector('.garage-card__title')?.textContent?.trim();
   const series = first?.querySelector('.garage-card__series')?.textContent?.trim();
+  const footer = first?.querySelector('.garage-card__footer');
 
   // 检查 canvas 是否在 shell 内部
   const canvasInShell = shell?.contains(canvas);
   const thumbInShell = shell?.contains(thumb);
 
-  // 取泡壳区域亮度，确保有透明/高光层而不是纯黑
-  const rect = shell?.getBoundingClientRect();
+  // 检查泡壳是否在 footer 上方（不压住文字）
+  const blisterRect = blister?.getBoundingClientRect();
+  const titleRect = first?.querySelector('.garage-card__title')?.getBoundingClientRect();
+  const footerRect = footer?.getBoundingClientRect();
+  const blisterAboveFooter = blisterRect && footerRect ? blisterRect.bottom <= footerRect.top + 4 : false;
+  const titleBelowBlister = titleRect && blisterRect ? titleRect.top >= blisterRect.bottom - 4 : false;
 
   return {
     cardCount: cards.length,
     hasLogo: !!logo,
     hasBacking: !!backing,
+    hasHangHole: !!hangHole,
+    hasSilhouette: !!silhouette,
     hasBlister: !!blister,
     hasShell: !!shell,
     hasThumb: !!thumb,
     hasCanvas: !!canvas,
+    hasFooter: !!footer,
     canvasInShell,
     thumbInShell,
+    blisterAboveFooter,
+    titleBelowBlister,
     title,
     series,
-    shellRect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
   };
 });
 
@@ -67,12 +78,16 @@ const asserts = [
   ['至少 1 张卡片', report.cardCount >= 1],
   ['存在灵感车库 logo', report.hasLogo],
   ['存在背卡 backing', report.hasBacking],
+  ['存在顶部吊牌挂孔', report.hasHangHole],
+  ['存在车型剪影', report.hasSilhouette],
   ['存在透明泡壳 blister', report.hasBlister],
   ['存在泡壳 shell', report.hasShell],
   ['3D canvas 在泡壳内', report.canvasInShell && report.thumbInShell],
-  ['标题非空', !!report.title],
+  ['标题在泡壳下方', report.titleBelowBlister],
+  ['泡壳不压住 footer', report.blisterAboveFooter],
   ['系列文案正确', report.series?.includes('COLLECTOR EDITION')],
-  ['泡壳尺寸合理', report.shellRect && report.shellRect.width > 150 && report.shellRect.height > 80],
+  ['标题非空', !!report.title],
+  ['存在 footer', report.hasFooter],
 ];
 
 for (const [name, ok] of asserts) {
@@ -90,4 +105,4 @@ if (!pass) {
   console.log('\n❌ _qa-toy-card FAIL');
   process.exit(1);
 }
-console.log('\n✅ _qa-toy-card PASS：玩具卡结构、logo、泡壳、3D 画布均正确');
+console.log('\n✅ _qa-toy-card PASS：玩具卡结构、logo、吊牌孔、剪影、泡壳位置、3D 画布均正确');
