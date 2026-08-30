@@ -116,6 +116,7 @@ export async function generateModel({
   title,
   precision,
   engine,
+  falHighPack,
   onProgress,
   signal,
 }) {
@@ -138,6 +139,7 @@ export async function generateModel({
       title: title || undefined,
       precision: precision || undefined,
       engine: engine || undefined,
+      falHighPack: falHighPack || undefined,
       faceCount: tier.faceCount,
       model: tier.model,
     }),

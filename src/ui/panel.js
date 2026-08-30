@@ -633,6 +633,54 @@ export function createPanel(app, mount) {
     )
   );
 
+  /* ---- 生成引擎：精度 / 成本由用户选择 ----
+   * 引擎优先级（自动回退）见 main.js ENGINE_PRIORITY；这里给手动覆盖的入口。 */
+  const ENGINE_OPTS = [
+    ['fal', 'fal.ai Rodin — 高精度，按次付费'],
+    ['hyper3d', 'Hyper3D Rodin — 需 Business 订阅'],
+    ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
+    ['higen3d', 'HiGen3D — 待配置'],
+  ];
+  const engineSelect = el(
+    'select',
+    {
+      class: 'cw-select',
+      onchange: (e) => {
+        app.params.engine = e.target.value;
+        // 立刻重查后端凭证状态，让状态卡反映新引擎能不能跑 LIVE
+        app.refreshHealth?.();
+      },
+    },
+    ...ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
+  );
+  engineSelect.value = app.params.engine;
+  const highPackRow = el(
+    'label',
+    { class: 'cw-solid' },
+    el('input', {
+      type: 'checkbox',
+      checked: !!app.params.falHighPack,
+      onchange: (e) => (app.params.falHighPack = e.target.checked),
+    }),
+    'fal 4K HighPack（画质更好，按 3 倍计费）'
+  );
+  tabBodies.body.appendChild(
+    section(
+      '生成引擎',
+      el(
+        'div',
+        { class: 'fine' },
+        el('div', { class: 'ctl' }, engineSelect),
+        highPackRow,
+        el(
+          'div',
+          { class: 'ctl-hint' },
+          '没配凭证的引擎会自动跳过，回退到有凭证的那个；具体状态看下方状态卡。'
+        )
+      )
+    )
+  );
+
   tabBodies.body.appendChild(section('整车模型', carUpload.zone));
   tabBodies.body.appendChild(section('装配微调', fineBox));
   tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
@@ -820,6 +868,10 @@ export function createPanel(app, mount) {
     setMode,
     // 车漆色随方案恢复时同步色轮显示（不回调，避免重复上色）
     syncColor: () => colorWheel.set(app.params.bodyColor, app.params.bodySolid),
+    // 引擎可能在 refreshHealth 里被自动回退，下拉框建好之后仍要能跟着改
+    syncEngine: () => {
+      engineSelect.value = app.params.engine;
+    },
     // 切场景时光源数量会变，由 main.js 的 setEnvironment 回调触发重建
     rebuildLights() {
       rebuildLights();

@@ -26,6 +26,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as hy3d from './hunyuan3d.mjs';
 import * as hyper3d from './hyper3d.mjs';
+import * as fal from './fal3d.mjs';
 import * as vision from './vision.mjs';
 import * as higen from './higen3d.mjs';
 
@@ -207,6 +208,12 @@ async function handleGenerate(req, res) {
   /* ---------- 多引擎路由：Hyper3D Rodin Gen-2.5 ---------- */
   if (engine === 'hyper3d') {
     await runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed: () => closed });
+    return;
+  }
+
+  /* ---------- 多引擎路由：fal.ai 上的 Rodin（按次计费，精度更高，无每日上限） ---------- */
+  if (engine === 'fal') {
+    await runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed: () => closed });
     return;
   }
 
@@ -711,6 +718,164 @@ async function runHigen3D({ kind, images, body, taskTitle, emit, fail, closed })
   }
 }
 
+/**
+ * fal.ai Rodin 生成流。
+ *
+ * 与混元相比：按次计费（$0.4/次）、无每日 5 次上限、档位更高（Gen-2.5 High/Extreme-High、
+ * 可加 HighPack 拿 4K 贴图），用于解决"混元精度不够高"的问题。
+ * 无 FAL_KEY 时直接给出配置指引，绝不降级到演示模型冒充结果（红线）。
+ */
+async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed }) {
+  const f = fal.resolveToken();
+  if (!f.token) {
+    fail('fal.ai 未配置：请把 API Key 写入 ~/.workbuddy/tokens/fal，或设置环境变量 FAL_KEY', 'no-fal-key');
+    return;
+  }
+
+  try {
+    await fsp.mkdir(CACHE_DIR, { recursive: true });
+
+    const b64List = images
+      .map((im) => String(im.dataUrl || ''))
+      .map((s) => (s.includes(',') ? s.slice(s.indexOf(',') + 1) : s))
+      .filter(Boolean);
+
+    const TIER = {
+      standard: 'Gen-2.5-Medium',
+      high: 'Gen-2.5-High',
+      extreme: 'Gen-2.5-Extreme-High',
+    };
+    const tier = TIER[body.precision] || 'Gen-2.5-High';
+    // HighPack：4K 贴图 + 高模，画质更好但按 3 倍计费，默认不开
+    const addons = body.falHighPack ? ['HighPack'] : [];
+
+    emit({
+      stage: 'submit',
+      progress: 0.05,
+      message: `提交 fal.ai Rodin（${b64List.length} 张图，档位 ${tier}${addons.length ? ' + HighPack' : ''}）`,
+    });
+
+    let sub;
+    try {
+      sub = await fal.submitRodin({
+        imagesBase64: b64List,
+        prompt: body.prompt || '',
+        tier,
+        quality: 'high',
+        geometryFileFormat: body.geometryFileFormat || 'glb',
+        material: 'PBR',
+        addons,
+        token: f.token,
+      });
+    } catch (e) {
+      const cls = fal.classifyError(e);
+      if (cls === 'auth') {
+        emit({ stage: 'auth_error', progress: 1, message: 'fal.ai Key 无效或已失效，请换一个 Key' });
+        return;
+      }
+      if (cls === 'quota') {
+        emit({ stage: 'quota_exceeded', progress: 1, message: 'fal.ai 余额不足，请充值后重试' });
+        return;
+      }
+      fail(`提交失败：${e.message}`, e.stack);
+      return;
+    }
+    emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 ${String(sub.requestId).slice(0, 12)}…` });
+
+    // 轮询
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
+    let tick = 0;
+    let done = false;
+    while (Date.now() < deadline) {
+      if (isClosed?.()) return;
+      await sleep(interval);
+      let st;
+      try {
+        st = await fal.queryStatus(sub.statusUrl, f.token);
+      } catch (e) {
+        if (fal.classifyError(e) === 'auth') {
+          emit({ stage: 'auth_error', progress: 1, message: 'fal.ai Key 无效或已失效，请换一个 Key' });
+          return;
+        }
+        fail(`查询失败：${e.message}`, e.stack);
+        return;
+      }
+      tick += 1;
+      if (fal.STATUS.FAIL.includes(st.status)) {
+        fail('云端生成失败，可用同样参数重试', st.status);
+        return;
+      }
+      if (fal.STATUS.DONE.includes(st.status)) {
+        done = true;
+        break;
+      }
+      emit({
+        stage: 'polling',
+        progress: Math.min(0.9, 0.12 + tick * 0.028),
+        message: `生成中…（已等待 ${tick * (interval / 1000)}s，${st.status}）`,
+      });
+    }
+
+    if (!done) {
+      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: sub.requestId });
+      return;
+    }
+
+    emit({ stage: 'downloading', progress: 0.93, message: '下载模型…' });
+    let buf = null;
+    try {
+      const result = await fal.getResult(sub.responseUrl, f.token);
+      buf = await fal.downloadBuffer(result.meshUrl);
+    } catch (e) {
+      if (fal.classifyError(e) === 'auth') {
+        emit({ stage: 'auth_error', progress: 1, message: 'fal.ai Key 无效或已失效，请换一个 Key' });
+      } else {
+        fail(`下载失败：${e.message}`, e.stack);
+      }
+      return;
+    }
+
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const ext = (body.geometryFileFormat || 'glb') === 'obj' ? '.obj' : '.glb';
+    const name = `${kind}-${ts}-${crypto.randomBytes(3).toString('hex')}${ext}`;
+    await fsp.writeFile(path.join(CACHE_DIR, name), buf);
+
+    const usage = bumpUsage();
+    appendIndex({
+      name,
+      kind,
+      size: buf.length,
+      createdAt: d.toISOString(),
+      imageCount: b64List.length,
+      precision: body.precision || null,
+      jobId: sub.requestId,
+      title: taskTitle,
+      engine: 'fal',
+    });
+
+    emit({
+      stage: 'done',
+      progress: 1,
+      message: `完成（${(buf.length / 1024 / 1024).toFixed(1)}MB）`,
+      result: {
+        url: `/api/asset/${name}`,
+        kind,
+        mode: 'live',
+        bytes: buf.length,
+        name,
+        title: taskTitle,
+        usage,
+        engine: 'fal',
+      },
+    });
+  } catch (e) {
+    fail(e.message || '生成失败', e.stack);
+  }
+}
+
 /* ------------------------- BANG 拆解流 ------------------------- */
 
 /**
@@ -1212,6 +1377,7 @@ const server = http.createServer(async (req, res) => {
       engines: {
         hunyuan: { mode: tk.token ? 'live' : 'demo' },
         hyper3d: { mode: hk.token ? 'live' : 'demo', endpoint: hyper3d.ENDPOINT },
+        fal: { mode: fal.resolveToken().token ? 'live' : 'demo', endpoint: fal.ENDPOINT, model: fal.MODEL },
         higen3d: { available: higen.available(), endpoint: higen.ENDPOINT_INFO.ENDPOINT },
         vision: vision.getVisionStatus(),
       },
