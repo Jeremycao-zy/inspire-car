@@ -6,7 +6,7 @@
  * 运行：node scripts/_qa-hy3d-body.mjs
  * 结果：通过打印 PASS，失败抛 Error。
  */
-import { buildJobBody } from '../server/hunyuan3d.mjs';
+import { buildJobBody, classifyError } from '../server/hunyuan3d.mjs';
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -37,4 +37,15 @@ assert(multi.MultiViewImages.length === 1, '多视图数组长度应为 1');
 const empty = buildJobBody({});
 assert(!('Prompt' in empty) && !('ImageBase64' in empty), '空参数不产生 Prompt/ImageBase64');
 
-console.log('✅ _qa-hy3d-body PASS：图生/文生互斥，Prompt 与 ImageBase64 不再同时出现');
+// 5. classifyError 正确识别 429 / 额度用尽
+const quotaErr = new Error('daily submit limit exceeded (5/5) for dimension hy-3d');
+assert(classifyError(quotaErr) === 'quota', '应识别为 quota');
+const rateErr = new Error('HTTP 429: too many requests');
+assert(classifyError(rateErr) === 'quota', 'HTTP 429 应识别为 quota');
+const authErr = new Error('InvalidCredential');
+authErr.code = 'AuthFailure';
+assert(classifyError(authErr) === 'auth', 'AuthFailure 应识别为 auth');
+const otherErr = new Error('云端渲染失败');
+assert(classifyError(otherErr) === 'other', '普通错误应识别为 other');
+
+console.log('✅ _qa-hy3d-body PASS：图生/文生互斥 + 429 额度错误正确归类');
