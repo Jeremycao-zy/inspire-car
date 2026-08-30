@@ -11,6 +11,7 @@
  */
 
 import { ET_REF } from '../tuning/wheelRig.js';
+import { createColorWheel } from './colorWheel.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -583,6 +584,62 @@ export function createPanel(app, mount) {
   // 凭证状态卡：四态（LIVE / 临近过期 / 已失效 / DEMO），带换票指引与「我已更新」
   const modeBadge = el('div', { class: 'mode-badge' }, '');
 
+  /* ---- 车漆：HSV 色轮（见 colorWheel.js），改色只动车身材质 ---- */
+  const colorWheel = createColorWheel({
+    value: app.params.bodyColor,
+    solid: app.params.bodySolid,
+    onChange: (hex, { solid }) => {
+      app.params.bodyColor = hex;
+      app.params.bodySolid = !!solid;
+      app.setBodyColor(hex, !!solid);
+    },
+  });
+
+  /* ---- 顶层功能分层级：整车 / 轮毂 / 车漆 / 场景 ---- */
+  const TABS = [
+    ['body', '整车'],
+    ['wheels', '轮毂'],
+    ['paint', '车漆'],
+    ['scene', '场景'],
+  ];
+  const tabBodies = {};
+  const tabButtons = {};
+  const tabsBar = el('div', { class: 'tabs' });
+  for (const [id, label] of TABS) {
+    const btn = el('button', { class: 'tab', 'data-tab': id, onclick: () => setTab(id) }, label);
+    tabButtons[id] = btn;
+    tabsBar.appendChild(btn);
+    tabBodies[id] = el('div', { class: 'tab-body' });
+  }
+  function setTab(id) {
+    for (const k of Object.keys(tabBodies)) {
+      tabBodies[k].classList.toggle('hidden', k !== id);
+      tabButtons[k].classList.toggle('active', k === id);
+    }
+  }
+
+  // 轮毂校准安全网（摆位微调）
+  const rimCalibBox = el(
+    'div',
+    { class: 'fine' },
+    ...RIM_CALIB_PARAMS.map((spec) => makeSlider(spec, () => app.apply())),
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '旋转：绕轮轴转动；横/竖向：轮平面内微调；轴向：沿轮轴 seating 微调'
+    )
+  );
+
+  tabBodies.body.appendChild(section('整车模型', carUpload.zone));
+  tabBodies.body.appendChild(section('装配微调', fineBox));
+  tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
+  tabBodies.wheels.appendChild(section('轮毂校准（生成模型摆位不正时微调）', rimCalibBox));
+  tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
+  tabBodies.paint.appendChild(section('车漆', colorWheel.root));
+  tabBodies.scene.appendChild(section('场景', sceneBox));
+  tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
+  tabBodies.scene.appendChild(section('视角', views));
+
   mount.appendChild(
     el(
       'div',
@@ -594,28 +651,15 @@ export function createPanel(app, mount) {
         el('p', { class: 'sub' }, '照片 → 混元 3D → GLB → 四轮实时装配')
       ),
       modeBadge,
-      section('整车模型', carUpload.zone),
-      section('轮毂模型', wheelUpload.zone),
-      section(
-        '轮毂校准（如生成模型摆位不正，可在此微调）',
-        el(
-          'div',
-          { class: 'fine' },
-          ...RIM_CALIB_PARAMS.map((spec) => makeSlider(spec, () => app.apply())),
-          el(
-            'div',
-            { class: 'ctl-hint' },
-            '旋转：绕轮轴转动；横/竖向：轮平面内微调；轴向：沿轮轴 seating 微调'
-          )
-        )
-      ),
-      section('轮毂参数', paramBox),
-      collapsible('装配微调', fineBox),
-      section('场景', sceneBox),
-      collapsibleOpen('灯光', lightBox),
-      section('视角', views)
+      tabsBar,
+      tabBodies.body,
+      tabBodies.wheels,
+      tabBodies.paint,
+      tabBodies.scene
     )
   );
+
+  setTab('body');
 
   syncSeg();
   syncScene();
@@ -735,6 +779,8 @@ export function createPanel(app, mount) {
     syncAll,
     updateReadout,
     setMode,
+    // 车漆色随方案恢复时同步色轮显示（不回调，避免重复上色）
+    syncColor: () => colorWheel.set(app.params.bodyColor, app.params.bodySolid),
     // 切场景时光源数量会变，由 main.js 的 setEnvironment 回调触发重建
     rebuildLights() {
       rebuildLights();

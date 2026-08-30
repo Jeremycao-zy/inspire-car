@@ -91,6 +91,9 @@ const DEFAULTS = {
     enableC2: true, // 侧向超限切
     enableC3: true, // 轮拱开口
   },
+  // 车漆改色：默认竞速红；bodySolid=true 时去掉原车 baseColor 贴图做纯色重喷
+  bodyColor: '#c8102e',
+  bodySolid: false,
 };
 
 const stage = document.getElementById('stage');
@@ -277,6 +280,47 @@ const app = {
     this.apply();
   },
 
+  /* ---- 车漆改色 ---- */
+
+  /**
+   * 收集车身材质：只遍历 carGroup 子树（车身 GLB 根），
+   * 排除 chassis.root（卡钳/底盘）与 rig.root（轮胎/轮毂），天然零污染。
+   * 同时缓存每个材质的原 baseColor 贴图，供「纯色重喷 ↔ 着色叠加」切换还原。
+   */
+  collectBodyMaterials() {
+    this.bodyMaterials = [];
+    this._bodyMaps = [];
+    if (!carGroup) return;
+    carGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (m && m.isMeshPhysicalMaterial) {
+          this.bodyMaterials.push(m);
+          this._bodyMaps.push(m.map || null);
+        }
+      }
+    });
+  },
+
+  /**
+   * 改车漆色：仅作用于已收集的车身材质。
+   * @param {string} hex  如 '#c8102e'
+   * @param {boolean} solid true=纯色重喷（去掉 baseColor 贴图）；false=着色叠加（保留贴图）
+   */
+  setBodyColor(hex, solid = this.params.bodySolid) {
+    if (!this.bodyMaterials || !this.bodyMaterials.length) return;
+    const c = new THREE.Color(hex);
+    const useSolid = !!solid;
+    this.bodyMaterials.forEach((m, i) => {
+      m.color.copy(c);
+      m.map = useSolid ? null : this._bodyMaps[i] || null;
+      m.needsUpdate = true;
+    });
+    this.params.bodyColor = hex;
+    this.params.bodySolid = useSolid;
+  },
+
   /* ---- 整车 ---- */
   async loadCarFromUrl(url) {
     showOverlay('正在载入整车模型…');
@@ -288,6 +332,9 @@ const app = {
       }
       carGroup = group;
       carInner.add(carGroup);
+      // 车身材质收集 + 按当前方案色值上色（着色/纯色随 params）
+      this.collectBodyMaterials();
+      this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
 
       carOuter.position.set(0, 0, 0);
       carOuter.rotation.y = 0;
@@ -419,6 +466,7 @@ const app = {
     this.params.envId = envId; // 场景是"看法"而不是轮毂参数，重置时保留
     panel.syncAll();
     this.apply();
+    this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
   },
 
   /* ---- 场景与灯光（转发给 viewer） ---- */
@@ -789,6 +837,9 @@ function applyPlanToApp(plan) {
   // 车已载入时按方案参数完整重算底盘 / 轮位；未载入时 boot 会用这套参数载入
   if (typeof carGroup !== 'undefined' && carGroup) app.refitCar({ recapture: false });
   else app.apply();
+  // 车漆色随方案恢复（carGroup 为空时由 boot 的 loadCarFromUrl 接管上色）
+  if (typeof carGroup !== 'undefined' && carGroup) app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
+  if (panel?.syncColor) panel.syncColor();
 }
 
 // 进入第二层 TUNING STUDIO
