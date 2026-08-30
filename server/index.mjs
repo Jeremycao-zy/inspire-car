@@ -206,7 +206,7 @@ async function handleGenerate(req, res) {
 
   /* ---------- 多引擎路由：Hyper3D Rodin Gen-2.5 ---------- */
   if (engine === 'hyper3d') {
-    await runHyper3D({ kind, images, body, taskTitle, emit, fail, closed });
+    await runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed: () => closed });
     return;
   }
 
@@ -441,7 +441,7 @@ async function handleGenerate(req, res) {
  * 无 HYPER3D_API_KEY 时走 DEMO（返回预置模型，绝不冒充真实结果）；
  * auth/quota 失败绝不降级 demo，必须回传 auth_error / quota_exceeded。
  */
-async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed }) {
+async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed }) {
   const h = hyper3d.resolveToken();
   const token = h.token;
 
@@ -622,10 +622,43 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed })
       title: taskTitle,
     });
 
+    /* ---------- 自动 BANG 拆解：用户不用动手，生成完直接拆好交付 ----------
+     * 用 Rodin 任务的 uuid 当 asset_id，云端直接引用刚生成的资产，
+     * 不必把几十 MB 的 GLB 再上传一遍（省带宽也更快）。
+     * 拆解失败不推翻已生成的整车：仍交付整车，只是没有部件。 */
+    let parts = null;
+    if (body.autoBang !== false) {
+      try {
+        parts = await runBangPhase({
+          assetId: taskUuid,
+          strength: Math.min(12, Math.max(2, Number(body.bangStrength) || 5)),
+          resolution: body.bangResolution === 'High' ? 'High' : 'Basic',
+          material: ['PBR', 'Shaded', 'All', 'None'].includes(body.bangMaterial)
+            ? body.bangMaterial
+            : 'PBR',
+          parent: kind,
+          emit,
+          isClosed,
+          range: [0.93, 0.99], // 接在生成进度之后，进度条不跳变
+        });
+        if (parts) bumpUsage();
+      } catch (e) {
+        console.warn('[bang] 自动拆解失败，仅交付整车：', e.message);
+        emit({
+          stage: 'polling',
+          progress: 0.97,
+          message: `自动拆解未成功（${e.message}），仍交付整车模型`,
+        });
+        parts = null;
+      }
+    }
+
     emit({
       stage: 'done',
       progress: 1,
-      message: `完成（${(glb.buffer.length / 1024 / 1024).toFixed(1)}MB）`,
+      message: parts
+        ? `完成，已拆解为 ${parts.length} 个部件（${(glb.buffer.length / 1024 / 1024).toFixed(1)}MB）`
+        : `完成（${(glb.buffer.length / 1024 / 1024).toFixed(1)}MB）`,
       result: {
         url: `/api/asset/${name}`,
         kind,
@@ -635,6 +668,8 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed })
         title: taskTitle,
         usage,
         engine: 'hyper3d',
+        // 前端据此自动挂载部件，用户无需任何额外操作
+        parts: parts || null,
       },
     });
   } catch (e) {
@@ -729,6 +764,120 @@ async function writeBangPart(buffer, parent, index, hash, ext = '.glb') {
   await fsp.mkdir(CACHE_DIR, { recursive: true });
   await fsp.writeFile(path.join(CACHE_DIR, name), buffer);
   return `/api/asset/${name}`;
+}
+
+/**
+ * BANG 拆解流水线阶段：提交 → 轮询 → 下载 → 落盘。
+ *
+ * 被两处共用：
+ *   1) 生成完成后「自动拆解」（用 Rodin 任务的 asset_id，不必回传模型文件）
+ *   2) /api/bang 程序化拆解（传本地模型 Buffer 或 asset_id）
+ *
+ * 本函数只抛错、不写 SSE 终止态：调用方按 classifyError 决定
+ * 是「整条生成失败」还是「只丢部件、仍交付整车」。
+ *
+ * @param {Object} o
+ * @param {string=} o.assetId      Rodin 任务 uuid（与 modelBuffer 二选一）
+ * @param {Buffer=} o.modelBuffer  本地模型文件（与 assetId 二选一）
+ * @param {(obj)=>void} o.emit     SSE 推送
+ * @param {()=>boolean} o.isClosed 连接是否断开（生成器，避免闭包拿到过期布尔值）
+ * @param {number[]} o.range       进度区间 [from, to]，便于嵌进生成流而不跳变
+ * @returns {Promise<Array<{name:string,url:string,index:number}>>}
+ */
+async function runBangPhase(o) {
+  const {
+    assetId = null,
+    modelBuffer = null,
+    modelName = null,
+    strength = 5,
+    resolution = 'Basic',
+    material = 'PBR',
+    geometryFileFormat = 'glb',
+    parent = 'model',
+    emit = () => {},
+    isClosed = () => false,
+    range = [0.05, 1],
+  } = o || {};
+
+  const [p0, p1] = range;
+  const at = (t) => p0 + (p1 - p0) * t;
+
+  await fsp.mkdir(CACHE_DIR, { recursive: true });
+
+  emit({
+    stage: 'submit',
+    progress: at(0.02),
+    message: `提交 BANG 拆解（strength=${strength}, resolution=${resolution}）`,
+  });
+
+  const sub = await hyper3d.submitBang({
+    modelBuffer: modelBuffer || null,
+    modelName: modelName || null,
+    assetId: assetId || null,
+    imageBase64: null,
+    prompt: '',
+    strength,
+    geometryFileFormat,
+    material,
+    resolution,
+  });
+
+  emit({
+    stage: 'accepted',
+    progress: at(0.1),
+    message: `拆解任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
+  });
+
+  const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+  const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
+  let tick = 0;
+  let done = false;
+
+  while (Date.now() < deadline) {
+    if (isClosed()) return null;
+    await sleep(interval);
+    const jobs = await hyper3d.queryStatus(sub.subscriptionKey);
+    tick += 1;
+
+    if (jobs.some((j) => hyper3d.STATUS.FAIL.includes(j.status))) {
+      const e = new Error('BANG 拆解失败，可用同样参数重试');
+      e.bangFailed = true;
+      throw e;
+    }
+    if (jobs.length > 0 && jobs.every((j) => hyper3d.STATUS.DONE.includes(j.status))) {
+      done = true;
+      break;
+    }
+    emit({
+      stage: 'polling',
+      progress: at(Math.min(0.85, 0.1 + tick * 0.028)),
+      message: `拆解中…（已等待 ${tick * (interval / 1000)}s）`,
+    });
+  }
+
+  if (!done) {
+    const e = new Error('拆解超时（云端任务仍在继续）');
+    e.bangTimeout = true;
+    throw e;
+  }
+
+  emit({ stage: 'downloading', progress: at(0.9), message: '下载部件…' });
+  const dl = await hyper3d.downloadTask(sub.taskUuid);
+
+  const parts = [];
+  for (let i = 0; i < dl.files.length; i++) {
+    const f = dl.files[i];
+    const ext = f.name && f.name.includes('.') ? path.extname(f.name) : '.glb';
+    const url = await writeBangPart(f.buffer, parent, i, crypto.randomBytes(3).toString('hex'), ext);
+    parts.push({ name: path.basename(url), url, index: i });
+  }
+
+  if (!parts.length) {
+    const e = new Error('BANG 未返回任何部件文件');
+    e.bangEmpty = true;
+    throw e;
+  }
+  return parts;
 }
 
 /**
@@ -836,24 +985,26 @@ async function handleBang(req, res) {
       return;
     }
 
-    emit({
-      stage: 'submit',
-      progress: 0.05,
-      message: `提交 BANG 拆解（strength=${strength}, resolution=${resolution}）`,
-    });
+    const parent = resolved.assetId
+      ? 'asset'
+      : resolved.modelName
+        ? path.basename(resolved.modelName, path.extname(resolved.modelName))
+        : 'model';
 
-    let sub;
+    let parts;
     try {
-      sub = await hyper3d.submitBang({
+      parts = await runBangPhase({
+        assetId: resolved.assetId || null,
         modelBuffer: resolved.modelBuffer || null,
         modelName: resolved.modelName || null,
-        assetId: resolved.assetId || null,
-        imageBase64: null,
-        prompt: body.prompt || '',
         strength,
-        geometryFileFormat,
-        material,
         resolution,
+        material,
+        geometryFileFormat,
+        parent,
+        emit,
+        isClosed: () => closed,
+        range: [0.05, 1],
       });
     } catch (e) {
       const cls = hyper3d.classifyError(e);
@@ -870,88 +1021,14 @@ async function handleBang(req, res) {
         });
         return;
       }
-      fail(`提交失败：${e.message}`, e.stack);
-      return;
-    }
-    emit({
-      stage: 'accepted',
-      progress: 0.12,
-      message: `拆解任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
-    });
-
-    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
-    const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
-    let tick = 0;
-    let done = false;
-    while (Date.now() < deadline) {
-      if (closed) return;
-      await sleep(interval);
-      let jobs;
-      try {
-        jobs = await hyper3d.queryStatus(sub.subscriptionKey);
-      } catch (e) {
-        if (hyper3d.classifyError(e) === 'auth') {
-          authError(e);
-          return;
-        }
-        fail(`查询失败：${e.message}`, e.stack);
+      if (e?.bangTimeout) {
+        emit({ stage: 'timeout', progress: 1, message: e.message });
         return;
       }
-      tick += 1;
-      const anyFail = jobs.some((j) => hyper3d.STATUS.FAIL.includes(j.status));
-      const allDone = jobs.length > 0 && jobs.every((j) => hyper3d.STATUS.DONE.includes(j.status));
-      if (anyFail) {
-        fail('BANG 拆解失败，可用同样参数重试', JSON.stringify(jobs).slice(0, 300));
-        return;
-      }
-      if (allDone) {
-        done = true;
-        break;
-      }
-      const p = Math.min(0.9, 0.12 + tick * 0.028);
-      emit({
-        stage: 'polling',
-        progress: p,
-        message: `拆解中…（已等待 ${tick * (interval / 1000)}s）`,
-      });
-    }
-
-    if (!done) {
-      emit({ stage: 'timeout', progress: 1, message: '拆解超时（云端任务仍在继续）', detail: sub.taskUuid });
+      fail(e.message || '拆解失败', e.stack);
       return;
     }
-
-    emit({ stage: 'downloading', progress: 0.93, message: '下载部件…' });
-    let dl;
-    try {
-      dl = await hyper3d.downloadTask(sub.taskUuid);
-    } catch (e) {
-      if (hyper3d.classifyError(e) === 'auth') {
-        authError(e);
-      } else {
-        fail(`下载失败：${e.message}`, e.stack);
-      }
-      return;
-    }
-
-    const parent = resolved.assetId
-      ? 'asset'
-      : resolved.modelName
-        ? path.basename(resolved.modelName, path.extname(resolved.modelName))
-        : 'model';
-
-    const parts = [];
-    for (let i = 0; i < dl.files.length; i++) {
-      const f = dl.files[i];
-      const ext = f.name && f.name.includes('.') ? path.extname(f.name) : '.glb';
-      const bname = `bang-${parent}-${i}-${crypto.randomBytes(3).toString('hex')}${ext}`;
-      await fsp.writeFile(path.join(CACHE_DIR, bname), f.buffer);
-      parts.push({ name: bname, url: `/api/asset/${bname}`, index: i });
-    }
-    if (!parts.length) {
-      fail('BANG 未返回任何部件文件');
-      return;
-    }
+    if (!parts) return; // 连接已断开
 
     const usage = bumpUsage();
     emit({
