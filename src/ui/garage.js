@@ -253,9 +253,9 @@ function createCard(plan, onClick, onDelete) {
     el('button', { class: 'garage-card__action', onClick: (e) => { e.stopPropagation(); onClick(plan); } }, '进入改装 →')
   );
 
-  // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）
+  // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）；透传方案车型地址
   if (previewEngine.ok) {
-    requestAnimationFrame(() => previewEngine.mount(thumb, previewParamsOf(plan)));
+    requestAnimationFrame(() => previewEngine.mount(thumb, previewParamsOf(plan), plan.carModelUrl));
   }
   return card;
 }
