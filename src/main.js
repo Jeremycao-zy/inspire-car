@@ -66,7 +66,10 @@ export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
 const DEFAULTS = {
   axleTarget: 'all', // 'all' | 'front' | 'rear'
   precision: 'high', // 轮毂生成精度档位：standard | high | extreme（探顶前默认 high）
-  engine: 'hyper3d', // 生成引擎：hyper3d(Rodin Gen-2.5) / hunyuan / higen3d（全量迁移默认 hyper3d）
+  // 生成引擎：fal / hyper3d / hunyuan / higen3d。
+  // 启动时若该引擎没配凭证，refreshHealth 会自动回退到有凭证的那个（见 ENGINE_PRIORITY）。
+  engine: 'fal',
+  falHighPack: false, // fal.ai 的 4K 贴图 + 高模附加包（画质更好，按 3 倍计费）
   suspensionDelta: 0, // 悬挂降低量 Δ（mm），>0 降低车身（与 shellLift 叠加）
   front: { ...AXLE_DEFAULTS_FRONT },
   rear: { ...AXLE_DEFAULTS_REAR },
@@ -809,6 +812,7 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       title,
       precision: app.params.precision,
       engine: app.params.engine,
+      falHighPack: app.params.falHighPack,
       onProgress: (s) => {
         u.setProgress(s.progress);
         u.setStatus(s.message);
@@ -970,13 +974,52 @@ function classifyHealth(h) {
  * 后端每次请求都会重读凭证文件，所以换票后点「我已更新」即可，不需要重启服务。
  * @returns {Promise<'live'|'expiring'|'expired'|'demo'|'unknown'>}
  */
+/**
+ * 引擎优先级。画质/可控性从高到低排列：
+ *   fal     = fal.ai 上的 Rodin（按次计费，Gen-2.5 高/极限档，可加 4K HighPack）
+ *   hyper3d = Hyper3D 官方 Rodin（需 Business 订阅）
+ *   hunyuan = 腾讯混元（免费但每天 5 次，精度相对低）
+ *   higen3d = HiGen3D（待配置）
+ */
+const ENGINE_PRIORITY = ['fal', 'hyper3d', 'hunyuan', 'higen3d'];
+
+/** 从 health 里挑一个真正配了凭证的引擎；都不可用则返回 null */
+function pickLiveEngine(engines) {
+  for (const id of ENGINE_PRIORITY) {
+    const e = engines?.[id];
+    if (!e) continue;
+    if (id === 'higen3d') {
+      if (e.available) return id;
+      continue;
+    }
+    if (e.mode === 'live') return id;
+  }
+  return null;
+}
+
 async function refreshHealth() {
   const h = await health();
   const state = classifyHealth(h);
-  const engine = app.params.engine || 'hunyuan';
+  let engine = app.params.engine || 'hunyuan';
   const engineStatus = h.engines?.[engine] || { mode: 'demo' };
-  // 状态卡必须反映"当前默认引擎"是否真的能跑 LIVE；别的引擎有 key 不代表当前引擎可用
-  const effectiveState = engineStatus.mode !== 'live' && state === 'live' ? 'demo' : state;
+
+  // 当前引擎没凭证时自动切到有凭证的引擎。
+  // 否则会出现"配了混元 key，却因为默认引擎是没 key 的 hyper3d 而一直跑 DEMO"的假死状态。
+  if (engineStatus.mode !== 'live') {
+    const better = pickLiveEngine(h.engines);
+    if (better) {
+      console.warn(`[engine] 引擎 ${engine} 无可用凭证，自动切换到 ${better}`);
+      engine = better;
+      app.params.engine = better;
+    }
+  }
+  // 下拉框是在面板构建时按当时的 engine 初始化的，回退后要同步过去
+  panel.syncEngine?.();
+  // 切换后要重取状态，否则状态卡显示的还是旧引擎的情况
+  const finalStatus = h.engines?.[engine] || { mode: 'demo' };
+  const isLive = engine === 'higen3d' ? !!finalStatus.available : finalStatus.mode === 'live';
+  // 状态卡必须反映"当前引擎"是否真的能跑 LIVE；别的引擎有 key 不代表当前引擎可用
+  const effectiveState = !isLive && state === 'live' ? 'demo' : state;
   panel.setMode({
     state: effectiveState,
     expiresAt: h.expiresAt || '',
@@ -985,10 +1028,13 @@ async function refreshHealth() {
     // LIVE 正常时不挂按钮，保持面板干净；其余三态都需要用户动手
     onRefresh: effectiveState === 'live' ? null : refreshHealth,
     engine,
-    engineMode: engineStatus.mode,
+    engineMode: isLive ? 'live' : 'demo',
   });
   return effectiveState;
 }
+
+// 挂到 app 上，供面板切换引擎后立即刷新状态卡
+app.refreshHealth = refreshHealth;
 
 /* ---------------------------- 工具 ---------------------------- */
 
