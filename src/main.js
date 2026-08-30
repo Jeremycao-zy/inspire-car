@@ -51,6 +51,11 @@ const DEFAULTS = {
   trackR: 0,
   axleF: 0,
   axleR: 0,
+  // 轮毂校准安全网：对 AI 生成的轮毂做手动微调（绕轮轴旋转 + 轮平面内/轴向小幅偏移）
+  rimSpinDeg: 0, // 绕轮轴旋转，单位度
+  rimOffsetX: 0, // 轮平面内的横向微调，mm
+  rimOffsetY: 0, // 轮平面内的竖向微调，mm
+  rimOffsetZ: 0, // 沿轮轴方向的 seating 微调，mm
   fenderOffsetF: 0, // 翼子板基准补偿（mm），PRD §4.6 R3.3
   fenderOffsetR: 0,
   carLength: 4.6,

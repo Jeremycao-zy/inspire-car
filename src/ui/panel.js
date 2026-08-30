@@ -71,6 +71,14 @@ const FINE_PARAMS = [
   { key: 'suspensionDelta', label: '悬挂高低 Δ', unit: 'mm', min: -10, max: 75, step: 1, hint: 'Δ>0 降低车身；与车身升降叠加成最终偏移', global: true },
 ];
 
+/** 轮毂校准安全网：对 AI 生成的轮毂做手动微调（绕轮轴旋转 + 轮平面内/轴向小幅偏移） */
+const RIM_CALIB_PARAMS = [
+  { key: 'rimSpinDeg', label: '旋转', unit: '°', min: -180, max: 180, step: 1, hint: '绕轮轴旋转', global: true },
+  { key: 'rimOffsetX', label: '横向', unit: 'mm', min: -30, max: 30, step: 1, hint: '轮平面内横向偏移', global: true },
+  { key: 'rimOffsetY', label: '竖向', unit: 'mm', min: -30, max: 30, step: 1, hint: '轮平面内竖向偏移', global: true },
+  { key: 'rimOffsetZ', label: '轴向', unit: 'mm', min: -30, max: 30, step: 1, hint: '沿轮轴 seating 微调', global: true },
+];
+
 
 const AXLE_OPTIONS = [
   ['all', '4 轮'],
@@ -588,6 +596,19 @@ export function createPanel(app, mount) {
       modeBadge,
       section('整车模型', carUpload.zone),
       section('轮毂模型', wheelUpload.zone),
+      section(
+        '轮毂校准（如生成模型摆位不正，可在此微调）',
+        el(
+          'div',
+          { class: 'fine' },
+          ...RIM_CALIB_PARAMS.map((spec) => makeSlider(spec, () => app.apply())),
+          el(
+            'div',
+            { class: 'ctl-hint' },
+            '旋转：绕轮轴转动；横/竖向：轮平面内微调；轴向：沿轮轴 seating 微调'
+          )
+        )
+      ),
       section('轮毂参数', paramBox),
       collapsible('装配微调', fineBox),
       section('场景', sceneBox),
