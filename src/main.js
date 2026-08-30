@@ -199,6 +199,94 @@ function wheelCylinders({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
 }
 
 /**
+ * 用几何把轮位圆柱"对准"实际车轮。
+ *
+ * 为什么需要：rig 的轮位是**按车身尺寸估算**的（autoFitCorners），与模型真实轮子
+ * 系统性对不上——演示车实测：实际车轮 |z|≈0.63，估算 |z|≈0.795，偏差约 170mm。
+ * 盲信估算会导致圆柱只擦到轮子外沿（只切下几千面）。
+ *
+ * 做法：以估算位置为种子，在其附近滑动候选圆柱中心，取"框住三角面重心最多"的那个。
+ * 轴向（轮距方向）误差最大，所以沿轴搜索范围最大；径向只做小幅微调。
+ * 同等命中数时偏向"离种子近"的解，避免漂到车身上。
+ *
+ * @returns {{cylinders:Array, drift:Array}} drift 记录每个轮位的偏移量，便于排查
+ */
+function refineCylindersToGeometry(
+  cyls,
+  { axialRange = 0.55, axialStep = 0.03, radialRange = 0.1, radialStep = 0.05 } = {}
+) {
+  if (!carGroup) return { cylinders: cyls, drift: [] };
+
+  // 一次性收集车身所有三角面重心（世界坐标，扁平数组避免几十万个小对象）
+  const pts = [];
+  const wp = new THREE.Vector3();
+  carOuter.updateMatrixWorld(true);
+  carGroup.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const g = o.geometry;
+    const pos = g.attributes?.position;
+    if (!pos) return;
+    const index = g.index;
+    const n = index ? index.count / 3 : pos.count / 3;
+    for (let t = 0; t < n; t++) {
+      const a = index ? index.getX(t * 3) : t * 3;
+      const b = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+      const c = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+      let x = 0, y = 0, z = 0;
+      for (const vi of [a, b, c]) {
+        wp.fromBufferAttribute(pos, vi).applyMatrix4(o.matrixWorld);
+        x += wp.x; y += wp.y; z += wp.z;
+      }
+      pts.push(x / 3, y / 3, z / 3);
+    }
+  });
+
+  const out = [];
+  const drift = [];
+
+  for (const cyl of cyls) {
+    const { center, axis, R, halfW } = cyl;
+    const ax = axis.x, ay = axis.y, az = axis.z;
+
+    // 只保留搜索邻域内的点，大幅降低候选遍历成本
+    const reach = R + Math.max(axialRange, radialRange) + halfW;
+    const near = [];
+    for (let i = 0; i < pts.length; i += 3) {
+      const dx = pts[i] - center.x, dy = pts[i + 1] - center.y, dz = pts[i + 2] - center.z;
+      if (dx * dx + dy * dy + dz * dz <= reach * reach) near.push(pts[i], pts[i + 1], pts[i + 2]);
+    }
+
+    let best = { score: -Infinity, cx: center.x, cy: center.y, cz: center.z };
+    for (let sa = -axialRange; sa <= axialRange + 1e-9; sa += axialStep) {
+      const bx = center.x + ax * sa, by = center.y + ay * sa, bz = center.z + az * sa;
+      for (let ox = -radialRange; ox <= radialRange + 1e-9; ox += radialStep) {
+        for (let oy = -radialRange; oy <= radialRange + 1e-9; oy += radialStep) {
+          const cx = bx + ox, cy = by + oy, cz = bz;
+          let count = 0;
+          for (let i = 0; i < near.length; i += 3) {
+            const vx = near[i] - cx, vy = near[i + 1] - cy, vz = near[i + 2] - cz;
+            const axial = vx * ax + vy * ay + vz * az;
+            if (axial > halfW || axial < -halfW) continue;
+            const radialSq = vx * vx + vy * vy + vz * vz - axial * axial;
+            if (radialSq <= R * R) count += 1;
+          }
+          const score = count - (Math.abs(sa) + Math.abs(ox) + Math.abs(oy)) * 1e-3;
+          if (score > best.score) best = { score, cx, cy, cz };
+        }
+      }
+    }
+
+    out.push({ center: new THREE.Vector3(best.cx, best.cy, best.cz), axis: axis.clone(), R, halfW });
+    drift.push({
+      moved: +Math.hypot(best.cx - center.x, best.cy - center.y, best.cz - center.z).toFixed(3),
+      dz: +(best.cz - center.z).toFixed(3),
+    });
+  }
+
+  return { cylinders: out, drift };
+}
+
+/**
  * 切掉车身上原有的车轮。
  *
  * 为什么必须切：实测（scripts/_probe-connected-parts.mjs）显示 AI 生成的车
@@ -208,13 +296,18 @@ function wheelCylinders({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
  * 切口会露出背面，因此顺手把材质转 DoubleSide，避免从轮拱看穿车身内部。
  * 原始索引存在 userData 里，可随时 restoreOriginalWheels() 还原。
  *
- * @returns {{removed:number, meshes:number, cylinders:number}}
+ * @returns {{removed:number, meshes:number, cylinders:number, drift:Array}}
  */
-function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
-  if (!carGroup) return { removed: 0, meshes: 0, cylinders: 0 };
+function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08, autoAlign = true } = {}) {
+  if (!carGroup) return { removed: 0, meshes: 0, cylinders: 0, drift: [] };
 
-  const cyls = wheelCylinders({ radiusScale, widthPad });
-  if (!cyls.length) return { removed: 0, meshes: 0, cylinders: 0 };
+  const seeds = wheelCylinders({ radiusScale, widthPad });
+  if (!seeds.length) return { removed: 0, meshes: 0, cylinders: 0 };
+
+  // 先用几何把圆柱对准真实车轮（blindSeed 时跳过，便于对比调试）
+  const { cylinders: cyls, drift } = autoAlign
+    ? refineCylindersToGeometry(seeds)
+    : { cylinders: seeds, drift: [] };
 
   carOuter.updateMatrixWorld(true);
 
@@ -268,7 +361,7 @@ function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
     }
   });
 
-  return { removed, meshes: touched, cylinders: cyls.length };
+  return { removed, meshes: touched, cylinders: cyls.length, drift, autoAlign };
 }
 
 /** 还原被切掉的原车轮（把备份的索引写回去） */
