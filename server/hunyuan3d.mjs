@@ -263,7 +263,7 @@ export const AUTH_CODES = new Set([
 /**
  * 把网关/HTTP 异常归类。
  * @param {Error} e
- * @returns {'auth'|'other'}
+ * @returns {'auth'|'quota'|'other'}
  */
 export function classifyError(e) {
   const code = e?.code || '';
@@ -271,6 +271,10 @@ export function classifyError(e) {
   const hay = `${code} ${e?.message || ''} ${e?.stack || ''}`;
   if (/401|403|unauthorized|forbidden|signaturedoesnotmatch|token\s?expired|credential/i.test(hay)) {
     return 'auth';
+  }
+  // 429 / 额度 / 每日上限：属于「配额用完」，不是普通网络错误，UI 要单独引导
+  if (/429|rate.?limit|quota|daily.?submit.?limit|limit.?exceeded|too.?many.?requests/i.test(hay)) {
+    return 'quota';
   }
   return 'other';
 }

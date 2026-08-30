@@ -58,6 +58,7 @@ export const PRECISION_TIERS = {
  * reason 决定 UI 走哪条恢复路径（对应设计文档 §3 错误分类矩阵）：
  *   'auth'    凭证失效 → 引导换票，点「我已更新」重试，不消耗额度
  *   'timeout' 本地等待超时但云端仍在跑 → 可带 jobId 续等，不重新提交、不重复扣额度
+ *   'quota'   当日额度/次数用完 → 提示明天再试或改用演示模型，不重复提交
  *   'fail'    云端生成失败 / 网络问题 → 同参数重试
  *
  * 关键约束：任何 reason 都不会自动降级到演示模型，是否改用演示模型由用户显式点击决定。
@@ -178,6 +179,14 @@ export async function generateModel({ kind, files, images: preset, resumeJobId, 
         throw new GenerateError(payload.message || '生成超时（云端任务仍在继续）', {
           reason: 'timeout',
           jobId: payload.detail || resumeJobId || '',
+          images,
+        });
+      }
+      if (payload.stage === 'quota_exceeded') {
+        reader.cancel().catch(() => {});
+        throw new GenerateError(payload.message || '今日额度已用完', {
+          reason: 'quota',
+          detail: payload.detail || '',
           images,
         });
       }

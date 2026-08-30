@@ -584,6 +584,24 @@ function handleGenerateError(kind, e) {
     return;
   }
 
+  if (reason === 'quota') {
+    u.setStatus('今日 hy-3d 生成额度已用完', 'warn');
+    u.setDetail([
+      '当前凭证今日提交次数已达上限（通常为 5 次/天），本次没有消耗额外额度。',
+      '建议：① 明天再试；② 点下方「改用演示模型」继续调试装车、悬挂、校准效果。',
+      e.detail ? `云端返回：${String(e.detail).slice(0, 200)}` : '',
+    ]);
+    u.setActions([
+      {
+        label: '额度重置后，用同样的照片重试',
+        tone: 'primary',
+        onClick: () => runGenerate({ kind, images }),
+      },
+      demoAction,
+    ]);
+    return;
+  }
+
   // 普通失败：网络中断、云端 FAIL、下载三次都没成
   u.setStatus(`生成失败：${e.message}`, 'err');
   u.setDetail([

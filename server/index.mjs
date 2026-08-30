@@ -275,9 +275,20 @@ async function handleGenerate(req, res) {
         });
         jobId = sub.jobId;
       } catch (e) {
-        // 红线：凭证失效 → 走换票引导，绝不当成普通失败
-        if (hy3d.classifyError(e) === 'auth') {
+        // 红线：凭证失效 → 走换票引导；额度用完 → 走配额引导；其余才是普通失败
+        const cls = hy3d.classifyError(e);
+        if (cls === 'auth') {
           authError(e);
+          return;
+        }
+        if (cls === 'quota') {
+          emit({
+            stage: 'quota_exceeded',
+            progress: 1,
+            message: '今日 hy-3d 额度已用完，请明天再试或改用演示模型',
+            detail: `${e?.code || ''} ${e.message}`.trim(),
+          });
+          if (!closed) res.end();
           return;
         }
         fail(`提交失败：${e.message}`, e.stack);
