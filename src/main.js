@@ -833,15 +833,21 @@ function classifyHealth(h) {
 async function refreshHealth() {
   const h = await health();
   const state = classifyHealth(h);
+  const engine = app.params.engine || 'hunyuan';
+  const engineStatus = h.engines?.[engine] || { mode: 'demo' };
+  // 状态卡必须反映"当前默认引擎"是否真的能跑 LIVE；别的引擎有 key 不代表当前引擎可用
+  const effectiveState = engineStatus.mode !== 'live' && state === 'live' ? 'demo' : state;
   panel.setMode({
-    state,
+    state: effectiveState,
     expiresAt: h.expiresAt || '',
-    // 区分"时间到了"和"票被云端拒了"：后者文件里写的有效期不可信，不能显示"还有 xx 小时"
+    // 区分"时间到了"和"票被云端拒了"：后者文件里写的有效期不可信，不能再显示"还有 xx 小时"
     rejected: !!(h.tokenId && rejectedTokenIds.has(h.tokenId)),
     // LIVE 正常时不挂按钮，保持面板干净；其余三态都需要用户动手
-    onRefresh: state === 'live' ? null : refreshHealth,
+    onRefresh: effectiveState === 'live' ? null : refreshHealth,
+    engine,
+    engineMode: engineStatus.mode,
   });
-  return state;
+  return effectiveState;
 }
 
 /* ---------------------------- 工具 ---------------------------- */

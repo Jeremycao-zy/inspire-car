@@ -726,7 +726,7 @@ export function createPanel(app, mount) {
         'header',
         { class: 'panel-head' },
         el('h1', {}, 'TUNING STUDIO'),
-        el('p', { class: 'sub' }, '照片 → 混元 3D → GLB → 四轮实时装配')
+        el('p', { class: 'sub' }, '照片 → Hyper3D Rodin → GLB → 四轮实时装配')
       ),
       modeBadge,
       tabsBar,
@@ -879,27 +879,44 @@ export function createPanel(app, mount) {
    * @param {Function=} s.onRefresh 点「我已更新」时回调（重查 /api/health）
    */
   function setMode(s) {
-    const { state = 'unknown', expiresAt = '', rejected = false, note = '', onRefresh } = s || {};
+    const {
+      state = 'unknown',
+      expiresAt = '',
+      rejected = false,
+      note = '',
+      onRefresh,
+      engine = 'hunyuan',
+      engineMode = 'demo',
+    } = s || {};
+
+    const ENGINE = {
+      hyper3d: { name: 'Hyper3D', tokenFile: 'hyper3d', env: 'HYPER3D_API_KEY' },
+      higen3d: { name: 'HiGen3D', tokenFile: 'higen3d', env: 'HIGEN3D_API_KEY' },
+      hunyuan: { name: '混元 3D', tokenFile: 'hunyuan3d', env: 'HUNYUAN3D_TOKEN' },
+    }[engine] || { name: '混元 3D', tokenFile: 'hunyuan3d', env: 'HUNYUAN3D_TOKEN' };
+
+    // 只有当前引擎真正 live 才显示 LIVE；否则即便别的引擎有 key 也按当前引擎状态提示
+    const isLive = state === 'live' && engineMode === 'live';
 
     const TEXT = {
       live: {
         icon: '●',
-        title: 'LIVE — 已接混元 3D',
+        title: `LIVE — 已接${ENGINE.name}`,
         body: '上传照片会真实生成模型，每次成功生成消耗一次额度。',
       },
       expiring: {
         icon: '◐',
-        title: 'LIVE — 凭证即将过期',
+        title: `LIVE — ${ENGINE.name}凭证即将过期`,
         body: '现在还能生成，但建议先换一张新票，避免生成到一半失效。',
       },
       expired: {
         icon: '○',
-        title: rejected ? '凭证被拒 — 无法真实生成' : '凭证已过期 — 无法真实生成',
+        title: rejected ? '凭证被拒 — 无法真实生成' : `凭证已过期 — 无法真实生成`,
         body: '换票后点下面的「我已更新」即可恢复，不用重启服务。',
       },
       demo: {
         icon: '○',
-        title: 'DEMO — 未配置凭证',
+        title: `DEMO — 未配置${ENGINE.name}凭证`,
         body: '上传照片只会返回预置的演示模型（不是你的车），不消耗额度。',
       },
       unknown: {
@@ -938,8 +955,8 @@ export function createPanel(app, mount) {
         el(
           'ol',
           { class: 'mb-steps' },
-          el('li', {}, '在对话里说一句「刷新混元 3D 凭证」拿新票'),
-          el('li', {}, '新票会自动写进 ~/.workbuddy/tokens/hunyuan3d'),
+          el('li', {}, `在对话里说一句「刷新${ENGINE.name}凭证」拿新票`),
+          el('li', {}, `新票会自动写进 ~/.workbuddy/tokens/${ENGINE.tokenFile}（或环境变量 ${ENGINE.env}）`),
           el('li', {}, '回到这里点「我已更新」')
         )
       );
