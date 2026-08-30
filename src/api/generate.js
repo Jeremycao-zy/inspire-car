@@ -376,3 +376,30 @@ export async function bangModel({
 
   throw new GenerateError('连接中断，拆解流意外结束', { reason: 'fail' });
 }
+
+/**
+ * 上传一个已经拆好的部件 GLB（来自 Hyper3D 网页版 / Scenario 的 BANG 产物）。
+ *
+ * 为什么需要它：BANG 走 API 要 $120/月订阅，走网页版按次付费只要约 $0.75/台。
+ * 用户把拆好的 GLB 拖回本项目，识别与装车的自动化仍在本项目侧完成。
+ *
+ * @param {File} file 单个 .glb 文件
+ * @returns {Promise<{url:string, name:string, bytes:number}>}
+ */
+export async function uploadPart(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(new Error(`读取失败：${file.name}`));
+    fr.readAsDataURL(file);
+  });
+
+  const r = await fetch('/api/upload-part', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, dataUrl }),
+  });
+  const t = await r.text().catch(() => '');
+  if (!r.ok) throw new Error(`上传失败 ${file.name}：${t.slice(0, 200)}`);
+  return JSON.parse(t);
+}

@@ -21,7 +21,16 @@ import { WheelRig, ET_REF } from './tuning/wheelRig.js';
 import { Chassis } from './tuning/chassis.js';
 import { ShellCutter } from './tuning/shellCutter.js';
 import { measure as measureShell } from './tuning/shellMeasure.js';
-import { generateModel, health, recognize, bangModel, GenerateError, PRECISION_TIERS } from './api/generate.js';
+import { classifyDims } from './core/partClassify.js';
+import {
+  generateModel,
+  health,
+  recognize,
+  bangModel,
+  uploadPart,
+  GenerateError,
+  PRECISION_TIERS,
+} from './api/generate.js';
 import { createPanel } from './ui/panel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
@@ -151,6 +160,37 @@ function layoutBangParts(groups, { offsetX = 0 } = {}) {
   }
   // offsetX：自动拆解时把部件摆到整车旁边，避免和原车重叠成一团
   bangRoot.position.x = offsetX - (cursor - gap) / 2;
+}
+
+/** 当前整车长度（取水平方向最长边），供部件分类做尺度参照 */
+function carLengthRef() {
+  if (!carGroup) return 0;
+  const box = boxOf(carOuter);
+  if (box.isEmpty()) return 0;
+  const s = box.getSize(new THREE.Vector3());
+  return Math.max(s.x, s.z);
+}
+
+/**
+ * 判断一个部件是不是车轮，纯几何启发式。
+ *
+ * 车轮的三个特征（缺一不可）：
+ *   - 圆度高：横截面接近正圆（d2/d1 → 1），车身/玻璃是长扁的
+ *   - 盘状：厚度明显小于直径（厚径比 0.15~0.55），太薄是刹车盘/贴片，太厚是车身
+ *   - 尺度对：直径约为车长的 10%~45%，排除过小碎片与过大的车身
+ *
+ * @returns {{kind:'wheel'|'other', score:number, size:number[], roundness:number, thin:number, rel:number}}
+ */
+function classifyPart(group, carLength = 0) {
+  group.updateMatrixWorld(true);
+  const box = boxOf(group);
+  if (box.isEmpty()) {
+    return { kind: 'other', score: 0, size: [0, 0, 0], roundness: 0, thin: 1, rel: 0 };
+  }
+  const s = box.getSize(new THREE.Vector3());
+  // 判定规则集中在 core/partClassify.js（纯函数，可用真实量测数据单测）
+  const r = classifyDims([s.x, s.y, s.z], carLength);
+  return { ...r, size: [s.x, s.y, s.z] };
 }
 
 
@@ -597,6 +637,78 @@ const app = {
   /** 移除 BANG 拆解产物，恢复整车视图 */
   clearBang() {
     clearBangParts();
+  },
+
+  /**
+   * 导入已经在别处拆好的部件 GLB（Hyper3D 网页版 / Scenario 的 BANG 产物）。
+   *
+   * 为什么走这条路：BANG 走 API 要 $120/月订阅，走网页版按次付费约 $0.75/台。
+   * 所以拆解那一步放到网页端手动做，识别 + 装车的自动化留在本项目侧。
+   *
+   * 行为：
+   *   1. 逐个上传并载入部件
+   *   2. 几何识别哪个是车轮 → 直接装到四轮 rig（替换当前轮毂模板）
+   *   3. 其余部件摆在整车旁边，方便你核对拆出了什么
+   *
+   * @param {FileList|File[]} files
+   * @returns {Promise<{total:number, wheel:Object|null, items:Array}|null>}
+   */
+  async importBangParts(files) {
+    const list = Array.from(files || []).filter((f) => /\.glb$/i.test(f.name || ''));
+    if (!list.length) {
+      alert('请选择 .glb 部件文件（BANG 拆解产物）');
+      return null;
+    }
+
+    const carLen = carLengthRef();
+    showOverlay(`正在导入 ${list.length} 个部件…`);
+    try {
+      const items = [];
+      for (let i = 0; i < list.length; i++) {
+        showOverlay(`上传部件 ${i + 1}/${list.length}…`);
+        const up = await uploadPart(list[i]);
+        const { group } = await loadGLB(up.url);
+        const info = classifyPart(group, carLen);
+        items.push({ url: up.url, name: up.name, group, info });
+        console.log(
+          `[bang-import] ${up.name} → ${info.kind}` +
+            ` 尺寸 ${info.size.map((v) => v.toFixed(3)).join('×')}` +
+            ` 圆度 ${info.roundness.toFixed(2)} 厚径比 ${info.thin.toFixed(2)} 相对车长 ${info.rel.toFixed(2)}`
+        );
+      }
+
+      // 车轮：取评分最高的那个装到四轮
+      const wheelItem = items
+        .filter((it) => it.info.kind === 'wheel')
+        .sort((a, b) => b.info.score - a.info.score)[0];
+
+      let wheel = null;
+      if (wheelItem) {
+        const measured = normalizeWheel(wheelItem.group);
+        if (wheelGroup) disposeObject(wheelGroup);
+        wheelGroup = wheelItem.group;
+        rig.setWheelSource(wheelItem.group, measured);
+        this.apply();
+        wheel = measured;
+      }
+
+      // 其余部件摆到整车旁边（车轮已交给 rig，不再重复入场景）
+      const rest = items.filter((it) => it !== wheelItem).map((it) => it.group);
+      clearBangParts();
+      if (rest.length) layoutBangParts(rest, { offsetX: 3 });
+
+      hideOverlay();
+      return {
+        total: items.length,
+        wheel,
+        items: items.map((it) => ({ name: it.name, url: it.url, kind: it.info.kind })),
+      };
+    } catch (e) {
+      console.error('[bang-import]', e);
+      hideOverlay();
+      alert(`部件导入失败：${e.message}`);
+      return null;
+    }
   },
 
   resetLights() {

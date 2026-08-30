@@ -640,6 +640,42 @@ export function createPanel(app, mount) {
   tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
   tabBodies.paint.appendChild(section('车漆', colorWheel.root));
 
+  /* ---- 导入已拆解的部件（BANG 产物） ----
+   * BANG 走 API 要 $120/月订阅，走网页版按次付费约 $0.75/台。
+   * 所以用户在 Hyper3D 网页版 / Scenario 拆完，把 GLB 拖回这里，
+   * 由本项目自动识别车轮并装到四轮 rig 上。 */
+  const partInput = el('input', {
+    type: 'file',
+    accept: '.glb',
+    multiple: true,
+    class: 'part-file',
+    style: 'display:none',
+    onchange: async (e) => {
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      const r = await app.importBangParts(files);
+      if (r?.total) {
+        const wheelTxt = r.wheel
+          ? `已识别车轮并装配 4 只（直径 ${(r.wheel.diameter * 1000).toFixed(0)}mm / 宽 ${(r.wheel.width * 1000).toFixed(0)}mm）`
+          : '未识别到车轮（其余部件已摆在车旁）';
+        wheelUpload.setStatus(`导入 ${r.total} 个部件：${wheelTxt}`, r.wheel ? 'ok' : 'warn');
+      }
+      e.target.value = ''; // 允许重复选同一批文件
+    },
+  });
+  const partBox = el(
+    'div',
+    { class: 'fine' },
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn primary', onclick: () => partInput.click() }, '导入已拆部件（GLB）')),
+    partInput,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '在 Hyper3D 网页版 / Scenario 用 BANG 拆完部件后，把拆出的 GLB 选进来；会自动识别车轮并装到四个轮位，其余部件摆在车旁。'
+    )
+  );
+  tabBodies.wheels.appendChild(section('导入已拆解部件（BANG）', partBox));
+
   tabBodies.scene.appendChild(section('场景', sceneBox));
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
   tabBodies.scene.appendChild(section('视角', views));

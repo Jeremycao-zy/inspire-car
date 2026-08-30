@@ -1111,6 +1111,56 @@ async function handleAsset(req, res, name) {
   }
 }
 
+/* ------------------------- 部件导入（BANG 手动拆解产物） ------------------------- */
+
+/**
+ * POST /api/upload-part
+ * 入参：{ name, dataUrl }   单个 GLB 文件（base64 dataURL）
+ * 出参：{ url, name, bytes }
+ *
+ * 用途：用户在 Hyper3D 网页版 / Scenario 用 BANG 拆完部件后，把多个 GLB 拖回本项目。
+ * 这样 BANG 成本压到按次付费（约 $0.75/台），不必买 $120/月的 API 订阅；
+ * 后续的识别与装车自动化留在本项目侧完成。
+ */
+async function handleUploadPart(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const dataUrl = String(body?.dataUrl || '');
+  if (!dataUrl) {
+    sendJson(res, 400, { error: '缺少 dataUrl' });
+    return;
+  }
+  const raw = String(body?.name || 'part.glb');
+  if (!raw.toLowerCase().endsWith('.glb')) {
+    sendJson(res, 400, { error: '只接受 .glb 文件' });
+    return;
+  }
+  const b64 = dataUrl.includes(',') ? dataUrl.slice(dataUrl.indexOf(',') + 1) : dataUrl;
+  let buf;
+  try {
+    buf = Buffer.from(b64, 'base64');
+  } catch {
+    sendJson(res, 400, { error: 'base64 解析失败' });
+    return;
+  }
+  if (buf.length < 12 || buf.readUInt32LE(0) !== 0x46546c67) {
+    sendJson(res, 400, { error: '不是合法的 GLB（缺少 glTF magic）' });
+    return;
+  }
+  await fsp.mkdir(CACHE_DIR, { recursive: true });
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  const out = `part-${ts}-${crypto.randomBytes(3).toString('hex')}.glb`;
+  await fsp.writeFile(path.join(CACHE_DIR, out), buf);
+  sendJson(res, 200, { url: `/api/asset/${out}`, name: path.basename(raw), bytes: buf.length });
+}
+
 /* ------------------------- 车型识别（视觉模型） ------------------------- */
 
 /**
@@ -1184,6 +1234,11 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname.startsWith('/api/asset/')) {
     await handleAsset(req, res, u.pathname.slice('/api/asset/'.length));
+    return;
+  }
+
+  if (u.pathname === '/api/upload-part' && req.method === 'POST') {
+    await handleUploadPart(req, res);
     return;
   }
 
