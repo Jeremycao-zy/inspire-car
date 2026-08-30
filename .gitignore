@@ -12,6 +12,7 @@ dist-verify/
 # QA / generated artifacts
 outputs/
 scripts/_qa-*.png
+scripts/_qa-*.mjs
 
 # logs
 *.log
