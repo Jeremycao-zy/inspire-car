@@ -348,7 +348,7 @@ export function mountGarage({ onEnter, mount } = {}) {
     el(
       'div',
       { class: 'garage-hero__text' },
-      el('h2', { class: 'garage-hero__title' }, '把灵感，变成可改装的 3D'),
+      el('h2', { class: 'garage-hero__title' }, '把灵感，变现实'),
       el('p', { class: 'garage-hero__sub' }, '上传爱车照片，AI 生成 3D 车模，保存每一套轮毂与姿态方案。'),
       el(
         'div',
