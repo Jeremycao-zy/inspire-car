@@ -90,6 +90,14 @@ function inspireLogoSVG() {
   </svg>`;
 }
 
+/** 背卡车型剪影（侧视跑车轮廓） */
+function carSilhouetteSVG() {
+  return `<svg viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M18,58 C14,58 12,55 12,51 C12,46 16,42 22,40 L38,37 C44,30 55,24 70,22 L95,20 C105,18 118,18 130,22 L150,28 C165,32 175,38 182,45 L188,48 C193,50 196,54 195,58 C194,62 189,64 182,64 L168,64 C164,68 156,70 148,68 C140,70 132,68 128,64 L68,64 C64,68 56,70 48,68 C40,68 32,66 28,62 L22,62 C20,62 18,60 18,58 Z"
+          fill="currentColor"/>
+  </svg>`;
+}
+
 function formatDate(ts) {
   const d = new Date(ts);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
@@ -256,7 +264,28 @@ function createCard(plan, onClick, onDelete) {
     '×'
   );
 
-  // 背卡：品牌 logo + 车型信息 + 底部元数据
+  // 顶部零售吊牌挂孔
+  const hangHole = el('div', { class: 'garage-card__hang-hole' });
+
+  // 背卡印刷车型剪影（放在车型文字背后作装饰）
+  const silhouette = el('div', { class: 'garage-card__silhouette', html: carSilhouetteSVG() });
+
+  // 透明塑料泡壳：绝对定位在 blister-zone 内，不再压住下方文字
+  const shell = el(
+    'div',
+    { class: 'garage-card__shell' },
+    thumb,
+    el('div', { class: 'garage-card__blister-highlight' }),
+    el('div', { class: 'garage-card__blister-glare' }),
+    el('div', { class: 'garage-card__blister-rim' }),
+    el('div', { class: 'garage-card__blister-refraction' })
+  );
+  const blister = el('div', { class: 'garage-card__blister' }, shell);
+
+  // 泡壳占位区：在背卡流式布局中占据固定高度，避免与文字重叠
+  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
+
+  // 背卡：品牌 logo + 泡壳占位区 + 车型信息 + 底部元数据
   const backing = el(
     'div',
     { class: 'garage-card__backing' },
@@ -266,11 +295,13 @@ function createCard(plan, onClick, onDelete) {
       el('div', { class: 'garage-card__logo-wrap', html: inspireLogoSVG() }),
       el('div', { class: 'garage-card__series' }, 'COLLECTOR EDITION · 收藏版')
     ),
+    blisterZone,
     el(
       'div',
       { class: 'garage-card__model' },
       el('h3', { class: 'garage-card__title' }, plan.title || '未命名方案'),
-      plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null
+      plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null,
+      silhouette
     ),
     el(
       'div',
@@ -280,18 +311,8 @@ function createCard(plan, onClick, onDelete) {
     )
   );
 
-  // 透明塑料泡壳（blister）：包含 3D 画布 + 高光/眩光层
-  const shell = el(
-    'div',
-    { class: 'garage-card__shell' },
-    thumb,
-    el('div', { class: 'garage-card__blister-highlight' }),
-    el('div', { class: 'garage-card__blister-glare' })
-  );
-  const blister = el('div', { class: 'garage-card__blister' }, shell);
-
-  // 整包 = 背卡 + 泡壳
-  const pack = el('div', { class: 'garage-card__pack' }, backing, blister);
+  // 整包 = 吊牌孔 + 背卡
+  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing);
 
   const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack, badge, del);
 
