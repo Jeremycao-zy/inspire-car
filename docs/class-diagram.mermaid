@@ -1,0 +1,90 @@
+classDiagram
+    direction TB
+
+    class GenerateRequest {
+        <<data>> 前端 POST /api/generate
+        +string kind = "wheel"   /* 轮毂意图（= intent:'rim'） */
+        +ImageInput[] images
+        +string precision         /* 'standard'|'high'|'extreme' */
+        +string title
+        +string prompt            /* 默认 alloy car wheel rim, rim only, no tire */
+        +number faceCount          /* 由 precision 推导，可显式覆盖 */
+        +string model             /* 默认 '3.1' */
+    }
+
+    class ImageInput {
+        <<data>>
+        +string name
+        +string dataUrl            /* base64（含 data: 前缀） */
+    }
+
+    class PrecisionTier {
+        <<data>> src/api/generate.js PRECISION_TIERS
+        +number faceCount
+        +string model
+        +number maxSide            /* 输入分辨率 */
+        +number quality            /* 输入 JPEG 质量 */
+    }
+
+    class GenerateResult {
+        <<data>> SSE done.result
+        +string url
+        +string kind
+        +string mode               /* 'live'|'demo' */
+        +string name
+        +string title
+        +number bytes
+    }
+
+    class SuspensionParams {
+        <<data>> state/app.params
+        +number suspensionDelta     /* mm，Δ>0 降低 */
+    }
+
+    class SuspensionReadout {
+        <<data>> chassis.suspensionReadout()
+        +number groundClearanceMm
+        +number fenderGapMm
+        +number odMm                 /* 轮胎外径，随轮辋/胎宽/扁平比变化 */
+        +number exposureRatio       /* 车身越低越大（可视化提示） */
+        +SuspTone tone               /* {gc, fg, delta} 各自三色 */
+    }
+
+    class SuspTone {
+        <<enum>> 'good'|'warn'|'danger'
+    }
+
+    class GenerateApi {
+        <<module>> src/api/generate.js
+        +PRECISION_TIERS PrecisionTier
+        +generateModel(opts) GenerateResult
+        -shrinkImage(file, maxSide, quality) string
+    }
+
+    class Suspension {
+        <<module>> src/tuning/suspension.js
+        +computeSuspensionReadout(spec) SuspensionReadout
+        +SUSP_THRESHOLD object
+    }
+
+    class Chassis {
+        -Group root
+        +setSuspension(deltaMm) void
+        +suspensionReadout() SuspensionReadout
+    }
+
+    class WheelRig {
+        -Group root
+        +setWheelSource(group, measured) void
+        -_rebuildCorners() void   /* clone 4 份，不动 */
+    }
+
+    GenerateApi ..> PrecisionTier : uses
+    GenerateRequest ..> ImageInput : contains
+    GenerateRequest ..> PrecisionTier : precision 推导
+    chassis.js ..> Chassis : 持有
+    Chassis ..> Suspension : suspensionReadout 调用
+    Chassis ..> SuspensionReadout : produces
+    SuspensionReadout *-- SuspTone : tone
+    SuspensionParams ..> SuspensionReadout : Δ + tire 派生
+    WheelRig ..> GenerateResult : loadWheelFromUrl 装配

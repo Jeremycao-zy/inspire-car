@@ -265,7 +265,7 @@ export function createPanel(app, mount) {
 
   function makeSlider(spec, onChange) {
     const valueLabel = el('span', { class: 'ctl-value' });
-    const input = el('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step });
+    const input = el('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, id: spec.key, name: spec.key });
 
     const render = () => {
       const d = decimals(spec);

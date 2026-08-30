@@ -1,0 +1,242 @@
+/**
+ * brand.css — 「灵感改装 / Inspire Car」品牌标识样式
+ *
+ * 设计基调：用户上传的品牌图（白底圆角图标 + 斜体英文/中文名称）。
+ * 全部类名以 jg- 开头，避免与侧栏/面板既有样式冲突。
+ * 字体只用系统字体栈：本机有透明代理，@font-face / CDN 字体拉不到。
+ */
+
+.jg-brand {
+  --jg-font: 'DIN Alternate', 'Bebas Neue', 'Impact', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  /* 科技感主色板，与品牌图的黑线白底形成对比 */
+  --jg-cyan: #22e6ff;
+  --jg-blue: #3b82f6;
+  --jg-violet: #8b5cf6;
+  --jg-title-grad: linear-gradient(
+    100deg,
+    var(--jg-cyan) 0%,
+    #9ad9ff 42%,
+    var(--jg-violet) 100%
+  );
+
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--jg-font);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.jg-brand__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.jg-brand__icon .jg-icon {
+  display: block;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.jg-brand__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* 主标：霓虹渐变文字 */
+.jg-brand__title {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  font-style: italic;
+  background: var(--jg-title-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 18px rgba(34, 230, 255, 0.22),
+    0 0 34px rgba(139, 92, 246, 0.12);
+  transform: skewX(-8deg);
+  display: inline-block;
+}
+
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .jg-brand__title {
+    color: #e8edf5;
+    -webkit-text-fill-color: #e8edf5;
+  }
+}
+
+/* 副标：斜体，呼应品牌图中 Inspire Car 的字形 */
+.jg-brand__sub {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #6f8299;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+/* ---------------------------------------------------------------- */
+/* 1. 侧栏顶部                                                        */
+/* ---------------------------------------------------------------- */
+
+.jg-brand--sidebar {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px 13px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    100deg,
+    rgba(34, 230, 255, 0.09) 0%,
+    rgba(59, 130, 246, 0.05) 46%,
+    rgba(139, 92, 246, 0.09) 100%
+  );
+}
+
+/* 左侧竖向渐变强调条 + 底部一道青色细线，科技仪表盘感 */
+.jg-brand--sidebar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12%;
+  bottom: 12%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--jg-cyan), var(--jg-violet));
+  box-shadow: 0 0 10px rgba(34, 230, 255, 0.5);
+}
+
+.jg-brand--sidebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(34, 230, 255, 0.55),
+    rgba(139, 92, 246, 0.28) 55%,
+    transparent 100%
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* 2. 3D 视口右下角水印                                                */
+/* ---------------------------------------------------------------- */
+
+.jg-brand--watermark {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  z-index: 5;
+  gap: 8px;
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+/* 悬停时略微显形，但依然不挡视线 */
+#stage:hover .jg-brand--watermark {
+  opacity: 0.55;
+}
+
+/* 水印压在 3D 画面上，用实色而非渐变文字，保证可读性 */
+.jg-brand--watermark .jg-brand__title {
+  font-size: 12.5px;
+  background: none;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
+.jg-brand--watermark .jg-brand__sub {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.jg-brand--watermark .jg-icon {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* ---------------------------------------------------------------- */
+/* 3. 加载遮罩居中                                                     */
+/* ---------------------------------------------------------------- */
+
+.jg-brand--overlay {
+  /* 遮罩本身是 flex column + 居中，这里作为普通 flex 子元素插在最前面，
+     品牌在上、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 6px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.jg-brand--overlay .jg-brand__icon {
+  display: block;
+}
+
+.jg-brand--overlay .jg-icon {
+  width: 160px;
+  height: 160px;
+  border-radius: 32px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 14px 44px rgba(0, 0, 0, 0.35);
+  /* 加载时轻微呼吸，强化「待机启动」感 */
+  animation: jg-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes jg-pulse {
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jg-brand--overlay .jg-icon {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* 窄屏                                                               */
+/* ---------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .jg-brand--sidebar {
+    padding: 10px 12px 10px 14px;
+    gap: 8px;
+  }
+  .jg-brand--sidebar .jg-brand__title {
+    font-size: 13.5px;
+  }
+  .jg-brand--sidebar .jg-brand__sub {
+    display: none;
+  }
+  .jg-brand--overlay .jg-icon {
+    width: 120px;
+    height: 120px;
+    border-radius: 24px;
+  }
+}

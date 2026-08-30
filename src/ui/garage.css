@@ -1,0 +1,461 @@
+/**
+ * garage.css — 「灵感车库」第一层入口页（白色科技 · 车库风）
+ *
+ * 整体：浅色背景 + 蓝图网格 + 软阴影卡片 + 青蓝强调色。
+ * 所有按钮统一高度与圆角，位置对齐。
+ */
+
+.garage-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 620px at 12% -8%, rgba(78, 161, 255, 0.12), transparent 60%),
+    radial-gradient(1000px 520px at 92% 108%, rgba(120, 92, 246, 0.1), transparent 55%),
+    linear-gradient(180deg, #f7f9fc 0%, #eef2f8 100%);
+  background-attachment: fixed;
+  color: #1c2430;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+/* 蓝图网格叠层，强化「车库 / 工位」感 */
+.garage-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(40, 90, 170, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 90, 170, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+}
+
+.garage-layer.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 通用按钮：统一高度与圆角，位置对齐 */
+.gb-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.gb-btn:hover {
+  transform: translateY(-1px);
+}
+.gb-btn:active {
+  transform: translateY(0);
+}
+.gb-btn.primary {
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  box-shadow: 0 8px 22px rgba(47, 123, 255, 0.32);
+}
+.gb-btn.primary:hover {
+  box-shadow: 0 10px 30px rgba(47, 123, 255, 0.42);
+}
+.gb-btn.ghost {
+  color: #2f5fa8;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(47, 123, 255, 0.28);
+}
+.gb-btn.ghost:hover {
+  background: #f3f8ff;
+}
+
+/* ---------------- 顶部品牌栏 ---------------- */
+
+.garage-header {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 32px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(40, 90, 170, 0.12);
+}
+
+.garage-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.garage-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(40, 90, 170, 0.12), 0 6px 18px rgba(30, 60, 120, 0.14);
+  object-fit: contain;
+}
+
+.garage-brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.garage-brand__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #16243b;
+}
+
+.garage-brand__sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6f8bbf;
+}
+
+/* ---------------- Hero ---------------- */
+
+.garage-hero {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.1fr);
+  gap: 28px;
+  align-items: center;
+  padding: 34px 32px 26px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.garage-hero__text {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.garage-hero__title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  color: #14233c;
+}
+
+.garage-hero__sub {
+  margin: 0;
+  font-size: 14.5px;
+  color: #5a6b86;
+  max-width: 460px;
+  line-height: 1.6;
+}
+
+.garage-hero__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.garage-hero__preview {
+  position: relative;
+  height: 320px;
+  border-radius: 20px;
+  background: radial-gradient(120% 120% at 50% 18%, #ffffff 0%, #eaf1fb 70%, #dde8f8 100%);
+  box-shadow: 0 18px 50px rgba(30, 60, 120, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.garage-hero__badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1f6f3f;
+  background: rgba(53, 208, 127, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(53, 208, 127, 0.4);
+}
+
+.garage-hero__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------- 方案区 ---------------- */
+
+.garage-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 32px 48px;
+}
+
+.garage-body::-webkit-scrollbar {
+  width: 8px;
+}
+.garage-body::-webkit-scrollbar-thumb {
+  background: #c4d0e2;
+  border-radius: 4px;
+}
+
+.garage-section-title {
+  max-width: 1180px;
+  margin: 6px auto 18px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #3a4c6b;
+  position: relative;
+  padding-left: 12px;
+}
+.garage-section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #2f7bff, #6f7bff);
+}
+
+.garage-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* ---------------- 卡片 ---------------- */
+
+.garage-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(30, 60, 120, 0.1), inset 0 0 0 1px rgba(40, 90, 170, 0.08);
+  cursor: pointer;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.garage-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(47, 123, 255, 0.4);
+  box-shadow: 0 16px 44px rgba(30, 60, 120, 0.18), inset 0 0 0 1px rgba(47, 123, 255, 0.28);
+}
+
+.garage-card__thumb {
+  position: relative;
+  aspect-ratio: 8 / 5;
+  background: linear-gradient(160deg, #eef3fb 0%, #e2eaf6 100%);
+  overflow: hidden;
+}
+.garage-card__thumb-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.garage-card__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #93a3c0;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+/* 删除按钮：缩略图左上角，常驻可见 */
+.garage-card__delete {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(20, 24, 36, 0.42);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  opacity: 0.78;
+  transform: scale(1);
+  transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+.garage-card:hover .garage-card__delete {
+  opacity: 1;
+}
+.garage-card__delete:hover {
+  background: rgba(214, 40, 56, 0.92);
+  opacity: 1;
+}
+.garage-card__delete:active {
+  transform: scale(0.94);
+}
+.garage-card__badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #2f5fa8;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(47, 123, 255, 0.3);
+}
+
+.garage-card__info {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 15px 16px 12px;
+  gap: 7px;
+}
+.garage-card__title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 800;
+  color: #1b2a44;
+  line-height: 1.3;
+}
+.garage-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #7c8aa6;
+}
+.garage-card__meta-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #b7c2d6;
+}
+.garage-card__desc {
+  margin: 0;
+  font-size: 12.5px;
+  color: #7c8aa6;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.garage-card__action {
+  margin: 4px 16px 16px;
+  height: 42px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 100%);
+  box-shadow: 0 6px 18px rgba(47, 123, 255, 0.28);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+.garage-card:hover .garage-card__action {
+  transform: translateY(-1px);
+}
+
+/* ---------------- 空状态 ---------------- */
+
+.garage-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  text-align: center;
+  color: #7c8aa6;
+}
+.garage-empty__icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.garage-empty__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1b2a44;
+}
+.garage-empty__hint {
+  margin: 0 0 18px;
+  font-size: 13px;
+}
+
+/* ---------------- 响应式 ---------------- */
+
+@media (max-width: 860px) {
+  .garage-hero {
+    grid-template-columns: 1fr;
+    padding: 26px 18px 18px;
+  }
+  .garage-hero__preview {
+    height: 260px;
+    order: -1;
+  }
+  .garage-header {
+    padding: 14px 18px;
+  }
+  .garage-brand__title {
+    font-size: 19px;
+  }
+  .garage-body {
+    padding: 10px 18px 36px;
+  }
+  .garage-grid {
+    grid-template-columns: 1fr;
+  }
+}

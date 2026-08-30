@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant U as 用户
+    participant P as panel.js（轮毂区）
+    participant M as main.js
+    participant A as generate.js
+    participant S as /api/generate（SSE）
+    participant HY as 混元3D 网关
+    participant GL as GLB 载入
+    participant WR as WheelRig
+
+    U->>P: 选精度档位（默认 extreme）
+    U->>P: 选轮毂照片
+    P->>M: generateWheel(files, precision)
+    M->>A: generateModel({kind:'wheel', files, precision, title})
+    A->>A: tier = PRECISION_TIERS[precision]
+    A->>A: shrinkImage(file, tier.maxSide, tier.quality)
+    A->>S: POST {kind:'wheel', images, faceCount:tier.faceCount, model:tier.model}
+    S->>HY: submitJob(faceCount, model, EnablePBR:true, prompt)
+    HY-->>S: JobId
+    loop 轮询
+        S->>HY: queryJob
+        HY-->>S: DONE
+    end
+    S->>S: 下载 GLB → 写 .cache/models + index.json(precision)
+    S-->>A: done {url, kind, mode:'live'}
+    A-->>M: result.url
+    M->>GL: loadWheelFromUrl(url)
+    GL->>GL: normalizeWheel（量尺，不缩放）
+    GL->>WR: setWheelSource(group, measured)
+    WR->>WR: _rebuildCorners() clone 4 份装配
+    WR-->>U: 4 只轮毂装车完成
+    Note over S: auth_error/timeout/fail 一律不返 DEMO（红线）
