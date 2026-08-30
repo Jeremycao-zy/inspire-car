@@ -266,7 +266,7 @@ async function handleGenerate(req, res) {
       try {
         const sub = await hy3d.submitJob({
           imagesBase64: b64List,
-          prompt: body.prompt || (kind === 'wheel' ? 'alloy car wheel rim, rim only, no tire' : ''),
+          prompt: body.prompt || '', // 有图时后端会自动丢弃 Prompt，避免与 ImageBase64 冲突
           multiViewJson: body.multiView || null,
           token,
           model: effectiveModel,
