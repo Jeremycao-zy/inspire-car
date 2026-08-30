@@ -102,12 +102,23 @@ async function prepareImages(files, onProgress, maxSide = 2048, quality = 0.9) {
  * @param {FileList|File[]=} args.files       新生成时传原始文件
  * @param {Array=} args.images                续等/重试时传上一轮已压缩好的图
  * @param {string=} args.resumeJobId          续等已提交的云端任务（跳过重新提交）
+ * @param {string=} args.engine               生成引擎：'hunyuan' | 'hyper3d' | 'higen3d'
  * @param {(s:{stage:string,progress:number,message:string})=>void} args.onProgress
  * @param {AbortSignal=} args.signal
  * @returns {Promise<{url:string, mode:'live'|'demo', kind:string, bytes?:number}>}
  * @throws {GenerateError}
  */
-export async function generateModel({ kind, files, images: preset, resumeJobId, title, precision, onProgress, signal }) {
+export async function generateModel({
+  kind,
+  files,
+  images: preset,
+  resumeJobId,
+  title,
+  precision,
+  engine,
+  onProgress,
+  signal,
+}) {
   // 精度档位 → 面数 / 模型 / 输入分辨率 / 质量；未指定或非法时回退标准档（安全）
   const tier = PRECISION_TIERS[precision] || PRECISION_TIERS.standard;
 
@@ -126,6 +137,7 @@ export async function generateModel({ kind, files, images: preset, resumeJobId, 
       resumeJobId: resumeJobId || undefined,
       title: title || undefined,
       precision: precision || undefined,
+      engine: engine || undefined,
       faceCount: tier.faceCount,
       model: tier.model,
     }),
@@ -248,4 +260,119 @@ export async function recognize(files) {
     return { available: false, reason: 'error', detail: `HTTP ${r.status} ${t.slice(0, 120)}` };
   }
   return await r.json();
+}
+
+/**
+ * BANG 拆解：把整车/部件模型拆成多个独立部件 GLB。
+ *
+ * 与 generateModel 共享同一套 SSE 阶段契约（submit/accepted/polling/downloading/done/
+ * error/auth_error/quota_exceeded/timeout），只在 done 时由 payload.result.parts 携带
+ * 多个部件 [{ name, url, index }]。
+ *
+ * @param {Object} args
+ * @param {string} args.modelUrl  要拆解的模型地址：/api/asset/:name 或 /models/xxx.glb 或 Hyper3D asset_id
+ * @param {number=} args.strength 拆解强度 2–12，默认 5（越大越碎，支持递归）
+ * @param {'Basic'|'High'=} args.resolution  贴图分辨率 Basic=2K / High=4K，默认 Basic
+ * @param {'PBR'|'Shaded'|'All'|'None'=} args.material 材质，默认 PBR
+ * @param {string=} args.geometryFileFormat 默认 glb
+ * @param {(s:{stage:string,progress:number,message:string})=>void} args.onProgress
+ * @param {AbortSignal=} args.signal
+ * @returns {Promise<{url:string, mode:'live'|'demo', kind:'bang', parts:Array<{name:string,url:string,index:number}>}>}
+ * @throws {GenerateError}
+ */
+export async function bangModel({
+  modelUrl,
+  strength = 5,
+  resolution = 'Basic',
+  material = 'PBR',
+  geometryFileFormat = 'glb',
+  onProgress,
+  signal,
+}) {
+  const res = await fetch('/api/bang', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({
+      modelUrl,
+      strength,
+      resolution,
+      material,
+      geometryFileFormat,
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => '');
+    throw new GenerateError(`服务返回 ${res.status}`, {
+      reason: 'fail',
+      detail: text.slice(0, 200),
+    });
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE 以空行分隔事件
+    let idx;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const line = chunk.split('\n').find((l) => l.startsWith('data:'));
+      if (!line) continue;
+
+      let payload;
+      try {
+        payload = JSON.parse(line.slice(5).trim());
+      } catch {
+        continue;
+      }
+
+      // 三类终止态各走各的恢复路径，都不自动降级演示模型
+      if (payload.stage === 'auth_error') {
+        reader.cancel().catch(() => {});
+        throw new GenerateError(payload.message || '凭证已失效', {
+          reason: 'auth',
+          detail: payload.detail || '',
+          tokenId: payload.tokenId || '',
+        });
+      }
+      if (payload.stage === 'timeout') {
+        reader.cancel().catch(() => {});
+        throw new GenerateError(payload.message || '拆解超时（云端任务仍在继续）', {
+          reason: 'timeout',
+          jobId: payload.detail || '',
+        });
+      }
+      if (payload.stage === 'quota_exceeded') {
+        reader.cancel().catch(() => {});
+        throw new GenerateError(payload.message || '今日额度已用完', {
+          reason: 'quota',
+          detail: payload.detail || '',
+        });
+      }
+      if (payload.stage === 'error') {
+        reader.cancel().catch(() => {});
+        throw new GenerateError(payload.message || '拆解失败', {
+          reason: 'fail',
+          detail: payload.detail || '',
+        });
+      }
+
+      onProgress?.(payload);
+
+      if (payload.stage === 'done' && payload.result) {
+        reader.cancel().catch(() => {});
+        return payload.result;
+      }
+    }
+  }
+
+  throw new GenerateError('连接中断，拆解流意外结束', { reason: 'fail' });
 }
