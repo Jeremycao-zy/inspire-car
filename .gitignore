@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-logo/
+dist-verify/
+
+# cache
+.cache/
+
+# QA / generated artifacts
+outputs/
+
+# logs
+*.log
+
+# local env (keep .env.example)
+.env
+.env.local
+
+# project data (not source)
+.workbuddy/
+
+# large binary demo assets — kept on disk locally, not in git
+# (regenerate or add via Git LFS if a fresh clone must ship them)
+public/models/*.glb

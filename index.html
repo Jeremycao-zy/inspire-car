@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/logo-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/logo-180.png" />
+    <title>灵感车库 · TUNING STUDIO · 汽车改装 3D 预览</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- 第二层（TUNING STUDIO）顶部返回栏：返回灵感车库并保存方案 -->
+      <header id="appbar">
+        <div class="appbar-left">
+          <img class="appbar-logo" src="/src/assets/logo-icon.png" alt="INSPIRE CAR" />
+          <span class="appbar-title">INSPIRE CAR</span>
+          <span class="appbar-sep">/</span>
+          <span class="appbar-loc">TUNING STUDIO</span>
+        </div>
+        <button id="back-to-garage" class="gb-back" type="button">← 返回灵感车库 · 保存</button>
+      </header>
+
+      <div class="app-body">
+        <!-- 左侧控制面板 -->
+        <aside id="sidebar"></aside>
+
+        <!-- 3D 视口 -->
+        <main id="stage">
+          <div id="overlay">
+            <div class="spinner"></div>
+            <div id="overlay-text">初始化…</div>
+          </div>
+
+          <div id="hud">
+            <div class="hud-title">左键拖拽旋转 ｜ 滚轮缩放 ｜ 右键平移</div>
+            <div class="hud-hint">
+              上传整车照片 → 自动生成 GLB；上传轮毂照片 → 自动装配 4 只；
+              拖滑杆 ET / J / 倾角，3D 里实时变化
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- 灵感车库：第一层入口页 -->
+    <div id="garage" class="garage-layer"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

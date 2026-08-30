@@ -1,0 +1,26 @@
+{
+  "name": "garage-3d-tuner",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "汽车改装 3D 预览：照片 → 混元 3D 生成 GLB → 四轮装配 → ET/J/倾角实时调参",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "web": "vite",
+    "api": "node server/index.mjs",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "verify": "node scripts/verify.mjs",
+    "repro:tire": "node scripts/_repro-tire.mjs"
+  },
+  "dependencies": {
+    "https-proxy-agent": "^9.1.0",
+    "three": "^0.160.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
