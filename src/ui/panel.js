@@ -686,6 +686,71 @@ export function createPanel(app, mount) {
   tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
   tabBodies.wheels.appendChild(section('轮毂校准（生成模型摆位不正时微调）', rimCalibBox));
   tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
+
+  /* ---- 切除原车轮：换轮毂前必须的一步 ----
+   * AI 生成的车车轮是焊死在车身里的（实测为单连通块），不切掉的话
+   * 新轮毂会和原车轮重叠。按四轮位置做圆柱区域剔除。 */
+  const cutStatus = el('div', { class: 'ctl-hint' }, '未切除');
+  const cutBtn = el('button', { class: 'btn primary' }, '切除原车轮');
+  const restoreBtn = el('button', { class: 'btn ghost' }, '恢复原车轮');
+
+  /* 切除余量做成可调：不同车型轮子大小不一。
+   * 默认值来自实测——演示车上最近的车轮几何在径向 0.369 / 轴向 0.158，
+   * 而 rig 估算的轮胎半径 0.33、半宽 0.1275，必须放大才罩得住。 */
+  const cutR = { v: 1.15 };
+  const cutW = { v: 0.04 };
+  const mkCutSlider = (label, store, min, max, step, fmt) => {
+    const val = el('span', { class: 'ctl-value' }, fmt(store.v));
+    return el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, label), val),
+      el('input', {
+        type: 'range',
+        min,
+        max,
+        step,
+        value: store.v,
+        oninput: (e) => {
+          store.v = Number(e.target.value);
+          val.textContent = fmt(store.v);
+        },
+      })
+    );
+  };
+
+  cutBtn.onclick = () => {
+    const r = app.cutOriginalWheels({ radiusScale: cutR.v, widthPad: cutW.v });
+    if (!r || !r.cylinders) {
+      cutStatus.textContent = '切除失败：未找到轮位（请先载入整车）';
+      return;
+    }
+    cutStatus.textContent = r.removed
+      ? `已切除 ${r.removed.toLocaleString()} 个三角面（${r.meshes} 个网格 / ${r.cylinders} 个轮位）`
+      : '未切到任何面：试试调大切除半径';
+  };
+  restoreBtn.onclick = () => {
+    const r = app.restoreOriginalWheels();
+    cutStatus.textContent = r?.restored ? `已还原 ${r.restored} 个网格` : '没有可还原的内容';
+  };
+
+  const cutBox = el(
+    'div',
+    { class: 'fine' },
+    mkCutSlider('半径放大', cutR, 1.0, 1.6, 0.01, (v) => `${v.toFixed(2)}×`),
+    // 上限放到 300mm：rig 是按车身尺寸**估算**轮位的，实际轮子可能窄 100~200mm，
+    // 必须允许把轴向余量拉大才切得干净（演示车实测偏差约 170mm）
+    mkCutSlider('轴向余量', cutW, 0, 0.3, 0.005, (v) => `${(v * 1000).toFixed(0)}mm`),
+    el('div', { class: 'btn-row' }, cutBtn, restoreBtn),
+    cutStatus,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '按四个轮位把原车轮从车身网格里剔除，新轮毂才能装进轮拱。切多了会伤到轮眉、切少了会有残留，用上面两个滑杆微调。可随时「恢复原车轮」。'
+    )
+  );
+  tabBodies.wheels.appendChild(section('切除原车轮（换轮毂用）', cutBox));
+
   tabBodies.paint.appendChild(section('车漆', colorWheel.root));
 
   /* ---- 导入已拆解的部件（BANG 产物） ----
