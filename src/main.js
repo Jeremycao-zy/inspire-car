@@ -27,6 +27,19 @@ import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
 import './ui/styles.css';
 
+/** 文件指纹：同一张照片反复选择时 name/size/lastModified 一致，用于额度用尽后的去重拦截 */
+function sigOfFiles(files) {
+  return Array.from(files || [])
+    .map((f) => `${f.name}:${f.size}:${f.lastModified}`)
+    .join('|');
+}
+/** 本地日期 yyyy-mm-dd，用于判断额度是否跨天（午夜）重置 */
+function todayYMD() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /**
  * R230 SL 演示车开箱默认值（PRD §4.8 / R2.3）—— 前后配，不再是单一套参数。
  *   前 255/35R19 on 8.5J ET30，-1.0°
@@ -333,6 +346,25 @@ const app = {
 
   async generateWheel(files, precision) {
     if (precision && PRECISION_TIERS[precision]) this.params.precision = precision;
+    const sig = sigOfFiles(files);
+    // 额度用尽后，再次上传同一张照片必然继续吃 429——直接提示，不再打云端浪费次数
+    if (
+      this._wheelQuotaExceeded &&
+      sig &&
+      sig === this._wheelLastSig &&
+      this._wheelQuotaDate === todayYMD()
+    ) {
+      handleGenerateError(
+        'wheel',
+        new GenerateError('今日 hy-3d 额度已用完，重新上传同一张照片不会成功', {
+          reason: 'quota',
+          detail: '今日 5/5 次提交额度已用尽，预计今天 00:00 后重置，到时再重试',
+          images: null,
+        })
+      );
+      return;
+    }
+    this._wheelPendingSig = sig;
     await runGenerate({ kind: 'wheel', files });
   },
 
@@ -507,6 +539,11 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       u.setDetail('配置凭证后重新上传，才会真实生成你的车。');
     } else {
       await applyResult(kind, res.url);
+      // 真实生成成功 ⇒ 说明额度未耗尽（或已恢复），解除去重拦截
+      if (kind === 'wheel' && res.mode === 'live') {
+        app._wheelQuotaExceeded = false;
+        app._wheelLastSig = '';
+      }
       const t = res.title || title || '';
       u.setStatus(t ? `已生成：${t}` : `生成完成（${meta.label}）`, 'ok');
       refreshHealth(); // 顺手刷新凭证剩余时间
@@ -585,6 +622,12 @@ function handleGenerateError(kind, e) {
   }
 
   if (reason === 'quota') {
+    // 记下：轮毂额度用尽 + 是哪张照片触发的，便于同一张再次上传时直接拦截
+    if (kind === 'wheel') {
+      app._wheelQuotaExceeded = true;
+      app._wheelQuotaDate = todayYMD();
+      app._wheelLastSig = app._wheelPendingSig || '';
+    }
     u.setStatus('今日 hy-3d 生成额度已用完', 'warn');
     u.setDetail([
       '当前凭证今日提交次数已达上限（通常为 5 次/天），本次没有消耗额外额度。',
