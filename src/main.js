@@ -136,7 +136,7 @@ function clearBangParts() {
  * 把拆解出的部件沿 X 轴一字排开：间距按各自尺寸自适应，统一贴地、Z 向居中。
  * 不排布的话所有部件会重叠在原点，看上去像"只有一个部件"。
  */
-function layoutBangParts(groups) {
+function layoutBangParts(groups, { offsetX = 0 } = {}) {
   const gap = 0.35;
   let cursor = 0;
   for (const g of groups) {
@@ -149,8 +149,10 @@ function layoutBangParts(groups) {
     bangRoot.add(g);
     cursor += Math.max(size.x, 0.2) + gap;
   }
-  bangRoot.position.x = -(cursor - gap) / 2; // 整体居中
+  // offsetX：自动拆解时把部件摆到整车旁边，避免和原车重叠成一团
+  bangRoot.position.x = offsetX - (cursor - gap) / 2;
 }
+
 
 /* ---------------------------- 加载遮罩 ---------------------------- */
 
@@ -558,26 +560,38 @@ const app = {
       const parts = Array.isArray(result?.parts) ? result.parts : [];
       if (!parts.length) throw new Error('云端未返回任何部件');
 
-      const loaded = [];
-      for (const p of parts) {
-        try {
-          const { group } = await loadGLB(p.url);
-          loaded.push(group);
-        } catch (e) {
-          console.warn('[bang] 部件载入失败，已跳过：', p?.name, e.message);
-        }
-      }
-      if (!loaded.length) throw new Error('所有部件均载入失败');
-
-      layoutBangParts(loaded);
+      const count = await this.applyBangParts(parts);
+      if (!count) throw new Error('所有部件均载入失败');
       hideOverlay();
-      return { count: loaded.length, parts };
+      return { count, parts };
     } catch (e) {
       console.error('[bang]', e);
       hideOverlay();
       alert(`BANG 拆解失败：${e.message}`);
       return null;
     }
+  },
+
+  /**
+   * 把后端已经拆好的部件自动挂到场景里（生成流程内部调用，用户无需操作）。
+   * @param {Array<{name:string,url:string,index:number}>} parts
+   * @param {{offsetX?:number}=} opts offsetX 让部件摆到整车旁边，避免重叠
+   * @returns {Promise<number>} 成功载入的部件数
+   */
+  async applyBangParts(parts, { offsetX = 0 } = {}) {
+    if (!Array.isArray(parts) || !parts.length) return 0;
+    const loaded = [];
+    clearBangParts();
+    for (const p of parts) {
+      try {
+        const { group } = await loadGLB(p.url);
+        loaded.push(group);
+      } catch (e) {
+        console.warn('[bang] 部件载入失败，已跳过：', p?.name, e.message);
+      }
+    }
+    if (loaded.length) layoutBangParts(loaded, { offsetX });
+    return loaded.length;
   },
 
   /** 移除 BANG 拆解产物，恢复整车视图 */
@@ -602,8 +616,13 @@ function uploaderOf(kind) {
   return kind === 'wheel' ? panel.wheelUpload : panel.carUpload;
 }
 
-/** 载入生成好的模型，并写回一句人话状态 */
-async function applyResult(kind, url) {
+/**
+ * 载入生成好的模型，并写回一句人话状态。
+ *
+ * parts：Hyper3D 生成后自动 BANG 拆解出的部件。
+ * 这是流水线的一部分——**用户不需要点任何按钮**，生成完就已经拆好并摆到整车旁边。
+ */
+async function applyResult(kind, url, parts) {
   const u = uploaderOf(kind);
   if (kind === 'wheel') {
     const m = await app.loadWheelFromUrl(url);
@@ -618,6 +637,14 @@ async function applyResult(kind, url) {
   await app.loadCarFromUrl(url);
   // 写回当前方案：这张整车模型就是用户提交的车型，预览卡片要显示它而非默认 SL 350
   if (currentPlan) currentPlan.carModelUrl = url;
+
+  // 自动拆解产物：直接摆到整车右侧，用户不用做任何操作
+  if (Array.isArray(parts) && parts.length) {
+    if (currentPlan) currentPlan.bangParts = parts;
+    const n = await app.applyBangParts(parts, { offsetX: 3 });
+    u.setStatus(`生成完成，已装载你的车，并自动拆解为 ${n} 个部件`, 'ok');
+    return;
+  }
   u.setStatus('生成完成，已装载你的车', 'ok');
 }
 
@@ -682,7 +709,8 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       u.setStatus(`已载入${meta.label}演示模型（不是你上传的照片生成的，未消耗额度）`, 'warn');
       u.setDetail('配置凭证后重新上传，才会真实生成你的车。');
     } else {
-      await applyResult(kind, res.url);
+      // res.parts：后端生成后自动 BANG 拆解的结果（没有则为 null）
+      await applyResult(kind, res.url, res.parts);
       // 真实生成成功 ⇒ 说明额度未耗尽（或已恢复），解除去重拦截
       if (kind === 'wheel' && res.mode === 'live') {
         app._wheelQuotaExceeded = false;
@@ -900,6 +928,13 @@ function startTuner() {
       .catch(() => false);
     if (wheelOk) await app.loadWheelFromUrl('/models/wheel.glb');
 
+    // 方案里已保存的自动拆解部件，直接恢复；失败只记日志，不拖慢/中断整车载入
+    if (Array.isArray(currentPlan?.bangParts) && currentPlan.bangParts.length) {
+      app
+        .applyBangParts(currentPlan.bangParts, { offsetX: 3 })
+        .catch((e) => console.warn('[bang] 恢复部件失败：', e.message));
+    }
+
     app.fitCamera();
     app.setView('iso');
   })();
@@ -964,6 +999,8 @@ function returnToGarage() {
       tags: currentPlan.tags || [],
       params: structuredClone(app.params),
       carModelUrl: currentPlan.carModelUrl || '',
+      // 自动拆解出的部件随之保存，回到方案时不用重新拆（省额度）
+      bangParts: currentPlan.bangParts || [],
     };
     garage?.upsertPlan(rec);
     currentPlan = rec;
