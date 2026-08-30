@@ -156,22 +156,13 @@ function postJson(bodyObj, action, token) {
 /* ------------------------- 对外 API ------------------------- */
 
 /**
- * 提交图生 3D 任务。
- * @param {Object} args
- * @param {string[]} args.imagesBase64 图片 base64（纯数据，不含 data: 前缀）
- * @param {string=} args.prompt 文本描述（无图时走文生 3D）
- * @param {string=} args.multiViewJson MultiViewImages（需要公网 URL，见 README）
- * @param {string} args.token
- * @param {string=} args.model 默认 3.1
- * @param {number=} args.faceCount 目标面数
- * @param {boolean=} args.enablePbr
- * @returns {Promise<{jobId:string, raw:Object}>}
+ * 构造混元 3D 提交体。单独导出用于单元测试 / 回归验证。
+ * 关键约束：ImageBase64 与 Prompt 不能同时存在；有图只用图，无图才走文生。
  */
-export async function submitJob({
+export function buildJobBody({
   imagesBase64 = [],
   prompt = '',
   multiViewJson = null,
-  token,
   model = '3.1',
   faceCount = 150000,
   enablePbr = true,
@@ -179,8 +170,11 @@ export async function submitJob({
 }) {
   // ResultFormat 必须是大写，云端只接受 [OBJ, GLB, STL, FBX, USDZ]
   const body = { Model: model, ResultFormat: 'GLB' };
-  if (prompt) body.Prompt = prompt;
-  if (imagesBase64.length) body.ImageBase64 = imagesBase64[0]; // 主视角走 base64
+  if (imagesBase64.length) {
+    body.ImageBase64 = imagesBase64[0]; // 主视角走 base64
+  } else if (prompt) {
+    body.Prompt = prompt;
+  }
   if (multiViewJson) {
     try {
       body.MultiViewImages = JSON.parse(multiViewJson);
@@ -192,8 +186,24 @@ export async function submitJob({
   if (faceCount) body.FaceCount = faceCount;
   // 可选质量透传（字段名以实测为准，缺省忽略）
   if (quality != null && quality !== undefined) body.Quality = quality;
+  return body;
+}
 
-  const res = await postJson(body, SUBMIT_ACTION, token);
+/**
+ * 提交图生 3D 任务。
+ * @param {Object} args
+ * @param {string[]} args.imagesBase64 图片 base64（纯数据，不含 data: 前缀）
+ * @param {string=} args.prompt 文本描述（无图时走文生 3D）
+ * @param {string=} args.multiViewJson MultiViewImages（需要公网 URL，见 README）
+ * @param {string} args.token
+ * @param {string=} args.model 默认 3.1
+ * @param {number=} args.faceCount 目标面数
+ * @param {boolean=} args.enablePbr
+ * @returns {Promise<{jobId:string, raw:Object}>}
+ */
+export async function submitJob(args) {
+  const body = buildJobBody(args);
+  const res = await postJson(body, SUBMIT_ACTION, args.token);
   const jobId = res.JobId;
   if (!jobId) throw new Error(`提交失败，未拿到 JobId：${JSON.stringify(res).slice(0, 300)}`);
   return { jobId, raw: res };

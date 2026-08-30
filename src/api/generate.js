@@ -117,6 +117,8 @@ export async function generateModel({ kind, files, images: preset, resumeJobId, 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal,
+    // 当前仅支持图生 3D。文生 3D 接入时再传 prompt，否则混元会报
+    // "Prompt 和 ImageBase64、ImageUrl 不能同时存在"。
     body: JSON.stringify({
       kind,
       images,
@@ -125,10 +127,6 @@ export async function generateModel({ kind, files, images: preset, resumeJobId, 
       precision: precision || undefined,
       faceCount: tier.faceCount,
       model: tier.model,
-      prompt:
-        kind === 'wheel'
-          ? 'a single alloy car wheel rim, rim only, no tire, no car, isolated'
-          : '',
     }),
   });
 
