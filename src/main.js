@@ -475,6 +475,8 @@ async function applyResult(kind, url) {
     return;
   }
   await app.loadCarFromUrl(url);
+  // 写回当前方案：这张整车模型就是用户提交的车型，预览卡片要显示它而非默认 SL 350
+  if (currentPlan) currentPlan.carModelUrl = url;
   u.setStatus('生成完成，已装载你的车', 'ok');
 }
 
@@ -742,8 +744,9 @@ function startTuner() {
     rig.useProceduralWheel();
     app.apply();
 
-    // 预置整车 + 预置轮毂（存在才加载）
-    await app.loadCarFromUrl('/models/my-car.glb');
+    // 预置整车 + 预置轮毂（存在才加载）；重新进入方案时优先载入用户提交的车型
+    const initialCar = currentPlan?.carModelUrl || '/models/my-car.glb';
+    await app.loadCarFromUrl(initialCar);
     const wheelOk = await fetch('/models/wheel.glb', { method: 'HEAD' })
       .then((r) => r.ok)
       .catch(() => false);
@@ -809,6 +812,7 @@ function returnToGarage() {
       desc: currentPlan.desc || '',
       tags: currentPlan.tags || [],
       params: structuredClone(app.params),
+      carModelUrl: currentPlan.carModelUrl || '',
     };
     garage?.upsertPlan(rec);
     currentPlan = rec;

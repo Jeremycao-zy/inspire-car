@@ -61,17 +61,26 @@ export function previewParamsOf(plan) {
 /*                          共享资源缓存                                */
 /* ------------------------------------------------------------------ */
 
-let _carCache = null;
-let _carLoading = null;
+const _carPromiseByUrl = new Map();
+const DEFAULT_CAR_URL = '/models/my-car.glb';
 
-async function loadCarSource() {
-  if (_carCache) return _carCache;
-  if (_carLoading) return _carLoading;
-  _carLoading = loadGLB('/models/my-car.glb').then(({ group }) => {
-    _carCache = group;
-    return group;
-  });
-  return _carLoading;
+/**
+ * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存）。
+ * 优先用方案里用户提交的车型（plan.carModelUrl）；地址缺失或加载失败时
+ * 回退到系统默认 SL 350 演示车，绝不因车型缺失而白屏。
+ */
+function loadCarSource(url) {
+  const key = url || DEFAULT_CAR_URL;
+  if (_carPromiseByUrl.has(key)) return _carPromiseByUrl.get(key);
+  const p = loadGLB(key)
+    .then(({ group }) => group)
+    .catch((e) => {
+      console.warn('[plan-preview] 车型载入失败，回退默认车模', key, e);
+      _carPromiseByUrl.delete(key); // 失败不缓存，下次重试
+      return loadCarSource(); // 回退到默认车（默认已缓存或正在加载）
+    });
+  _carPromiseByUrl.set(key, p);
+  return p;
 }
 
 /** 深克隆车身：几何独立（供 ShellCutter 独立切割），材质与源共享 */
@@ -201,7 +210,7 @@ class PreviewEngine {
   }
 
   /* ---- 挂载一张卡片 ---- */
-  mount(container, params) {
+  mount(container, params, carModelUrl) {
     if (!this.ok || !container) return null;
     if (this.instances.has(container)) return this.instances.get(container);
 
@@ -217,6 +226,7 @@ class PreviewEngine {
       canvas,
       ctx: canvas.getContext('2d'),
       params: params || DEFAULT_PREVIEW_PARAMS,
+      carModelUrl: carModelUrl || null, // 方案里用户提交的车型（缺省回退默认 SL 350）
       envId: (params && params.envId) || 'studio',
       scene: null,
       camera: null,
@@ -374,25 +384,21 @@ async function buildScene(engine, inst) {
   const scene = new THREE.Scene();
   inst.scene = scene;
   scene.environment = engine.getEnvTexture(preset);
-  const skyTex = engine.getSkyTexture(preset);
-  scene.background = skyTex || new THREE.Color(preset.background);
-  scene.fog = new THREE.Fog(
-    preset.fog?.color ?? preset.background,
-    preset.fog?.near ?? 40,
-    preset.fog?.far ?? 120
-  );
+  // 卡片预览统一白底，与灵感车库白色科技风一致（不再用深色 studio 背景）
+  scene.background = new THREE.Color(0xffffff);
+  scene.fog = new THREE.Fog(0xffffff, preset.fog?.near ?? 40, preset.fog?.far ?? 120);
 
   // 灯光
   for (const spec of preset.lights) addPreviewLight(scene, inst.lights, spec);
 
-  // 实景装饰（赛道 / 欧洲城市）
+  // 实景装饰（赛道 / 欧洲城市）——白底下不叠加深色场景，保持"只放模型"的纯净感
   if (preset.decor) {
     inst.decor = engine.getDecorTemplate(preset.decor).clone(true);
     if (inst.decor) scene.add(inst.decor);
   }
 
-  // 车身
-  const src = await loadCarSource();
+  // 车身：优先用方案里用户提交的车型，缺省回退默认 SL 350 演示车
+  const src = await loadCarSource(inst.carModelUrl);
   const carGroup = deepCloneCar(src);
   const carInner = new THREE.Group();
   carInner.add(carGroup);
