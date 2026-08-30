@@ -21,7 +21,7 @@ import { WheelRig, ET_REF } from './tuning/wheelRig.js';
 import { Chassis } from './tuning/chassis.js';
 import { ShellCutter } from './tuning/shellCutter.js';
 import { measure as measureShell } from './tuning/shellMeasure.js';
-import { generateModel, health, recognize, GenerateError, PRECISION_TIERS } from './api/generate.js';
+import { generateModel, health, recognize, bangModel, GenerateError, PRECISION_TIERS } from './api/generate.js';
 import { createPanel } from './ui/panel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
@@ -57,6 +57,7 @@ export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
 const DEFAULTS = {
   axleTarget: 'all', // 'all' | 'front' | 'rear'
   precision: 'high', // 轮毂生成精度档位：standard | high | extreme（探顶前默认 high）
+  engine: 'hyper3d', // 生成引擎：hyper3d(Rodin Gen-2.5) / hunyuan / higen3d（全量迁移默认 hyper3d）
   suspensionDelta: 0, // 悬挂降低量 Δ（mm），>0 降低车身（与 shellLift 叠加）
   front: { ...AXLE_DEFAULTS_FRONT },
   rear: { ...AXLE_DEFAULTS_REAR },
@@ -113,8 +114,43 @@ carInner.name = 'carInner';
 carOuter.add(carInner);
 viewer.scene.add(carOuter);
 
+/* BANG 拆解部件挂载点。
+ * 独立成组而不用 carInner：拆解产物是"另起一摊"的多个子模型，
+ * 若塞进 carInner 会被 normalizeCar 的归一/切割逻辑二次处理而错位。 */
+const bangRoot = new THREE.Group();
+bangRoot.name = 'bangRoot';
+viewer.scene.add(bangRoot);
+
 let carGroup = null; // 当前车身 GLB 根节点
 let wheelGroup = null; // 当前轮毂模板
+
+/** 清掉上一轮 BANG 产物，避免多次拆解叠加在同一位置 */
+function clearBangParts() {
+  for (const child of [...bangRoot.children]) {
+    bangRoot.remove(child);
+    disposeObject(child);
+  }
+}
+
+/**
+ * 把拆解出的部件沿 X 轴一字排开：间距按各自尺寸自适应，统一贴地、Z 向居中。
+ * 不排布的话所有部件会重叠在原点，看上去像"只有一个部件"。
+ */
+function layoutBangParts(groups) {
+  const gap = 0.35;
+  let cursor = 0;
+  for (const g of groups) {
+    g.updateMatrixWorld(true);
+    const box = boxOf(g);
+    const center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+    const size = box.isEmpty() ? new THREE.Vector3(1, 1, 1) : box.getSize(new THREE.Vector3());
+    // 先算好包围盒再定位：position 会整体平移 bbox，用 box.min/center 反推即可
+    g.position.set(cursor - box.min.x, -box.min.y, -center.z);
+    bangRoot.add(g);
+    cursor += Math.max(size.x, 0.2) + gap;
+  }
+  bangRoot.position.x = -(cursor - gap) / 2; // 整体居中
+}
 
 /* ---------------------------- 加载遮罩 ---------------------------- */
 
@@ -492,6 +528,63 @@ const app = {
     this.viewer.setExposure(v);
   },
 
+  /* ---- BANG 拆解（Hyper3D） ---- */
+
+  /**
+   * 把当前车模交给 Hyper3D BANG 拆成多个部件（车身 / 轮毂 / 玻璃…）。
+   * 产物挂在独立的 bangRoot 下，不动 carGroup / 轮胎 rig，避免破坏现有装配。
+   *
+   * @param {Object=} opts
+   * @param {number=} opts.strength  拆解力度 2–12，越大拆得越碎
+   * @param {string=} opts.resolution 贴图分辨率 Basic(2K) / High(4K)
+   * @param {string=} opts.material   PBR / Shaded / All / None
+   * @returns {Promise<{count:number, parts:Array}|null>}
+   */
+  async bangCurrentCar({ strength = 5, resolution = 'Basic', material = 'PBR' } = {}) {
+    const src = currentPlan?.carModelUrl || '/models/my-car.glb';
+    showOverlay('正在提交 BANG 拆解…');
+    try {
+      clearBangParts();
+      const result = await bangModel({
+        modelUrl: src,
+        strength,
+        resolution,
+        material,
+        onProgress: (p) => {
+          if (p?.message) showOverlay(p.message);
+        },
+      });
+
+      const parts = Array.isArray(result?.parts) ? result.parts : [];
+      if (!parts.length) throw new Error('云端未返回任何部件');
+
+      const loaded = [];
+      for (const p of parts) {
+        try {
+          const { group } = await loadGLB(p.url);
+          loaded.push(group);
+        } catch (e) {
+          console.warn('[bang] 部件载入失败，已跳过：', p?.name, e.message);
+        }
+      }
+      if (!loaded.length) throw new Error('所有部件均载入失败');
+
+      layoutBangParts(loaded);
+      hideOverlay();
+      return { count: loaded.length, parts };
+    } catch (e) {
+      console.error('[bang]', e);
+      hideOverlay();
+      alert(`BANG 拆解失败：${e.message}`);
+      return null;
+    }
+  },
+
+  /** 移除 BANG 拆解产物，恢复整车视图 */
+  clearBang() {
+    clearBangParts();
+  },
+
   resetLights() {
     this.viewer.resetLights();
   },
@@ -576,6 +669,7 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       resumeJobId,
       title,
       precision: app.params.precision,
+      engine: app.params.engine,
       onProgress: (s) => {
         u.setProgress(s.progress);
         u.setStatus(s.message);

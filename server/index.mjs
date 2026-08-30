@@ -1,14 +1,21 @@
 /**
  * server/index.mjs — 本地 API 服务（无第三方依赖，纯 Node 内置模块）
  *
- * 提供三条路由：
+ * 提供路由：
  *   GET  /api/health              健康状态 + 当前运行模式（live=真实调用 / demo=离线演示）
- *   POST /api/generate            SSE：上传照片 → 调混元 3D → 下载 GLB → 回传可访问 URL
+ *   POST /api/generate            SSE：上传照片 → 调 3D 引擎(Rodin/Hunyuan/HiGen) → 下载 GLB → 回传可访问 URL
+ *   POST /api/bang                SSE：BANG 拆解（Hyper3D），把整车模型拆成多个部件
  *   GET  /api/asset/:name         取回生成好的 GLB
+ *   POST /api/recognize           车型识别（视觉模型）
  *
- * 运行模式：
- *   - 配了 HUNYUAN3D_TOKEN（或 ~/.workbuddy/tokens/hunyuan3d）→ live，真实调用
- *   - 没配 → demo，直接返回 public/models 下的预置模型，全链路 UI 照样跑通
+ * 多引擎共存：
+ *   - 配了 HUNYUAN3D_TOKEN（或 ~/.workbuddy/tokens/hunyuan3d）→ hunyuan 走 live
+ *   - 配了 HYPER3D_API_KEY（或 ~/.workbuddy/tokens/hyper3d）→ hyper3d(Rodin/BANG) 走 live
+ *   - 都没有 → demo，直接返回 public/models 下的预置模型，全链路 UI 照样跑通
+ *
+ * 红线：
+ *   - auth/quota 失败绝不自动降级到 demo 模型，必须回传对应终止态让用户换票/等明天。
+ *   - /download / BANG 返回的 URL 会过期，必须立即下载落本地，绝不只存 URL。
  */
 
 import http from 'node:http';
@@ -18,6 +25,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as hy3d from './hunyuan3d.mjs';
+import * as hyper3d from './hyper3d.mjs';
 import * as vision from './vision.mjs';
 import * as higen from './higen3d.mjs';
 
@@ -43,7 +51,7 @@ const PRECISION_TIERS = {
   extreme: { faceCount: 250000, model: '3.1' },
 };
 
-/* ------------------------- Token 解析 ------------------------- */
+/* ------------------------- Token 解析（混元） ------------------------- */
 
 /**
  * 优先级：环境变量 > ~/.workbuddy/tokens/hunyuan3d
@@ -54,11 +62,6 @@ const PRECISION_TIERS = {
  *   - expiresAt：ISO8601 精确过期时间；若文件未携带第二行，降级为文件 mtime + 16h 估算
  *   - tokenId：token 的 sha256 前 8 位。用来让前端识别"是不是换了新票"，
  *              而不用把 token 本身发给浏览器。
- *
- * 为什么需要 tokenId：expiresAt 只是"声明"的过期时间，票可能被提前吊销、
- * 或者用户手抄错一位——这两种情况下文件还在、时间还没到，但云端会直接 401。
- * 前端记住"哪个 tokenId 被云端拒过"，才能把状态卡从 LIVE 切成已失效；
- * 等文件换成新票、tokenId 变了，才自动解除。
  */
 function resolveToken() {
   let raw = '';
@@ -144,7 +147,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * 处理一次生成请求，以 SSE 持续推送进度。
- * body: { kind: 'car'|'wheel', images: [{name, dataUrl}], prompt? }
+ * body: { kind: 'car'|'wheel', images: [{name, dataUrl}], prompt?, engine?, precision?, resumeJobId? }
+ *
+ * engine 路由：
+ *   'higen3d' → HiGen3D 引擎（独立 key）
+ *   'hyper3d' → Hyper3D Rodin Gen-2.5 生成
+ *   未指定    → 混元 3D（默认保留，向后兼容旧调用）
  */
 async function handleGenerate(req, res) {
   let body;
@@ -188,8 +196,21 @@ async function handleGenerate(req, res) {
     if (!closed) res.end();
   };
 
-  const t = resolveToken();
-  const token = t.token;
+  const engine = body.engine || 'hunyuan';
+
+  /* ---------- 多引擎路由：HiGen3D（独立 key，与混元通道无关） ---------- */
+  if (engine === 'higen3d') {
+    await runHigen3D({ kind, images, body, taskTitle, emit, fail, closed });
+    return;
+  }
+
+  /* ---------- 多引擎路由：Hyper3D Rodin Gen-2.5 ---------- */
+  if (engine === 'hyper3d') {
+    await runHyper3D({ kind, images, body, taskTitle, emit, fail, closed });
+    return;
+  }
+
+  /* ---------- 默认：混元 3D（保留向后兼容） ---------- */
 
   /**
    * 凭证失效的统一出口（红线：这里绝不返回演示模型冒充结果）。
@@ -206,11 +227,8 @@ async function handleGenerate(req, res) {
     if (!closed) res.end();
   };
 
-  /* ---------- 多引擎路由：指定 higen3d 时走 HiGen3D 引擎（独立 key，与混元通道无关） ---------- */
-  if (body.engine === 'higen3d') {
-    await runHigen3D({ kind, images, body, taskTitle, emit, fail, closed });
-    return;
-  }
+  const t = resolveToken();
+  const token = t.token;
 
   /* ---------- DEMO 模式：不消耗额度，走预置模型 ---------- */
   if (!token) {
@@ -391,6 +409,7 @@ async function handleGenerate(req, res) {
       model: effectiveModel,
       precision: body.precision || null,
       jobId,
+      engine: 'hunyuan',
       title: taskTitle,
     });
 
@@ -407,6 +426,7 @@ async function handleGenerate(req, res) {
         name,
         title: taskTitle,
         usage,
+        engine: 'hunyuan',
       },
     });
     if (!closed) res.end();
@@ -417,10 +437,216 @@ async function handleGenerate(req, res) {
 }
 
 /**
+ * Hyper3D Rodin Gen-2.5 生成流。
+ * 无 HYPER3D_API_KEY 时走 DEMO（返回预置模型，绝不冒充真实结果）；
+ * auth/quota 失败绝不降级 demo，必须回传 auth_error / quota_exceeded。
+ */
+async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed }) {
+  const h = hyper3d.resolveToken();
+  const token = h.token;
+
+  const authError = (e) => {
+    emit({
+      stage: 'auth_error',
+      progress: 1,
+      message: 'Hyper3D 凭证已失效或无效，请在换票后点「我已更新」',
+      detail: `${e?.code || ''} ${e?.message || ''}`.trim(),
+      tokenId: h.tokenId,
+    });
+  };
+
+  /* ---------- DEMO 模式 ---------- */
+  if (!token) {
+    const demoFile = kind === 'wheel' ? 'wheel.glb' : 'my-car.glb';
+    const demoUrl = `/models/${demoFile}`;
+    const steps =
+      kind === 'wheel'
+        ? ['读取轮毂照片', '识别轮辋参数', '重建辐条几何', '生成 PBR 材质', '导出 GLB']
+        : ['读取整车照片', '姿态估计', '重建车身曲面', '生成 PBR 材质', '导出 GLB'];
+    for (let i = 0; i < steps.length; i++) {
+      if (closed) return;
+      emit({ stage: 'demo', progress: (i + 1) / steps.length, message: `[离线演示] ${steps[i]}` });
+      await sleep(700);
+    }
+    const exists = fs.existsSync(path.join(ROOT, 'public', 'models', demoFile));
+    if (!exists) {
+      fail('演示模型缺失，请确认 public/models 下有 ' + demoFile);
+      return;
+    }
+    emit({
+      stage: 'done',
+      progress: 1,
+      message: '完成（离线演示模型）',
+      result: { url: demoUrl, kind, mode: 'demo', engine: 'hyper3d' },
+    });
+    return;
+  }
+
+  /* ---------- LIVE 模式 ---------- */
+  try {
+    await fsp.mkdir(CACHE_DIR, { recursive: true });
+
+    const b64List = images
+      .map((im) => String(im.dataUrl || ''))
+      .map((s) => (s.includes(',') ? s.slice(s.indexOf(',') + 1) : s))
+      .filter(Boolean);
+
+    // precision → Rodin tier
+    const TIER = {
+      standard: 'Gen-2.5-Medium',
+      high: 'Gen-2.5-High',
+      extreme: 'Gen-2.5-Extreme-High',
+    };
+    const tier = TIER[body.precision] || 'Gen-2.5-High';
+
+    emit({
+      stage: 'submit',
+      progress: 0.05,
+      message: `提交 Hyper3D Rodin 任务（${b64List.length} 张图，档位 ${tier}）`,
+    });
+
+    let sub;
+    try {
+      sub = await hyper3d.submitRodin({
+        imagesBase64: b64List,
+        prompt: body.prompt || '',
+        tier,
+        meshMode: 'Raw',
+        material: 'PBR',
+        geometryFileFormat: 'glb',
+      });
+    } catch (e) {
+      const cls = hyper3d.classifyError(e);
+      if (cls === 'auth') {
+        authError(e);
+        return;
+      }
+      if (cls === 'quota') {
+        emit({
+          stage: 'quota_exceeded',
+          progress: 1,
+          message: '今日 Hyper3D 额度已用完，请明天再试或改用演示模型',
+          detail: `${e?.code || ''} ${e.message}`.trim(),
+        });
+        return;
+      }
+      fail(`提交失败：${e.message}`, e.stack);
+      return;
+    }
+    emit({
+      stage: 'accepted',
+      progress: 0.12,
+      message: `任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
+    });
+
+    // 轮询（Gen-2.5 通常 1~4 分钟）
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
+    let tick = 0;
+    let done = false;
+    const taskUuid = sub.taskUuid;
+    while (Date.now() < deadline) {
+      if (closed) return;
+      await sleep(interval);
+      let jobs;
+      try {
+        jobs = await hyper3d.queryStatus(sub.subscriptionKey);
+      } catch (e) {
+        if (hyper3d.classifyError(e) === 'auth') {
+          authError(e);
+          return;
+        }
+        fail(`查询失败：${e.message}`, e.stack);
+        return;
+      }
+      tick += 1;
+      const anyFail = jobs.some((j) => hyper3d.STATUS.FAIL.includes(j.status));
+      const allDone = jobs.length > 0 && jobs.every((j) => hyper3d.STATUS.DONE.includes(j.status));
+      if (anyFail) {
+        fail('云端生成失败，可用同样参数重试', JSON.stringify(jobs).slice(0, 300));
+        return;
+      }
+      if (allDone) {
+        done = true;
+        break;
+      }
+      const p = Math.min(0.9, 0.12 + tick * 0.028);
+      emit({
+        stage: 'polling',
+        progress: p,
+        message: `生成中…（已等待 ${tick * (interval / 1000)}s）`,
+      });
+    }
+
+    if (!done) {
+      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: taskUuid });
+      return;
+    }
+
+    emit({ stage: 'downloading', progress: 0.93, message: '下载模型…' });
+    let dl;
+    try {
+      dl = await hyper3d.downloadTask(taskUuid);
+    } catch (e) {
+      if (hyper3d.classifyError(e) === 'auth') {
+        authError(e);
+      } else {
+        fail(`下载失败：${e.message}`, e.stack);
+      }
+      return;
+    }
+    const glb = dl.files.find((f) => /\.glb$/i.test(f.name)) || dl.files[0];
+    if (!glb || !glb.buffer) {
+      fail('云端未返回 GLB', JSON.stringify(dl.files.map((f) => f.name)).slice(0, 300));
+      return;
+    }
+
+    // 可读命名：{kind}-{YYYYMMDD-HHmm}-{hash6}.glb
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const name = `${kind}-${ts}-${crypto.randomBytes(3).toString('hex')}.glb`;
+    await fsp.writeFile(path.join(CACHE_DIR, name), glb.buffer);
+
+    // 写历史索引 + 额度计数（仅成功生成计入消耗）
+    const usage = bumpUsage();
+    appendIndex({
+      name,
+      kind,
+      size: glb.buffer.length,
+      createdAt: d.toISOString(),
+      imageCount: b64List.length,
+      precision: body.precision || null,
+      taskUuid,
+      engine: 'hyper3d',
+      title: taskTitle,
+    });
+
+    emit({
+      stage: 'done',
+      progress: 1,
+      message: `完成（${(glb.buffer.length / 1024 / 1024).toFixed(1)}MB）`,
+      result: {
+        url: `/api/asset/${name}`,
+        kind,
+        mode: 'live',
+        bytes: glb.buffer.length,
+        name,
+        title: taskTitle,
+        usage,
+        engine: 'hyper3d',
+      },
+    });
+  } catch (e) {
+    // 兜底：LIVE 失败一律 error，绝不降级到 DEMO 演示模型（红线）
+    fail(e.message || '生成失败', e.stack);
+  }
+}
+
+/**
  * HiGen3D 引擎生成流（骨架）。
  * 当前 higen3d.submitJob 在缺少官方 API 文档时抛 EngineNotConfigured，
  * 故本函数会就地给出「待配置」友好错误，绝不降级到 DEMO 演示模型（红线）。
- * 拿到 higen3d.com Studio 控制台文档后，仅需填充 higen3d.mjs 的真实调用并补全流程。
  */
 async function runHigen3D({ kind, images, body, taskTitle, emit, fail, closed }) {
   if (!higen.available()) {
@@ -439,8 +665,6 @@ async function runHigen3D({ kind, images, body, taskTitle, emit, fail, closed })
       mode: body.higenMode || 'best', // Fast / Quality / Best
       kind,
     });
-    // TODO(订阅后填充)：依据官方文档实现 轮询/回调 → 下载 GLB → 命名写缓存 → 下发 done 事件
-    // 可参考上方混元 LIVE 段的命名（kind-{ts}-{hash}.glb）、bumpUsage/appendIndex 与 emit done 逻辑。
     void sub;
     fail('HiGen3D 引擎待配置：submitJob 尚未实现，需官方 API 文档', 'engine-not-impl');
   } catch (e) {
@@ -449,6 +673,302 @@ async function runHigen3D({ kind, images, body, taskTitle, emit, fail, closed })
       return;
     }
     fail(`HiGen3D 生成失败：${e.message}`, e.stack);
+  }
+}
+
+/* ------------------------- BANG 拆解流 ------------------------- */
+
+/**
+ * 解析前端传来的 modelUrl，落到本地 Buffer 或 Hyper3D asset_id。
+ *   - UUID                       → { assetId }
+ *   - /api/asset/:name           → 读 .cache/models/:name
+ *   - /models/xxx.glb             → 读 public/models/xxx.glb
+ *   - 其它本地路径 / 文件名        → 在 cache / public 目录里找
+ */
+async function resolveBangModel(modelUrl) {
+  if (!modelUrl) return null;
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRe.test(modelUrl.trim())) return { assetId: modelUrl.trim() };
+
+  let filePath = null;
+  if (modelUrl.startsWith('/api/asset/')) {
+    const nm = path.basename(modelUrl.slice('/api/asset/'.length));
+    filePath = path.join(CACHE_DIR, nm);
+  } else if (modelUrl.startsWith('/models/')) {
+    const nm = path.basename(modelUrl.slice('/models/'.length));
+    filePath = path.join(ROOT, 'public', 'models', nm);
+  } else if (modelUrl.startsWith('/')) {
+    const nm = path.basename(modelUrl);
+    const cands = [path.join(CACHE_DIR, nm), path.join(ROOT, 'public', 'models', nm)];
+    filePath = cands.find((p) => {
+      try {
+        return fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    }) || null;
+  } else {
+    const nm = path.basename(modelUrl);
+    const cands = [path.join(CACHE_DIR, nm), path.join(ROOT, 'public', 'models', nm), modelUrl];
+    filePath = cands.find((p) => {
+      try {
+        return fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    }) || null;
+  }
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  const buf = await fsp.readFile(filePath);
+  return { modelBuffer: buf, modelName: path.basename(filePath), name: path.basename(filePath) };
+}
+
+/** 把一个部件 Buffer 落本地，返回可访问 URL */
+async function writeBangPart(buffer, parent, index, hash, ext = '.glb') {
+  const name = `bang-${parent}-${index}-${hash}${ext}`;
+  await fsp.mkdir(CACHE_DIR, { recursive: true });
+  await fsp.writeFile(path.join(CACHE_DIR, name), buffer);
+  return `/api/asset/${name}`;
+}
+
+/**
+ * BANG 拆解流（POST /api/bang，SSE）。
+ * body: { modelUrl, strength?, resolution?, material?, geometryFileFormat? }
+ *
+ * 红线：
+ *   - auth/quota 失败绝不降级 demo；
+ *   - 下载的部件 URL 立即落本地（downloadTask 内部已完成），本函数只负责写盘命名。
+ * DEMO 无 token：把源 GLB 当作单部件返回，UI 照样跑通。
+ */
+async function handleBang(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+
+  const modelUrl = typeof body.modelUrl === 'string' ? body.modelUrl.trim() : '';
+  if (!modelUrl) {
+    sendJson(res, 400, { error: '缺少 modelUrl' });
+    return;
+  }
+  const strength = Math.min(12, Math.max(2, Number(body.strength) || 5));
+  const resolution = body.resolution === 'High' ? 'High' : 'Basic';
+  const material = ['PBR', 'Shaded', 'All', 'None'].includes(body.material)
+    ? body.material
+    : 'PBR';
+  const geometryFileFormat = body.geometryFileFormat || 'glb';
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'X-Accel-Buffering': 'no',
+  });
+
+  let closed = false;
+  req.on('close', () => {
+    closed = true;
+  });
+  const emit = (obj) => {
+    if (closed) return;
+    res.write(`data: ${JSON.stringify(obj)}\n\n`);
+  };
+  const fail = (msg, detail) => {
+    emit({ stage: 'error', progress: 1, message: msg, detail: String(detail || '').slice(0, 500) });
+    if (!closed) res.end();
+  };
+
+  const h = hyper3d.resolveToken();
+  const token = h.token;
+
+  const authError = (e) => {
+    emit({
+      stage: 'auth_error',
+      progress: 1,
+      message: 'Hyper3D 凭证已失效或无效，请在换票后点「我已更新」',
+      detail: `${e?.code || ''} ${e?.message || ''}`.trim(),
+      tokenId: h.tokenId,
+    });
+  };
+
+  /* ---------- DEMO 降级：把源 GLB 当作单部件返回 ---------- */
+  if (!token) {
+    try {
+      const resolved = await resolveBangModel(modelUrl);
+      if (!resolved || !resolved.modelBuffer) {
+        fail('演示模式需要本地模型文件（找不到要拆解的模型）');
+        return;
+      }
+      const url = await writeBangPart(
+        resolved.modelBuffer,
+        'demo',
+        0,
+        crypto.randomBytes(3).toString('hex')
+      );
+      emit({
+        stage: 'done',
+        progress: 1,
+        message: '完成（离线演示：源模型作为单部件返回）',
+        result: {
+          url,
+          kind: 'bang',
+          mode: 'demo',
+          engine: 'hyper3d',
+          parts: [{ name: resolved.name || 'part0', url, index: 0 }],
+        },
+      });
+    } catch (e) {
+      fail(`演示拆解失败：${e.message}`, e.stack);
+    }
+    return;
+  }
+
+  /* ---------- LIVE 模式 ---------- */
+  try {
+    await fsp.mkdir(CACHE_DIR, { recursive: true });
+    const resolved = await resolveBangModel(modelUrl);
+    if (!resolved) {
+      fail('找不到要拆解的模型（请确认 modelUrl 指向本地 GLB 或 Hyper3D asset_id）');
+      return;
+    }
+
+    emit({
+      stage: 'submit',
+      progress: 0.05,
+      message: `提交 BANG 拆解（strength=${strength}, resolution=${resolution}）`,
+    });
+
+    let sub;
+    try {
+      sub = await hyper3d.submitBang({
+        modelBuffer: resolved.modelBuffer || null,
+        modelName: resolved.modelName || null,
+        assetId: resolved.assetId || null,
+        imageBase64: null,
+        prompt: body.prompt || '',
+        strength,
+        geometryFileFormat,
+        material,
+        resolution,
+      });
+    } catch (e) {
+      const cls = hyper3d.classifyError(e);
+      if (cls === 'auth') {
+        authError(e);
+        return;
+      }
+      if (cls === 'quota') {
+        emit({
+          stage: 'quota_exceeded',
+          progress: 1,
+          message: '今日 Hyper3D / BANG 额度已用完，请明天再试',
+          detail: `${e?.code || ''} ${e.message}`.trim(),
+        });
+        return;
+      }
+      fail(`提交失败：${e.message}`, e.stack);
+      return;
+    }
+    emit({
+      stage: 'accepted',
+      progress: 0.12,
+      message: `拆解任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
+    });
+
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
+    let tick = 0;
+    let done = false;
+    while (Date.now() < deadline) {
+      if (closed) return;
+      await sleep(interval);
+      let jobs;
+      try {
+        jobs = await hyper3d.queryStatus(sub.subscriptionKey);
+      } catch (e) {
+        if (hyper3d.classifyError(e) === 'auth') {
+          authError(e);
+          return;
+        }
+        fail(`查询失败：${e.message}`, e.stack);
+        return;
+      }
+      tick += 1;
+      const anyFail = jobs.some((j) => hyper3d.STATUS.FAIL.includes(j.status));
+      const allDone = jobs.length > 0 && jobs.every((j) => hyper3d.STATUS.DONE.includes(j.status));
+      if (anyFail) {
+        fail('BANG 拆解失败，可用同样参数重试', JSON.stringify(jobs).slice(0, 300));
+        return;
+      }
+      if (allDone) {
+        done = true;
+        break;
+      }
+      const p = Math.min(0.9, 0.12 + tick * 0.028);
+      emit({
+        stage: 'polling',
+        progress: p,
+        message: `拆解中…（已等待 ${tick * (interval / 1000)}s）`,
+      });
+    }
+
+    if (!done) {
+      emit({ stage: 'timeout', progress: 1, message: '拆解超时（云端任务仍在继续）', detail: sub.taskUuid });
+      return;
+    }
+
+    emit({ stage: 'downloading', progress: 0.93, message: '下载部件…' });
+    let dl;
+    try {
+      dl = await hyper3d.downloadTask(sub.taskUuid);
+    } catch (e) {
+      if (hyper3d.classifyError(e) === 'auth') {
+        authError(e);
+      } else {
+        fail(`下载失败：${e.message}`, e.stack);
+      }
+      return;
+    }
+
+    const parent = resolved.assetId
+      ? 'asset'
+      : resolved.modelName
+        ? path.basename(resolved.modelName, path.extname(resolved.modelName))
+        : 'model';
+
+    const parts = [];
+    for (let i = 0; i < dl.files.length; i++) {
+      const f = dl.files[i];
+      const ext = f.name && f.name.includes('.') ? path.extname(f.name) : '.glb';
+      const bname = `bang-${parent}-${i}-${crypto.randomBytes(3).toString('hex')}${ext}`;
+      await fsp.writeFile(path.join(CACHE_DIR, bname), f.buffer);
+      parts.push({ name: bname, url: `/api/asset/${bname}`, index: i });
+    }
+    if (!parts.length) {
+      fail('BANG 未返回任何部件文件');
+      return;
+    }
+
+    const usage = bumpUsage();
+    emit({
+      stage: 'done',
+      progress: 1,
+      message: `拆解完成，共 ${parts.length} 个部件`,
+      result: {
+        url: parts[0].url,
+        kind: 'bang',
+        mode: 'live',
+        parts,
+        usage,
+        engine: 'hyper3d',
+      },
+    });
+  } catch (e) {
+    fail(e.message || '拆解失败', e.stack);
   }
 }
 
@@ -519,11 +1039,6 @@ async function handleAsset(req, res, name) {
 /**
  * POST /api/recognize
  * 入参：{ images: [{ dataUrl }] }   前端已压缩好的 JPEG dataURL
- * 出参：
- *   { available:true, brand, model, year, trim, fullName, confidence, raw }
- *   { available:false, reason:'no-key' }      未配置视觉 key
- *   { available:false, reason:'auth', detail } key 失效
- *   { available:false, reason:'error', detail } 其它
  */
 async function handleRecognize(req, res) {
   let body;
@@ -560,6 +1075,7 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === '/api/health') {
     const tk = resolveToken();
+    const hk = hyper3d.resolveToken();
     sendJson(res, 200, {
       ok: true,
       mode: tk.token ? 'live' : 'demo',
@@ -568,16 +1084,24 @@ const server = http.createServer(async (req, res) => {
       endpoint: hy3d.ENDPOINT,
       engines: {
         hunyuan: { mode: tk.token ? 'live' : 'demo' },
+        hyper3d: { mode: hk.token ? 'live' : 'demo', endpoint: hyper3d.ENDPOINT },
         higen3d: { available: higen.available(), endpoint: higen.ENDPOINT_INFO.ENDPOINT },
         vision: vision.getVisionStatus(),
       },
-      hint: tk.token ? '已配置凭证，将真实调用混元 3D' : '未配置凭证，当前为离线演示模式',
+      hint: tk.token
+        ? '已配置凭证，将真实调用混元 3D'
+        : '未配置凭证，当前为离线演示模式',
     });
     return;
   }
 
   if (u.pathname === '/api/generate' && req.method === 'POST') {
     await handleGenerate(req, res);
+    return;
+  }
+
+  if (u.pathname === '/api/bang' && req.method === 'POST') {
+    await handleBang(req, res);
     return;
   }
 
@@ -596,14 +1120,16 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   const tk = resolveToken();
+  const hk = hyper3d.resolveToken();
   console.log(`\n  ▸ API 服务已启动  http://127.0.0.1:${PORT}`);
-  console.log(`  ▸ 运行模式：${tk.token ? 'LIVE（真实调用混元 3D）' : 'DEMO（离线演示，不消耗额度）'}`);
-  console.log(`  ▸ 网关地址：${hy3d.ENDPOINT}`);
-  if (!tk.token) {
+  console.log(
+    `  ▸ 运行模式：混元 ${tk.token ? 'LIVE' : 'DEMO'}  |  Hyper3D ${hk.token ? 'LIVE' : 'DEMO'}`
+  );
+  console.log(`  ▸ 混元网关：${hy3d.ENDPOINT}`);
+  console.log(`  ▸ Hyper3D ：${hyper3d.ENDPOINT}`);
+  if (!tk.token && !hk.token) {
     console.log(
-      `  ▸ 想切到真实生成：export HUNYUAN3D_TOKEN=<你的 token>  或写入 ~/.workbuddy/tokens/hunyuan3d\n`
+      `  ▸ 想切到真实生成：export HYPER3D_API_KEY=<你的 key>  或写入 ~/.workbuddy/tokens/hyper3d\n`
     );
-  } else {
-    console.log(`  ▸ 凭证预计过期：${tk.expiresAt || '未知（文件未携带第二行）'}`);
   }
 });

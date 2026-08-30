@@ -600,6 +600,7 @@ export function createPanel(app, mount) {
     ['body', '整车'],
     ['wheels', '轮毂'],
     ['paint', '车漆'],
+    ['bang', '拆解'],
     ['scene', '场景'],
   ];
   const tabBodies = {};
@@ -636,6 +637,83 @@ export function createPanel(app, mount) {
   tabBodies.wheels.appendChild(section('轮毂校准（生成模型摆位不正时微调）', rimCalibBox));
   tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
   tabBodies.paint.appendChild(section('车漆', colorWheel.root));
+
+  /* ---- BANG 拆解（Hyper3D）：把车模拆成车身 / 轮毂等可编辑部件 ----
+   * 这三个参数是"一次性提交参数"，不属于 app.params（不随方案持久化），
+   * 所以这里用局部 state 而不是 makeSlider（makeSlider 绑定的是 app.params）。 */
+  const bangState = { strength: 5, resolution: 'Basic', material: 'PBR' };
+  const bangStrengthValue = el('span', { class: 'ctl-value' }, String(bangState.strength));
+  const bangStrengthInput = el('input', {
+    type: 'range',
+    min: 2,
+    max: 12,
+    step: 1,
+    value: bangState.strength,
+    oninput: (e) => {
+      bangState.strength = Number(e.target.value);
+      bangStrengthValue.textContent = String(bangState.strength);
+    },
+  });
+  const bangRunBtn = el('button', { class: 'btn primary' }, '拆解当前车模');
+  const bangClearBtn = el('button', { class: 'btn ghost' }, '清除拆解');
+
+  let bangBusy = false;
+  bangRunBtn.onclick = async () => {
+    if (bangBusy) return;
+    bangBusy = true;
+    bangRunBtn.disabled = true;
+    bangRunBtn.textContent = '拆解中…';
+    try {
+      await app.bangCurrentCar({ ...bangState });
+    } finally {
+      bangBusy = false;
+      bangRunBtn.disabled = false;
+      bangRunBtn.textContent = '拆解当前车模';
+    }
+  };
+  bangClearBtn.onclick = () => app.clearBang();
+
+  const bangBox = el(
+    'div',
+    { class: 'fine' },
+    el(
+      'div',
+      { class: 'ctl' },
+      el(
+        'div',
+        { class: 'ctl-head' },
+        el('label', { class: 'ctl-label' }, '拆解力度 strength'),
+        bangStrengthValue
+      ),
+      bangStrengthInput,
+      el('div', { class: 'ctl-hint' }, '2 = 只拆大件；12 = 拆到很碎。支持递归：先拆出轮子，再对轮子单独拆')
+    ),
+    el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '贴图分辨率')),
+      el(
+        'select',
+        { class: 'cw-select', onchange: (e) => (bangState.resolution = e.target.value) },
+        el('option', { value: 'Basic' }, 'Basic（2K）'),
+        el('option', { value: 'High' }, 'High（4K）')
+      )
+    ),
+    el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '材质')),
+      el(
+        'select',
+        { class: 'cw-select', onchange: (e) => (bangState.material = e.target.value) },
+        ...['PBR', 'Shaded', 'All', 'None'].map((m) => el('option', { value: m }, m))
+      )
+    ),
+    el('div', { class: 'btn-row' }, bangRunBtn, bangClearBtn),
+    el('div', { class: 'ctl-hint' }, '拆解后各部件会在场景中一字排开；未配置 Hyper3D Key 时走离线演示（原样返回单部件）')
+  );
+  tabBodies.bang.appendChild(section('BANG 拆解', bangBox));
+
   tabBodies.scene.appendChild(section('场景', sceneBox));
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
   tabBodies.scene.appendChild(section('视角', views));
@@ -652,10 +730,9 @@ export function createPanel(app, mount) {
       ),
       modeBadge,
       tabsBar,
-      tabBodies.body,
-      tabBodies.wheels,
-      tabBodies.paint,
-      tabBodies.scene
+      // 由 TABS 派生而不是逐个手写：新增 Tab 时不会漏挂对应的 body
+      // （曾经因为手写列表漏挂，导致点了 Tab 所有面板都隐藏）
+      ...TABS.map(([id]) => tabBodies[id])
     )
   );
 
