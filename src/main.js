@@ -165,6 +165,129 @@ function layoutBangParts(groups, { offsetX = 0 } = {}) {
   bangRoot.position.x = offsetX - (cursor - gap) / 2;
 }
 
+/* -------------------- 原车轮切除（换轮毂用） -------------------- */
+
+/**
+ * 点是否落在某个"轮位圆柱"内。
+ * 圆柱沿轮轴方向，半径 = 轮胎外半径，半宽 = 轮宽/2 + 余量。
+ */
+const _cv = new THREE.Vector3();
+function inCylinder(p, cyl) {
+  _cv.subVectors(p, cyl.center);
+  const axial = _cv.dot(cyl.axis);
+  if (Math.abs(axial) > cyl.halfW) return false;
+  const radialSq = Math.max(0, _cv.lengthSq() - axial * axial);
+  return radialSq <= cyl.R * cyl.R;
+}
+
+/** 收集四个轮位的世界空间圆柱 */
+function wheelCylinders({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
+  rig.root.updateMatrixWorld(true);
+  return rig.corners.map((c) => {
+    const m = rig.live?.[c.id] || {};
+    const center = new THREE.Vector3();
+    c.axle.getWorldPosition(center);
+    // 轮轴方向 = axle 的本地 +Z 变换到世界（轮毂沿 Z 缩放，见 wheelRig）
+    const axis = new THREE.Vector3(0, 0, 1).transformDirection(c.axle.matrixWorld).normalize();
+    return {
+      center,
+      axis,
+      R: (m.r || 0.3) * radiusScale,
+      halfW: (m.halfW || 0.11) + widthPad,
+    };
+  });
+}
+
+/**
+ * 切掉车身上原有的车轮。
+ *
+ * 为什么必须切：实测（scripts/_probe-connected-parts.mjs）显示 AI 生成的车
+ * 车轮与车身是**同一个连通块**，根本分离不出来。所以只能按四轮位置做几何切除——
+ * 三角面重心落在任一轮位圆柱内就从索引里剔除，让新轮毂能装进切出的轮拱。
+ *
+ * 切口会露出背面，因此顺手把材质转 DoubleSide，避免从轮拱看穿车身内部。
+ * 原始索引存在 userData 里，可随时 restoreOriginalWheels() 还原。
+ *
+ * @returns {{removed:number, meshes:number, cylinders:number}}
+ */
+function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08 } = {}) {
+  if (!carGroup) return { removed: 0, meshes: 0, cylinders: 0 };
+
+  const cyls = wheelCylinders({ radiusScale, widthPad });
+  if (!cyls.length) return { removed: 0, meshes: 0, cylinders: 0 };
+
+  carOuter.updateMatrixWorld(true);
+
+  const wp = new THREE.Vector3();
+  const centroid = new THREE.Vector3();
+  let removed = 0;
+  let touched = 0;
+
+  carGroup.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const g = o.geometry;
+    const pos = g.attributes?.position;
+    if (!pos) return;
+
+    const index = g.index;
+    const triCount = index ? index.count / 3 : pos.count / 3;
+    if (!triCount) return;
+
+    // 首次切除时备份索引，供"恢复"使用（此时几何已是切壳后的状态）
+    if (o.userData._origIndex === undefined) {
+      o.userData._origIndex = index ? index.array.slice() : null;
+    }
+
+    const keep = [];
+    for (let t = 0; t < triCount; t++) {
+      const ia = index ? index.getX(t * 3) : t * 3;
+      const ib = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+      const ic = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+
+      centroid.set(0, 0, 0);
+      for (const vi of [ia, ib, ic]) {
+        wp.fromBufferAttribute(pos, vi).applyMatrix4(o.matrixWorld);
+        centroid.add(wp);
+      }
+      centroid.multiplyScalar(1 / 3);
+
+      if (cyls.some((cyl) => inCylinder(centroid, cyl))) {
+        removed += 1;
+        continue;
+      }
+      keep.push(ia, ib, ic);
+    }
+
+    if (keep.length !== triCount * 3) {
+      g.setIndex(keep);
+      g.computeBoundingSphere();
+      // 切口无封盖，转双面避免从轮拱看穿
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) if (m) m.side = THREE.DoubleSide;
+      touched += 1;
+    }
+  });
+
+  return { removed, meshes: touched, cylinders: cyls.length };
+}
+
+/** 还原被切掉的原车轮（把备份的索引写回去） */
+function restoreOriginalWheels() {
+  if (!carGroup) return { restored: 0 };
+  let restored = 0;
+  carGroup.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    if (o.userData._origIndex === undefined) return;
+    const g = o.geometry;
+    if (o.userData._origIndex) g.setIndex(Array.from(o.userData._origIndex));
+    else g.setIndex(null);
+    delete o.userData._origIndex;
+    g.computeBoundingSphere();
+    restored += 1;
+  });
+  return { restored };
+}
+
 /** 当前整车长度（取水平方向最长边），供部件分类做尺度参照 */
 function carLengthRef() {
   if (!carGroup) return 0;
@@ -640,6 +763,32 @@ const app = {
   /** 移除 BANG 拆解产物，恢复整车视图 */
   clearBang() {
     clearBangParts();
+  },
+
+  /**
+   * 切掉车身上原有的车轮，方便换装新轮毂。
+   * @param {{radiusScale?:number, widthPad?:number}=} opts
+   *   radiusScale 半径放大系数（默认 1.04，留一点余量避免残留一圈原车轮）
+   *   widthPad    轴向额外余量（米，默认 0.015）
+   */
+  cutOriginalWheels(opts) {
+    return cutOriginalWheels(opts);
+  },
+
+  /** 还原被切掉的原车轮 */
+  restoreOriginalWheels() {
+    return restoreOriginalWheels();
+  },
+
+  /** 当前是否已切过原车轮，供 UI 显示按钮状态 */
+  hasCutOriginalWheels() {
+    let cut = false;
+    if (carGroup) {
+      carGroup.traverse((o) => {
+        if (o.isMesh && o.userData._origIndex !== undefined) cut = true;
+      });
+    }
+    return cut;
   },
 
   /**
