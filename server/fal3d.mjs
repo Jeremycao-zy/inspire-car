@@ -205,10 +205,20 @@ export function downloadBuffer(url, timeoutMs = 300000) {
   });
 }
 
+/**
+ * 错误分类。
+ *
+ * ⚠️ 顺序很重要：fal 用 **403** 表示"账户被锁 / 余额耗尽"，
+ *    （实测返回 User is locked. Reason: Exhausted balance.）
+ *    如果先按 403 判成 auth，就会把"该充值"误报成"Key 无效"。
+ *    所以余额类关键词必须在 403→auth 之前判定。
+ */
 export function classifyError(e) {
   const code = String(e?.code || '');
   const hay = `${code} ${e?.statusCode || ''} ${e?.message || ''}`;
+  // 余额耗尽 / 账户锁定 / 需充值 → 归为 quota（引导去充值，而不是换 Key）
+  if (/exhausted|insufficient|balance|top.?up|locked|payment|billing/i.test(hay)) return 'quota';
+  if (/429|rate.?limit|quota|limit.?exceeded|too.?many/i.test(hay)) return 'quota';
   if (/401|403|unauthorized|forbidden|invalid.?key|permission/i.test(hay)) return 'auth';
-  if (/429|rate.?limit|quota|limit.?exceeded|too.?many|insufficient|balance/i.test(hay)) return 'quota';
   return 'other';
 }

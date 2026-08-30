@@ -774,7 +774,12 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
         return;
       }
       if (cls === 'quota') {
-        emit({ stage: 'quota_exceeded', progress: 1, message: 'fal.ai 余额不足，请充值后重试' });
+        emit({
+          stage: 'quota_exceeded',
+          progress: 1,
+          message: 'fal.ai 余额已用尽（账户被锁定），请到 fal.ai/dashboard/billing 充值后重试',
+          detail: e.message,
+        });
         return;
       }
       fail(`提交失败：${e.message}`, e.stack);
