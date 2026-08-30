@@ -68,6 +68,28 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+/** 灵感车库「风火轮风格」玩具卡背 logo SVG（替代原 Hot Wheels logo） */
+function inspireLogoSVG() {
+  return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感车库 INSPIRE CAR">
+    <defs>
+      <linearGradient id="hwFlame" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#e60012"/>
+        <stop offset=".45" stop-color="#ff6a00"/>
+        <stop offset="1" stop-color="#ffd700"/>
+      </linearGradient>
+      <filter id="hwShadow">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".28"/>
+      </filter>
+    </defs>
+    <path d="M12,52 C12,52 25,12 70,18 C95,21 115,35 140,32 C170,28 185,10 208,20 C200,40 180,55 140,56 C100,57 60,60 25,58 C18,57 12,52 12,52 Z"
+          fill="url(#hwFlame)" filter="url(#hwShadow)" stroke="#fff" stroke-width="2"/>
+    <path d="M30,48 C40,25 80,28 110,38 C130,44 150,38 175,32" fill="none" stroke="#fff7b3" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+    <text x="108" y="43" text-anchor="middle" font-size="24" font-weight="900" fill="#fff"
+          stroke="#a30e0e" stroke-width=".6" style="font-style:italic">灵感车库</text>
+    <text x="108" y="60" text-anchor="middle" font-size="8" font-weight="800" fill="#1b2a44" letter-spacing="3">INSPIRE CAR</text>
+  </svg>`;
+}
+
 function formatDate(ts) {
   const d = new Date(ts);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
@@ -206,7 +228,7 @@ function startPreview(container) {
 /* ---------------------------- 卡片 ---------------------------- */
 
 function createCard(plan, onClick, onDelete) {
-  // 缩略图容器：实时 3D 预览（动态旋转）画布由 PreviewEngine 挂载
+  // 缩略图容器：实时 3D 预览（动态旋转）画布由 PreviewEngine 挂载，最终嵌在塑料泡壳里
   const thumb = el('div', { class: 'garage-card__thumb' });
 
   if (!previewEngine.ok) {
@@ -214,11 +236,12 @@ function createCard(plan, onClick, onDelete) {
     thumb.appendChild(el('div', { class: 'garage-card__placeholder' }, '3D 预览不可用'));
   }
 
+  // 收藏系列标签（风火轮风格右上角小徽章）
   const badge = plan.tags?.[0]
     ? el('span', { class: 'garage-card__badge' }, plan.tags[0])
     : null;
 
-  // 删除按钮（覆盖在缩略图左上角）
+  // 删除按钮（卡片右上角，浮在泡壳上方）
   const del = el(
     'button',
     {
@@ -233,25 +256,44 @@ function createCard(plan, onClick, onDelete) {
     '×'
   );
 
-  const card = el(
-    'article',
-    { class: 'garage-card', onClick: () => onClick(plan) },
-    el('div', { class: 'garage-card__thumb' }, thumb, badge, del),
+  // 背卡：品牌 logo + 车型信息 + 底部元数据
+  const backing = el(
+    'div',
+    { class: 'garage-card__backing' },
     el(
       'div',
-      { class: 'garage-card__info' },
-      el('h3', { class: 'garage-card__title' }, plan.title),
-      el(
-        'div',
-        { class: 'garage-card__meta' },
-        el('span', {}, `更新于 ${formatDate(plan.updatedAt)}`),
-        el('span', { class: 'garage-card__meta-dot' }),
-        el('span', {}, '实时 3D')
-      ),
+      { class: 'garage-card__brand' },
+      el('div', { class: 'garage-card__logo-wrap', html: inspireLogoSVG() }),
+      el('div', { class: 'garage-card__series' }, 'COLLECTOR EDITION · 收藏版')
+    ),
+    el(
+      'div',
+      { class: 'garage-card__model' },
+      el('h3', { class: 'garage-card__title' }, plan.title || '未命名方案'),
       plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null
     ),
-    el('button', { class: 'garage-card__action', onClick: (e) => { e.stopPropagation(); onClick(plan); } }, '进入改装 →')
+    el(
+      'div',
+      { class: 'garage-card__footer' },
+      el('span', { class: 'garage-card__footer-live' }, '● 实时 3D'),
+      el('span', { class: 'garage-card__footer-action' }, '进入改装 →')
+    )
   );
+
+  // 透明塑料泡壳（blister）：包含 3D 画布 + 高光/眩光层
+  const shell = el(
+    'div',
+    { class: 'garage-card__shell' },
+    thumb,
+    el('div', { class: 'garage-card__blister-highlight' }),
+    el('div', { class: 'garage-card__blister-glare' })
+  );
+  const blister = el('div', { class: 'garage-card__blister' }, shell);
+
+  // 整包 = 背卡 + 泡壳
+  const pack = el('div', { class: 'garage-card__pack' }, backing, blister);
+
+  const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack, badge, del);
 
   // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）；透传方案车型地址
   if (previewEngine.ok) {
