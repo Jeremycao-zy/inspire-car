@@ -1152,9 +1152,11 @@ async function handleBang(req, res) {
   }
   const strength = Math.min(12, Math.max(2, Number(body.strength) || 5));
   const resolution = body.resolution === 'High' ? 'High' : 'Basic';
+  // BANG 拆解只关心几何拆分；开启材质生成时官方要求上传参考图，
+  // 这里默认走 None，避免无参考图时直接 INVALID_REQUEST。
   const material = ['PBR', 'Shaded', 'All', 'None'].includes(body.material)
     ? body.material
-    : 'PBR';
+    : 'None';
   const geometryFileFormat = body.geometryFileFormat || 'glb';
 
   res.writeHead(200, {

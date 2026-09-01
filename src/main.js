@@ -231,6 +231,8 @@ function clearBangParts() {
   if (carGroup) carGroup.visible = true;
   // 拆下来的实体车身没了 → 恢复三道切割（整车单体的车轮是画在贴图上的，必须开口）
   if (app.params.shell.enabled === false) app.params.shell.enabled = true;
+  // 还原应用 BANG 时切除的原车车轮，让「清除拆解物」真正回到未拆解前的整车状态
+  restoreOriginalWheels();
   // 拆解产物带来的轮位校准一并作废，轮毂也回到程序化款，避免残留异常模型
   resetWheelToProcedural();
 }
@@ -573,8 +575,35 @@ function restoreOriginalWheels() {
  * @returns {{wheelbase:number, xFront:number, xRear:number, trackFront:number,
  *            trackRear:number, hubY:number, hubYFront:number, hubYRear:number}|null}
  */
+/** 3 个车轮时，按左右对称估出第 4 个轮位（常见：BANG 把一只轮跟车身粘在一起没分离） */
+function estimateFourthWheel(cs, tol = 0.05) {
+  for (let i = 0; i < cs.length; i++) {
+    const a = cs[i];
+    const hasPartner = cs.some(
+      (b, j) =>
+        j !== i &&
+        Math.abs(b.x - a.x) < tol &&
+        Math.abs(b.y - a.y) < tol &&
+        Math.abs(b.z + a.z) < tol
+    );
+    if (!hasPartner) return new THREE.Vector3(a.x, a.y, -a.z);
+  }
+  return null;
+}
+
 function deriveWheelGeometry(centers) {
-  const cs = (centers || []).filter((c) => c && Number.isFinite(c?.x) && Number.isFinite(c?.z));
+  let cs = (centers || []).filter((c) => c && Number.isFinite(c?.x) && Number.isFinite(c?.z));
+  if (cs.length < 2) return null;
+
+  // 3 轮 fallback：用左右对称补一个，让轮位校准尽量继续
+  if (cs.length === 3) {
+    const est = estimateFourthWheel(cs);
+    if (est) {
+      console.log('[bang] 检测到 3 个车轮，按对称估算第 4 个：', est);
+      cs = [...cs, est];
+    }
+  }
+
   if (cs.length < 4) return null;
   const xs = cs.map((c) => c.x);
   const mid = (Math.max(...xs) + Math.min(...xs)) / 2;
@@ -1281,7 +1310,7 @@ const app = {
    * @param {string=} opts.material   PBR / Shaded / All / None
    * @returns {Promise<{count:number, parts:Array}|null>}
    */
-  async bangCurrentCar({ strength = 5, resolution = 'Basic', material = 'PBR' } = {}) {
+  async bangCurrentCar({ strength = 5, resolution = 'Basic', material = 'None' } = {}) {
     const src = currentPlan?.carModelUrl || '/models/my-car.glb';
     showOverlay('正在提交 BANG 拆解…');
     try {
@@ -1404,6 +1433,11 @@ const app = {
       this._bangParts.push({ mesh: m, dir });
     }
     if (geom) this.applyBangWheelGeometry(geom);
+
+    // 用实测/估算轮位把 carGroup 上的原车轮也切掉，
+    // 这样切回整车单体视图或清除 BANG 后，车身轮拱是干净的，不会残留原车轮胎与新轮毂重叠。
+    const cutRes = cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
+    if (cutRes.removed) console.log('[bang] 已同步切除 carGroup 原车轮：', cutRes);
 
     if (body.length) {
       // 用装配体顶替整车：不隐藏就会两份几何重叠，正是"穿模"的来源
