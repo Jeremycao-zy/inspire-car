@@ -177,6 +177,12 @@ body {
   border-radius: 4px;
 }
 
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 .panel-head {
   padding: 20px 18px 14px;
   border-bottom: 1px solid var(--line);
@@ -895,6 +901,46 @@ input[type='range']::-moz-range-thumb {
 }
 .susp-danger .susp-tip {
   color: var(--err);
+}
+
+/* ---------------- 底部轮毂款式选择栏 ---------------- */
+.bottom-preset-bar {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 12px;
+  z-index: 10;
+}
+.bottom-preset-bar.hidden {
+  display: none;
+}
+.bpb-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.bpb-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.bpb-chips::-webkit-scrollbar {
+  height: 4px;
+}
+.bpb-chips::-webkit-scrollbar-thumb {
+  background: #2c333d;
+  border-radius: 2px;
+}
+.bpb-chips .chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* ---------------- 顶层功能分层 Tab ---------------- */

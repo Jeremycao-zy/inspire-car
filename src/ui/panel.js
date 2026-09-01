@@ -448,18 +448,15 @@ export function createPanel(app, mount) {
   }
   syncPrec();
 
-  /* ---- 经典款式：程序生成的高精度轮毂，无需上传即可切换 ---- */
-  const presetHint = el('div', { class: 'ctl-hint' }, '或直接用下方的经典款式（程序生成，可继续调 ET/J/倾角）');
+  /* ---- 轮毂款式：底部选择栏（不再放在上传生成区内） ----
+   * 所有预设均指向真实 GLB 模型；加载失败时内部会自动回退到程序化轮毂。 */
   const rimPresetButtons = RIM_PRESETS.map((p) =>
     el('button', {
       class: 'chip',
       'data-rim-preset': p.id,
-      onclick: () => app.loadProceduralWheel(p.style),
+      onclick: () => app.loadPresetWheel(p.style),
     }, p.label)
   );
-  const rimPresetBar = el('div', { class: 'prec-bar' }, ...rimPresetButtons);
-  wheelUpload.zone.appendChild(presetHint);
-  wheelUpload.zone.appendChild(rimPresetBar);
   function syncRimPreset() {
     for (const b of rimPresetButtons) b.classList.toggle('on', b.dataset.rimPreset === app.params.rimPreset);
   }
@@ -795,6 +792,7 @@ export function createPanel(app, mount) {
       tabBodies[k].classList.toggle('hidden', k !== id);
       tabButtons[k].classList.toggle('active', k === id);
     }
+    bottomPresetBar.classList.toggle('hidden', id !== 'wheels');
   }
 
   // 轮毂校准安全网（摆位微调）
@@ -1071,6 +1069,14 @@ export function createPanel(app, mount) {
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
   tabBodies.scene.appendChild(section('视角', views));
 
+  /* ---- 底部轮毂款式选择栏：只在「轮毂」Tab 显示 ---- */
+  const bottomPresetBar = el(
+    'div',
+    { class: 'bottom-preset-bar' },
+    el('div', { class: 'bpb-label' }, '轮毂款式'),
+    el('div', { class: 'bpb-chips' }, ...rimPresetButtons)
+  );
+
   mount.appendChild(
     el(
       'div',
@@ -1085,7 +1091,8 @@ export function createPanel(app, mount) {
       tabsBar,
       // 由 TABS 派生而不是逐个手写：新增 Tab 时不会漏挂对应的 body
       // （曾经因为手写列表漏挂，导致点了 Tab 所有面板都隐藏）
-      ...TABS.map(([id]) => tabBodies[id])
+      ...TABS.map(([id]) => tabBodies[id]),
+      bottomPresetBar
     )
   );
 
