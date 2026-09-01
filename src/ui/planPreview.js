@@ -386,7 +386,7 @@ function fitCardSideView(pivot, camera) {
 
   // 侧视：相机从 +Z 看向原点，车长（X 轴）在画面中水平展开
   const fovRad = (camera.fov * Math.PI) / 180;
-  const padding = 1.06; // 只留很小泡壳边缘安全距离，让车身尽量大
+  const padding = 1.00; // 几乎贴边，让车身尽量充满卡片
   const distX = (size.x * padding * 0.5) / Math.tan(fovRad * 0.5);
   const distY = (size.y * padding * 0.5) / Math.tan(fovRad * 0.5) / camera.aspect;
   const dist = Math.max(distX, distY, size.z * 1.5) + 0.4;
@@ -467,8 +467,8 @@ async function buildScene(engine, inst) {
   rig.update(params);
   inst.rig = rig;
 
-  // 卡片内整体稍微缩小，让车身填满泡壳但又比塑料壳小一点边距
-  pivot.scale.setScalar(0.94);
+  // 卡片内整体放大，让车模在预览区更突出，仍保留泡壳边缘安全距离
+  pivot.scale.setScalar(1.08);
   pivot.updateMatrixWorld(true);
 
   // 软接地阴影（跟随整车一起缩放）
