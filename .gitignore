@@ -28,3 +28,6 @@ scripts/_qa-*.mjs
 # (regenerate or add via Git LFS if a fresh clone must ship them)
 # 注意：真实车模 my-car.glb / wheel.glb 必须进仓库，否则 Railway 构建后线上无车模
 public/models/_test-part.glb
+
+# vite dev temporary configs
+vite.config.js.timestamp-*.mjs
