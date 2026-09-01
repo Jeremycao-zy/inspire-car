@@ -501,11 +501,11 @@ function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08, autoAlign = tru
   for (const o of meshes) {
     const g = o.geometry;
     const pos = g.attributes?.position;
-    if (!pos) return;
+    if (!pos) continue;
 
     const index = g.index;
     const triCount = index ? index.count / 3 : pos.count / 3;
-    if (!triCount) return;
+    if (!triCount) continue;
 
     // 首次切除时备份索引，供"恢复"使用（此时几何已是切壳后的状态）
     if (o.userData._origIndex === undefined) {
@@ -1096,6 +1096,11 @@ const app = {
       carOuter.rotation.y = 0;
       this.refitCar({ recapture: true });
 
+      // 原车单体往往把轮胎和车身做在同一个 mesh 里（如演示车），
+      // 加载后必须按当前轮位把原车轮切掉，否则新轮毂装上去会与其重叠，
+      // 尤其车型识别把车模放大到真实尺寸后，原轮胎会比新轮毂大一圈而露出来。
+      cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
+
       this.fitCamera();
       hideOverlay();
       return true;
@@ -1431,11 +1436,6 @@ const app = {
     }
     if (geom) this.applyBangWheelGeometry(geom);
 
-    // 用实测/估算轮位把 carGroup 上的原车轮也切掉，
-    // 这样切回整车单体视图或清除 BANG 后，车身轮拱是干净的，不会残留原车轮胎与新轮毂重叠。
-    const cutRes = cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
-    if (cutRes.removed) console.log('[bang] 已同步切除 carGroup 原车轮：', cutRes);
-
     if (body.length) {
       // 用装配体顶替整车：不隐藏就会两份几何重叠，正是"穿模"的来源
       if (carGroup) carGroup.visible = false;
@@ -1449,6 +1449,12 @@ const app = {
       this.collectBodyMaterials();
       this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
     }
+
+    // 真实轮位必须已经通过 refitCar 注入 rig 后，再按轮位切除原车轮；
+    // 否则 rig 仍用旧估算位置，切口会偏，导致轮胎残留在车身/装配体中。
+    // 这里同时切 carGroup（供切回 single 视图使用）和 bangAssembly 中残留的车轮几何。
+    const cutRes = cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
+    if (cutRes.removed) console.log('[bang] 已同步切除原车轮：', cutRes);
     this.setBangExplode(this.params.bangExplode ?? 0);
     bangMountedSig = parts.map((p) => p?.url).join('|');
     return { total: loaded.length, body: body.length, wheel: wheel.length, geom };
