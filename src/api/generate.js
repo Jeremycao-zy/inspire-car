@@ -298,7 +298,7 @@ export async function recognize(files) {
  * @param {string} args.modelUrl  要拆解的模型地址：/api/asset/:name 或 /models/xxx.glb 或 Hyper3D asset_id
  * @param {number=} args.strength 拆解强度 2–12，默认 5（越大越碎，支持递归）
  * @param {'Basic'|'High'=} args.resolution  贴图分辨率 Basic=2K / High=4K，默认 Basic
- * @param {'PBR'|'Shaded'|'All'|'None'=} args.material 材质，默认 PBR
+ * @param {'PBR'|'Shaded'|'All'|'None'=} args.material 材质，默认 None（BANG 只拆几何，避免无参考图报错）
  * @param {string=} args.geometryFileFormat 默认 glb
  * @param {(s:{stage:string,progress:number,message:string})=>void} args.onProgress
  * @param {AbortSignal=} args.signal
@@ -309,7 +309,7 @@ export async function bangModel({
   modelUrl,
   strength = 5,
   resolution = 'Basic',
-  material = 'PBR',
+  material = 'None',
   geometryFileFormat = 'glb',
   onProgress,
   signal,
