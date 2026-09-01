@@ -405,7 +405,6 @@ export function createPanel(app, mount) {
    * 不受全局引擎（默认 fal）影响。 */
   const WHEEL_ENGINE_OPTS = [
     ['hyper3d', 'Hyper3D Rodin — 轮毂默认'],
-    ['fal', 'fal.ai Rodin — 按次付费'],
     ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
   ];
   const wheelEngineSelect = el(
@@ -813,8 +812,7 @@ export function createPanel(app, mount) {
   /* ---- 生成引擎：精度 / 成本由用户选择 ----
    * 引擎优先级（自动回退）见 main.js ENGINE_PRIORITY；这里给手动覆盖的入口。 */
   const ENGINE_OPTS = [
-    ['fal', 'fal.ai Rodin — 高精度，按次付费'],
-    ['hyper3d', 'Hyper3D Rodin — 需 Business 订阅'],
+    ['hyper3d', 'Hyper3D Rodin — 车模生成专用'],
     ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
     ['higen3d', 'HiGen3D — 待配置'],
   ];
@@ -831,16 +829,6 @@ export function createPanel(app, mount) {
     ...ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
   );
   engineSelect.value = app.params.engine;
-  const highPackRow = el(
-    'label',
-    { class: 'cw-solid' },
-    el('input', {
-      type: 'checkbox',
-      checked: !!app.params.falHighPack,
-      onchange: (e) => (app.params.falHighPack = e.target.checked),
-    }),
-    'fal 4K HighPack（画质更好，按 3 倍计费）'
-  );
   tabBodies.body.appendChild(
     section(
       '生成引擎',
@@ -848,7 +836,6 @@ export function createPanel(app, mount) {
         'div',
         { class: 'fine' },
         el('div', { class: 'ctl' }, engineSelect),
-        highPackRow,
         el(
           'div',
           { class: 'ctl-hint' },

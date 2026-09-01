@@ -228,7 +228,7 @@ async function handleGenerate(req, res) {
     if (!closed) res.end();
   };
 
-  const engine = body.engine || 'hunyuan';
+  const engine = body.engine || 'hyper3d';
 
   /* ---------- 多引擎路由：HiGen3D（独立 key，与混元通道无关） ---------- */
   if (engine === 'higen3d') {

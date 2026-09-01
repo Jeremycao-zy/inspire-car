@@ -70,12 +70,12 @@ export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
 const DEFAULTS = {
   axleTarget: 'all', // 'all' | 'front' | 'rear'
   precision: 'high', // 轮毂生成精度档位：standard | high | extreme（探顶前默认 high）
-  // 生成引擎：fal / hyper3d / hunyuan / higen3d。
+  // 生成引擎：整车生成固定走 Hyper3D Rodin（用户要求去掉 fal.ai、不可选）。
   // 启动时若该引擎没配凭证，refreshHealth 会自动回退到有凭证的那个（见 ENGINE_PRIORITY）。
-  engine: 'fal',
+  engine: 'hyper3d',
   // 轮毂生成引擎：与整车分开设置，默认 Hyper3D Rodin（轮毂必须走这家，见 runGenerate）
   wheelEngine: 'hyper3d',
-  falHighPack: false, // fal.ai 的 4K 贴图 + 高模附加包（画质更好，按 3 倍计费）
+  falHighPack: false, // 已弃用：fal.ai HighPack（引擎已移除）
   suspensionDelta: 0, // 悬挂降低量 Δ（mm），>0 降低车身（与 shellLift 叠加）
   // 分角悬挂高度偏移（mm）。正值 = 该角车身升高，负值 = 降低；
   // 与全局 suspensionDelta 叠加。UI 提供「四轮/前轴/后轴/单角」四种作用域。
@@ -1764,8 +1764,7 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       resumeJobId,
       title,
       precision: app.params.precision,
-      // 轮毂固定走 Hyper3D Rodin：与整车同一家，轮辋/辐条几何与螺栓孔位更准，
-      // 且不受全局引擎下拉框（默认 fal）影响——用户明确要求轮毂也用 Hyper3D。
+      // 轮毂固定走 Hyper3D Rodin：与整车同一家，轮辋/辐条几何与螺栓孔位更准。
       engine: kind === 'wheel' ? app.params.wheelEngine || 'hyper3d' : app.params.engine,
       falHighPack: app.params.falHighPack,
       onProgress: (s) => {
