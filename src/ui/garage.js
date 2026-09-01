@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
 import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
+import { openPricingModal } from './subscribe.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-nobg.png';
 
@@ -397,6 +398,30 @@ export function mountGarage({ onEnter, mount } = {}) {
       '注销'
     )
   );
+  const subscribeBtn = el(
+    'button',
+    {
+      class: 'garage-subscribe-btn',
+      type: 'button',
+      title: '查看订阅方案',
+      onClick: () => openPricingModal(),
+    },
+    el(
+      'svg',
+      {
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': '2.2',
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        'aria-hidden': 'true',
+      },
+      el('path', { d: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z' })
+    ),
+    '订阅方案'
+  );
+
   const header = el(
     'header',
     { class: 'garage-header' },
@@ -409,7 +434,8 @@ export function mountGarage({ onEnter, mount } = {}) {
         { class: 'garage-brand__text' },
         el('h1', { class: 'garage-brand__title' }, '灵感改装'),
         el('p', { class: 'garage-brand__sub' }, 'INSPIRE CAR')
-      )
+      ),
+      subscribeBtn
     ),
     userChip
   );
