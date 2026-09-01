@@ -187,6 +187,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  /* 加载时整体旋转：转速由 main.js 根据进度实时调整 */
+  animation: jg-spin var(--jg-spin-dur, 2.6s) linear infinite;
 }
 
 /* 遮罩用的是完整锁定（徽标 + 字标），尺寸够大、字标看得清。
@@ -197,8 +199,31 @@
   /* 与 logo-full-nobg.png 的固有比例一致，加载前就预留出正确宽度 */
   aspect-ratio: 527 / 512;
   object-fit: contain;
-  /* 加载时轻微呼吸，强化「待机启动」感 */
-  animation: jg-pulse 2.2s ease-in-out infinite;
+  /* 加载时上下跳跃 + 轻微呼吸；跳跃频率同样由进度驱动 */
+  animation:
+    jg-bounce var(--jg-bounce-dur, 0.9s) ease-in-out infinite,
+    jg-pulse 2.2s ease-in-out infinite;
+}
+
+/* 图标容器旋转 —— 像车轮一样转动 */
+@keyframes jg-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 图标上下跳跃 —— 像引擎启动时的跳动 */
+@keyframes jg-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
 }
 
 @keyframes jg-pulse {
@@ -214,6 +239,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .jg-brand--overlay .jg-brand__icon,
   .jg-brand--overlay .jg-icon {
     animation: none;
   }
