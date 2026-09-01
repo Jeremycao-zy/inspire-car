@@ -33,7 +33,5 @@ ENV NODE_ENV=production \
 #   MAX_BODY_MB / MAX_POLL_MS / POLL_INTERVAL_MS
 EXPOSE 8080
 
-# .cache 存 GLB 模型、用户账号、额度计数 —— 必须挂持久卷，否则重启后用户登不上
-VOLUME ["/app/.cache"]
-
+# .cache 存 GLB 模型、用户账号、额度计数 —— 必须在 Railway 控制台手动挂卷 /app/.cache
 CMD ["node", "server/index.mjs"]
