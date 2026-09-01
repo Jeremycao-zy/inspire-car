@@ -1,22 +1,20 @@
 /**
- * proceduralRim.js — 兜底程序化轮毂 + 经典款式预设
+ * proceduralRim.js — 兜底程序化轮毂 + 真实轮毂预设
  *
- * 用户还没上传轮毂照片、或 GLB 生成失败时，用它保证预览永远有东西可看、可调。
- * 结构与真实锻造轮毂一致：轮辋筒身 + 辐条 + 中心盘 + 螺栓，轴向对齐 Z。
- *
- * 新增经典款式：te37 / bbs-lm / rotiform / mesh / sport，均为程序生成，无版权限制，
- * 可直接在「轮毂模型」区切换，切换后 ET/J/倾角/尺寸调节仍然生效。
+ * 预设款式（RIM_PRESETS）现在优先指向真实 GLB 轮毂模型（/models/rim-*.glb）。
+ * buildProceduralRim 仅作为真实模型加载失败 / 未上传时的兜底，保证预览永远可用。
+ * 所有预设轴向对齐 Z，切换后 ET/J/倾角/尺寸调节仍然生效。
  */
 
 import * as THREE from 'three';
 
 export const RIM_PRESETS = [
-  { id: 'default', label: '五辐锻造', style: 'default', spokes: 5 },
-  { id: 'te37', label: 'TE37 · 六辐', style: 'te37', spokes: 6 },
-  { id: 'bbs-lm', label: 'BBS LM · 双叉', style: 'bbs-lm', spokes: 10 },
-  { id: 'rotiform', label: 'Rotiform · 深唇', style: 'rotiform', spokes: 7 },
-  { id: 'mesh', label: 'Mesh · 密辐', style: 'mesh', spokes: 16 },
-  { id: 'sport', label: '运动 · 双五辐', style: 'sport', spokes: 10 },
+  { id: 'default', label: '五辐锻造', style: 'default', spokes: 5, glbUrl: '/models/rim-default.glb' },
+  { id: 'te37', label: 'TE37 · 六辐', style: 'te37', spokes: 6, glbUrl: '/models/rim-te37.glb' },
+  { id: 'bbs-lm', label: 'BBS LM · 双叉', style: 'bbs-lm', spokes: 10, glbUrl: '/models/rim-bbs-lm.glb' },
+  { id: 'rotiform', label: 'Rotiform · 深唇', style: 'rotiform', spokes: 7, glbUrl: '/models/rim-rotiform.glb' },
+  { id: 'mesh', label: 'Mesh · 密辐', style: 'mesh', spokes: 16, glbUrl: '/models/rim-mesh.glb' },
+  { id: 'sport', label: '运动 · 双五辐', style: 'sport', spokes: 10, glbUrl: '/models/rim-sport.glb' },
 ];
 
 /**

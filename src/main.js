@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { createViewer } from './core/viewer.js';
 import { loadGLB, normalizeCar, normalizeWheel, boxOf, disposeObject } from './core/glb.js';
 import { WheelRig, ET_REF } from './tuning/wheelRig.js';
+import { RIM_PRESETS } from './tuning/proceduralRim.js';
 import { Chassis } from './tuning/chassis.js';
 import { ShellCutter } from './tuning/shellCutter.js';
 import { measure as measureShell } from './tuning/shellMeasure.js';
@@ -1080,13 +1081,28 @@ const app = {
 
   /* ---- 轮毂 ---- */
   /**
-   * 切换到程序化经典轮毂款式（te37 / bbs-lm / rotiform / mesh / sport / default）。
+   * 切换到预设轮毂款式。所有预设均配置真实 GLB 轮毂模型；加载失败时
+   * 才退回程序生成作为兜底，保证预览不中断。
    * 会保留当前 ET/J/倾角/尺寸等全部调节参数。
    */
-  loadProceduralWheel(style = 'default') {
+  async loadPresetWheel(style = 'default') {
+    const preset = RIM_PRESETS.find((p) => p.style === style) || RIM_PRESETS[0];
     this.params.rimPreset = style;
+
+    if (preset.glbUrl) {
+      const r = await this.loadWheelFromUrl(preset.glbUrl);
+      // loadWheelFromUrl 失败或形状被拒时会自动回退程序化轮毂；这里只额外同步 UI
+      if (!r || r.rejected) {
+        console.warn(`[preset wheel] ${preset.label} 真实模型加载失败，已回退程序生成`);
+      }
+      panel?.syncAll();
+      return;
+    }
+
+    // 无真实 GLB 的款式：回退程序生成
     rig.useProceduralWheel(style);
     this.apply();
+    panel?.syncAll();
   },
 
   async loadWheelFromUrl(url) {
@@ -1109,6 +1125,7 @@ const app = {
         wheelGroup = null;
         rig.useProceduralWheel(this.params.rimPreset);
         this.apply();
+        panel?.syncAll();
         hideOverlay();
         return { ...measured, rejected: true, shape };
       }
@@ -1116,12 +1133,14 @@ const app = {
       wheelGroup = group;
       rig.setWheelSource(group, measured);
       this.apply();
+      panel?.syncAll();
       hideOverlay();
       return { ...measured, rejected: false, shape };
     } catch (e) {
       console.warn('[wheel] 载入失败，回退程序化轮毂：', e.message);
       rig.useProceduralWheel(this.params.rimPreset);
       this.apply();
+      panel?.syncAll();
       hideOverlay();
       return null;
     }
