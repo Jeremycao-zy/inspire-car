@@ -41,8 +41,9 @@ const DIST_DIR = path.join(ROOT, 'dist');
 
 /** 监听地址：默认只监听回环，保持本地开发行为不变；容器/云平台需要 HOST=0.0.0.0 */
 const HOST = process.env.HOST || '127.0.0.1';
-/** 端口优先级：API_PORT（本项目原有配置）> PORT（云平台通用约定）> 8787 */
-const PORT = Number(process.env.API_PORT || process.env.PORT || 8787);
+/** 端口优先级：PORT（云平台通用约定）> API_PORT（本项目原有配置）> 8787
+ *  Railway/Render/Fly 都会注入 PORT，必须优先使用，不能硬绑 API_PORT。 */
+const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
 const MAX_BODY = Number(process.env.MAX_BODY_MB || 80) * 1024 * 1024;
 
 /* 预置演示模型的候选目录（按顺序取第一个存在的）。
