@@ -1,0 +1,315 @@
+/**
+ * subscribe.css — 「订阅方案」弹窗
+ *
+ * 风格与灵感车库入口页保持一致：浅色科技风、青蓝强调色、玻璃拟态。
+ */
+
+/* 遮罩层 */
+.pricing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(16, 26, 44, 0.55);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.pricing-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 弹窗容器 */
+.pricing-modal {
+  position: relative;
+  width: 100%;
+  max-width: 880px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow:
+    0 32px 80px rgba(16, 34, 70, 0.28),
+    0 12px 28px rgba(16, 34, 70, 0.14);
+  transform: translateY(16px) scale(0.98);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pricing-overlay.active .pricing-modal {
+  transform: translateY(0) scale(1);
+}
+
+/* 顶部标题区 */
+.pricing-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 26px 28px 18px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(40, 90, 170, 0.1);
+}
+.pricing-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pricing-head__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #14233c;
+  letter-spacing: 0.01em;
+}
+.pricing-head__sub {
+  margin: 0;
+  font-size: 13px;
+  color: #5a6b86;
+  line-height: 1.5;
+  max-width: 560px;
+}
+.pricing-head__close {
+  appearance: none;
+  border: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #5a6b86;
+  background: rgba(40, 90, 170, 0.08);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex: 0 0 auto;
+}
+.pricing-head__close:hover {
+  background: rgba(40, 90, 170, 0.16);
+  color: #14233c;
+}
+
+/* 三档卡片网格 */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  padding: 22px 28px 28px;
+}
+
+.pricing-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  padding: 22px 20px 20px;
+  background: #f7f9fc;
+  border: 1px solid rgba(40, 90, 170, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 38px rgba(20, 50, 110, 0.12);
+  border-color: rgba(40, 90, 170, 0.22);
+}
+
+/* 推荐角标 */
+.pricing-card.recommended {
+  background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
+  border-color: rgba(47, 123, 255, 0.45);
+  box-shadow: 0 12px 32px rgba(47, 123, 255, 0.12);
+}
+.pricing-card__badge {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 14px;
+  border-radius: 0 0 10px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  box-shadow: 0 4px 12px rgba(47, 123, 255, 0.28);
+}
+
+.pricing-card__name {
+  margin: 8px 0 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #14233c;
+}
+.pricing-card__desc {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: #5a6b86;
+  line-height: 1.45;
+  min-height: 36px;
+}
+
+.pricing-card__price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.pricing-card__price .unit {
+  font-size: 15px;
+  font-weight: 700;
+  color: #14233c;
+}
+.pricing-card__price .num {
+  font-size: 34px;
+  font-weight: 900;
+  color: #14233c;
+  letter-spacing: -0.02em;
+}
+.pricing-card__price .cycle {
+  font-size: 12px;
+  color: #7c8aa6;
+}
+
+.pricing-card__features {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1 1 auto;
+}
+.pricing-card__features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #2b3f63;
+  line-height: 1.45;
+}
+.pricing-card__features li::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f7bff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+.pricing-card__features li.disabled {
+  color: #9aa4b2;
+}
+.pricing-card__features li.disabled::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa4b2' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E");
+}
+
+.pricing-card__btn {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, filter 0.15s ease;
+}
+.pricing-card__btn:hover {
+  transform: translateY(-1px);
+}
+.pricing-card__btn:active {
+  transform: translateY(0);
+}
+.pricing-card__btn.primary {
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  box-shadow: 0 8px 22px rgba(47, 123, 255, 0.32);
+}
+.pricing-card__btn.primary:hover {
+  box-shadow: 0 10px 30px rgba(47, 123, 255, 0.42);
+}
+.pricing-card__btn.ghost {
+  color: #2f5fa8;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(47, 123, 255, 0.28);
+}
+.pricing-card__btn.ghost:hover {
+  background: #f3f8ff;
+}
+
+/* 成本说明脚注 */
+.pricing-foot {
+  padding: 0 28px 24px;
+  color: #7c8aa6;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.pricing-foot p {
+  margin: 0 0 6px;
+}
+.pricing-foot strong {
+  color: #2b3f63;
+}
+
+/* 顶部入口按钮（放在 garage-header 中） */
+.garage-subscribe-btn {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  box-shadow: 0 4px 14px rgba(47, 123, 255, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, filter 0.15s ease;
+  white-space: nowrap;
+}
+.garage-subscribe-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(47, 123, 255, 0.38);
+}
+.garage-subscribe-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+/* 窄屏适配 */
+@media (max-width: 820px) {
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 18px;
+  }
+  .pricing-head {
+    padding: 18px;
+  }
+  .pricing-head__title {
+    font-size: 18px;
+  }
+  .pricing-foot {
+    padding: 0 18px 20px;
+  }
+}
