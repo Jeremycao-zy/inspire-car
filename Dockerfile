@@ -23,6 +23,7 @@ RUN npm prune --omit=dev
 # SERVE_STATIC=1  让 server 顺带服务 dist/（默认关闭，本地 npm run dev 行为不受影响）
 # SPA_FALLBACK=1  非 API 且文件不存在时回落 index.html
 ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
     SERVE_STATIC=1 \
     SPA_FALLBACK=1 \
     API_PORT=8080
