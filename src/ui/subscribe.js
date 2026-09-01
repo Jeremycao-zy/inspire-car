@@ -157,7 +157,7 @@ export function openPricingModal() {
   const foot = el(
     'div',
     { class: 'pricing-foot' },
-    ...EXTRAS.map((text) => el('p', null, `· ${text}`))
+    ...EXTRAS.map((text) => el('p', {}, `· ${text}`))
   );
 
   const modal = el('div', { class: 'pricing-modal' }, head, grid, foot);
