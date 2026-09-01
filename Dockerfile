@@ -26,7 +26,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     SERVE_STATIC=1 \
     SPA_FALLBACK=1 \
-    API_PORT=8080
+    PORT=8080
 
 # 生成任务单次最长 12 分钟轮询，请求体默认上限 80MB（传图 + GLB）
 # 若平台有更严的超时/体积限制，用环境变量覆盖：
