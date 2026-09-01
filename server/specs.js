@@ -168,8 +168,10 @@ export async function carSpecs(fullName, { year } = {}) {
     }
 
     const { specs, dropped } = sanitizeSpecs(raw);
-    // 核心尺寸（长/宽/轴距）缺任何一项就认为这次查询不可用，避免用残缺数据建模
-    const essential = ['length', 'width', 'wheelbase'];
+    // 核心尺寸（长/宽/高/轴距）缺任何一项就认为这次查询不可用，避免用残缺数据建模。
+    // ⚠️ height 必须纳入核心：图生 3D 模型普遍偏矮，normalizeCar 只在拿到真实车高时
+    // 才做非均匀校正（拉高第三轴）；height 缺失 → 车高保持模型原始偏矮值 → 表现"矮胖"。
+    const essential = ['length', 'width', 'height', 'wheelbase'];
     const missing = essential.filter((k) => specs[k] == null);
     if (missing.length) {
       return {

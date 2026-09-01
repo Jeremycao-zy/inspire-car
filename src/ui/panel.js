@@ -1103,6 +1103,36 @@ export function createPanel(app, mount) {
   syncExposure();
   rebuildLights();
 
+  /* ---- 右上角车身数据面板：展示识别出的车型真实尺寸 ---- */
+  const bodyDataEl = document.getElementById('body-data');
+  function renderBodyData() {
+    const rs = app.params.realSpecs;
+    if (!bodyDataEl) return;
+    if (!rs || !rs.length) {
+      bodyDataEl.classList.add('hidden');
+      return;
+    }
+    bodyDataEl.classList.remove('hidden');
+    const mm = (v) => (v ? `${v} mm` : '—');
+    const deg = (v) => (v != null ? `${v}°` : '—');
+    bodyDataEl.querySelector('.body-data__name').textContent = rs.fullName || rs.query || '已识别车型';
+    bodyDataEl.querySelector('.body-data__conf').textContent =
+      rs.confidence ? `把握 ${Math.round(rs.confidence * 100)}%` : '';
+    const rows = [
+      ['车长', mm(rs.length)],
+      ['车宽', mm(rs.width)],
+      ['车高', mm(rs.height)],
+      ['轴距', mm(rs.wheelbase)],
+      ['前/后轮距', rs.trackFront || rs.trackRear ? `${rs.trackFront || '—'} / ${rs.trackRear || '—'}` : '—'],
+      ['离地间隙', mm(rs.groundClearance)],
+      ['接近/离去角', `${deg(rs.approachAngle)} / ${deg(rs.departureAngle)}`],
+    ];
+    bodyDataEl.querySelector('.body-data__grid').innerHTML = rows
+      .map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`)
+      .join('');
+    bodyDataEl.querySelector('.body-data__src').textContent = `数据来源：${rs.source || '车型参数库'}`;
+  }
+
   function syncAll() {
     syncSeg();
     syncSuspTarget();
@@ -1111,6 +1141,7 @@ export function createPanel(app, mount) {
     syncRimPreset();
     syncExposure();
     syncBang();
+    renderBodyData();
     for (const s of sliders) s.render();
     renderSuspension();
     for (const s of lightRows) s();
