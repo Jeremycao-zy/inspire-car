@@ -13,29 +13,22 @@
  * 本模块为纯函数（无 IO），方便单测与复用。
  */
 
-/** 通用基础 prompt 模板：所有生成任务自动拼接（原文，勿改词序与拼写） */
+/** 通用基础 prompt 模板：所有生成任务自动拼接 */
 export const BASE_PROMPT =
-  'high-precision 3D asset, PBR physically-based rendering, high-fidelity texture mapping, ' +
-  'accurate material restoration, clean UV unwrap, no baked paint color, raw material surface, ' +
-  'high polygon detail, clean mesh, no redundant geometry, production-ready asset, ' +
-  'for automotive modification application';
+  'high-precision 3D car asset, PBR rendering, clean UV, raw material surface, no baked paint color, ' +
+  'clean mesh, production-ready';
 
-/** 分支1 追加词：轮毂任务（原文） */
+/** 分支1 追加词：轮毂任务 */
 export const WHEEL_PROMPT_ADDON =
   'only car wheel rim, no car body, standalone wheel rim model, separable mesh structure, ' +
   'mesh can be detached and assembled, precise rim geometry, bolt hole accurate, hub bore complete, ' +
   'no car chassis, no vehicle body';
 
-/** 分支2 追加词：整车任务（原文） */
+/** 分支2 追加词：整车任务 */
 export const CAR_PROMPT_ADDON =
-  'complete car body model, separate wheel mounting position reserved, wheel hub mounting interface ' +
-  'retained, exact body proportions matching the reference car body (preserve real length to width ' +
-  'and length to height ratios from the input image), no default red paint, raw material surface, ' +
-  'do not bake fixed car paint color, keep original material texture, clean mesh, wheels are placeholder ' +
-  'mounting positions, ready for hub replacement, strict front-facing orientation with the car front ' +
-  '(headlights, hood, grille) pointing forward along the positive X axis, vehicle traveling ' +
-  'direction along positive X axis, side profile visible on the Z axis, ground plane horizontal, ' +
-  'no upside-down or sideways rotation, three-quarter view from front-left preferred';
+  'complete car body model, wheel mounting positions reserved, preserve real L/W/H ratios from input, ' +
+  'no default red paint, raw material texture, placeholder wheel mounting positions, ' +
+  'front along positive X axis, side profile on Z axis, ground plane horizontal, no rotation';
 
 /**
  * 构建发送给 Hyper3D Rodin 的完整英文 prompt。
@@ -44,12 +37,23 @@ export const CAR_PROMPT_ADDON =
  * @param {string=} userExtra 用户附加描述（可选，拼在末尾，不覆盖规则词）
  * @returns {string} 完整英文 prompt
  */
+const MAX_PROMPT_LEN = 1024;
+const EXTRA_PREFIX = 'additional requirements: ';
+
 export function buildRodinPrompt(kind, userExtra = '') {
   const addon = kind === 'wheel' ? WHEEL_PROMPT_ADDON : CAR_PROMPT_ADDON;
-  const parts = [BASE_PROMPT, addon];
   const extra = String(userExtra || '').trim();
-  if (extra) parts.push(`additional requirements: ${extra}`);
-  return parts.join(', ');
+  const base = [BASE_PROMPT, addon];
+  if (extra) base.push(`${EXTRA_PREFIX}${extra}`);
+  let prompt = base.join(', ');
+  if (prompt.length > MAX_PROMPT_LEN) {
+    // 优先保留基础规则词，截断用户附加描述
+    const reserve = `${BASE_PROMPT}, ${addon}`;
+    const budget = MAX_PROMPT_LEN - reserve.length - 2 - EXTRA_PREFIX.length;
+    const safeExtra = extra.slice(0, Math.max(0, budget));
+    prompt = safeExtra ? `${reserve}, ${EXTRA_PREFIX}${safeExtra}` : reserve;
+  }
+  return prompt;
 }
 
 /**
