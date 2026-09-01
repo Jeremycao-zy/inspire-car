@@ -26,4 +26,5 @@ scripts/_qa-*.mjs
 
 # large binary demo assets — kept on disk locally, not in git
 # (regenerate or add via Git LFS if a fresh clone must ship them)
-public/models/*.glb
+# 注意：真实车模 my-car.glb / wheel.glb 必须进仓库，否则 Railway 构建后线上无车模
+public/models/_test-part.glb
