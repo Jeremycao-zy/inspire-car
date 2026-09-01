@@ -15,13 +15,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const loader = new GLTFLoader();
-// 部分图生 3D 输出会带 Draco 压缩，挂上解码器兜底（解码器走 CDN，失败不影响未压缩模型）
+// 静态车模/轮毂已用 Draco 压缩几何以减小体积；解码器自托管在 /draco/（不走 Google CDN，
+// 避免国内访问 gstatic 超时导致模型永久卡在加载）。wasm 解码器约 188KB，一次加载后缓存。
 try {
   const draco = new DRACOLoader();
-  draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+  draco.setDecoderPath('/draco/');
   loader.setDRACOLoader(draco);
 } catch {
-  /* 离线环境下忽略，未压缩的 GLB 不受影响 */
+  /* 解码器加载失败时忽略，未压缩的 GLB 仍可正常解析 */
 }
 
 /**
