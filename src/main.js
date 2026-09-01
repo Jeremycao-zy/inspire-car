@@ -2056,6 +2056,7 @@ let panel = null;
 let tunerStarted = false;
 let currentPlan = null; // 当前在第二层编辑的方案（含 id / title / params）
 let garage = null; // 第一层「灵感车库」实例
+let currentCarUrl = null; // 当前已载入的车模 URL，用于判断切换方案时是否需要重新载车
 
 function startTuner() {
   if (tunerStarted) return;
@@ -2080,22 +2081,12 @@ function startTuner() {
     rig.useProceduralWheel(app.params.rimPreset);
     app.apply();
 
-    // 预置整车 + 预置轮毂（存在才加载）；重新进入方案时优先载入用户提交的车型
-    const initialCar = currentPlan?.carModelUrl || '/models/my-car.glb';
-    await app.loadCarFromUrl(initialCar);
-
-    // 方案里存过拆解产物 → 按原坐标装配回整车（零额度；失败只记日志）
-    await restoreBangForPlan();
+    // 轮毂模板源（共享资源，只载一次）；载车统一交给 enterTuner，
+    // 由 loadPlanCar() 按当前方案各自载入，确保「每个方案独立、互不被污染」。
     const wheelOk = await fetch('/models/wheel.glb', { method: 'HEAD' })
       .then((r) => r.ok)
       .catch(() => false);
     if (wheelOk) await app.loadWheelFromUrl('/models/wheel.glb');
-
-    // 不再自动恢复方案里的拆解部件——之前会造成“整车 + 拆解车身”双车叠加。
-    // bangParts 仍保留在方案对象中，供后续如需手动拆解时复用。
-
-    app.fitCamera();
-    app.setView('iso');
   })();
 }
 
@@ -2118,6 +2109,13 @@ window.__garage = {
   // panel 是启动后才赋值的，用 getter 拿，避免快照到 undefined
   get panel() {
     return panel;
+  },
+  // 当前编辑中的方案 / 已载入车模 URL（调试与自动化验证用）
+  get currentPlan() {
+    return currentPlan;
+  },
+  get currentCarUrl() {
+    return currentCarUrl;
   },
 };
 
@@ -2146,8 +2144,8 @@ function applyPlanToApp(plan) {
   // 车漆色随方案恢复（carGroup 为空时由 boot 的 loadCarFromUrl 接管上色）
   if (typeof carGroup !== 'undefined' && carGroup) app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
   if (panel?.syncColor) panel.syncColor();
-
-  restoreBangForPlan();
+  // 拆解产物恢复统一放到 loadPlanCar()：必须等「本方案的车」载好之后再装配，
+  // 否则会把新方案的部件挂到上一方案的旧车上。
 }
 
 /**
@@ -2178,14 +2176,52 @@ async function restoreBangForPlan() {
   panel?.syncBang?.();
 }
 
+// 按当前方案载入「它自己的车模」：每个方案独立载车，互不污染。
+// 切换方案时若车模 URL 没变则跳过重复下载（个人奔驰车同理只载一次）。
+async function loadPlanCar() {
+  const src = currentPlan?.carModelUrl || '/models/my-car.glb';
+  if (src !== currentCarUrl) {
+    await app.loadCarFromUrl(src);
+    currentCarUrl = src;
+  }
+  // 车已载入：按本方案参数重算底盘 / 轮位，并还原车漆着色
+  if (typeof carGroup !== 'undefined' && carGroup) {
+    app.refitCar({ recapture: false });
+    app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
+  }
+  // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
+  await restoreBangForPlan();
+  app.fitCamera();
+  app.setView('iso');
+}
+
 // 进入第二层 TUNING STUDIO
-function enterTuner(plan) {
-  currentPlan =
-    plan || { id: 'plan-' + Date.now(), title: '未命名方案', params: structuredClone(DEFAULTS) };
+async function enterTuner(plan) {
+  // —— 新建方案：一份完全独立的空白方案，初始化数据全部归零（仅取中性默认值）——
+  if (!plan) {
+    plan = {
+      id: 'plan-' + Date.now(),
+      title: '未命名方案',
+      desc: '',
+      tags: [],
+      params: structuredClone(DEFAULTS), // 深拷贝，避免与全局 DEFAULTS 共享引用
+      carModelUrl: '/models/my-car.glb', // 彩蛋：预设车模 = 个人上传的奔驰车
+      bangParts: [],
+    };
+  } else {
+    // 进入已有方案：深拷贝，避免与车库卡片列表共享同一对象导致方案之间互相污染
+    plan = structuredClone(plan);
+    if (!plan.params) plan.params = structuredClone(DEFAULTS);
+    if (!plan.carModelUrl) plan.carModelUrl = '/models/my-car.glb';
+    if (!plan.bangParts) plan.bangParts = [];
+  }
+  currentPlan = plan;
+
   const garageEl = document.getElementById('garage');
   if (garageEl) garageEl.classList.add('hidden');
-  startTuner();
-  applyPlanToApp(currentPlan);
+  startTuner(); // 首次进入做一次性初始化（载车已下放到 loadPlanCar）
+  applyPlanToApp(currentPlan); // 注入参数、清空上一方案残留的拆解/轮毂、同步 UI
+  await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
 }
 
 // 返回第一层：保存当前方案 → 刷新卡片 → 显示车库
