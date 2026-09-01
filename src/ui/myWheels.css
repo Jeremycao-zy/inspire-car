@@ -38,13 +38,13 @@
 
 .myw-card:hover {
   transform: translateY(-6px) perspective(520px) rotateX(4deg);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
-  border-color: var(--accent);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.4), 0 0 22px rgba(0, 240, 255, 0.25);
+  border-color: var(--neon-cyan, #00f0ff);
 }
 
 .myw-card.active {
   border-color: var(--good);
-  box-shadow: 0 0 0 1px var(--good), 0 12px 24px rgba(53, 208, 127, 0.12);
+  box-shadow: 0 0 0 1px var(--good), 0 0 22px rgba(57, 255, 20, 0.3);
 }
 
 .myw-card.active::after {
@@ -76,7 +76,7 @@
 
 .myw-card:hover .myw-img-wrap {
   transform: rotate(12deg) translateZ(18px);
-  box-shadow: 0 12px 28px rgba(78, 161, 255, 0.18);
+  box-shadow: 0 12px 28px rgba(0, 240, 255, 0.22), 0 0 18px rgba(0, 240, 255, 0.3);
 }
 
 .myw-img-wrap img {

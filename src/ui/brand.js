@@ -23,6 +23,8 @@
 import './brand.css';
 import logoMarkUrl from '../assets/logo-mark-nobg.png';
 import logoFullUrl from '../assets/logo-full-nobg.png';
+import logoHexUrl from '../assets/logo-hex-nobg.png';
+import logoWheelUrl from '../assets/logo-wheel-nobg.png';
 
 /** 品牌名（改这里就能全局换字） */
 export const BRAND = {
@@ -32,8 +34,12 @@ export const BRAND = {
 
 /** 徽标资源（只含图形，透明底 + 黑线，已裁到图形外框） */
 export const LOGO_MARK = logoMarkUrl;
-/** 完整 logo 资源（徽标 + 字标，透明底 + 黑线，用于加载遮罩） */
+/** 完整 logo 资源（徽标 + 字标，透明底 + 黑线，历史兼容） */
 export const LOGO_FULL = logoFullUrl;
+/** 加载遮罩用：六边形外框（中心挖空，透明底 + 黑线） */
+export const LOGO_HEX = logoHexUrl;
+/** 加载遮罩用：中心轮毂（透明底 + 黑线） */
+export const LOGO_WHEEL = logoWheelUrl;
 
 /** 去背资源的固有宽高比（width / height），用于把视觉高度换算成渲染宽度 */
 const MARK_ASPECT = 353 / 324; // logo-mark-nobg.png
@@ -82,13 +88,32 @@ export function createBrand({
   withText = true,
   iconSrc,
 } = {}) {
-  const src = iconSrc || (variant === 'overlay' ? LOGO_FULL : LOGO_MARK);
   const el = document.createElement('div');
   el.className = `jg-brand jg-brand--${variant}`;
+
+  if (variant === 'overlay') {
+    const wheelW = widthFor(LOGO_HEX, size);
+    const textHtml = withText
+      ? `<span class="jg-brand__text">
+           <span class="jg-brand__title">${BRAND.title}</span>
+           <span class="jg-brand__sub">${BRAND.sub}</span>
+         </span>`
+      : '';
+    el.innerHTML = `
+      ${textHtml}
+      <span class="jg-brand__icon">
+        <img class="jg-icon jg-icon--hex" width="${wheelW}" height="${size}" src="${iconSrc || LOGO_HEX}" alt="${BRAND.title}" draggable="false" decoding="async"/>
+        <img class="jg-icon jg-icon--wheel" width="${wheelW}" height="${size}" src="${LOGO_WHEEL}" alt="" draggable="false" decoding="async"/>
+      </span>
+    `;
+    return el;
+  }
+
+  const src = iconSrc || LOGO_MARK;
   el.innerHTML = `
     <span class="jg-brand__icon">${brandIconImg(size, src)}</span>
     ${
-      withText && variant !== 'overlay'
+      withText
         ? `<span class="jg-brand__text">
              <span class="jg-brand__title">${BRAND.title}</span>
              <span class="jg-brand__sub">${BRAND.sub}</span>

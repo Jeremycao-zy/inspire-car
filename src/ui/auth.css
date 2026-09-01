@@ -1,6 +1,6 @@
 /**
- * auth.css — 登录 / 注册浮层（灵感车库白色科技 · 车库风）
- * 视觉与 garage.css 的卡片 / 品牌区保持一致：浅色背景、蓝图网格、青蓝强调色、软阴影。
+ * auth.css — 登录 / 注册浮层（复古电子 / 霓虹赛博 · synthwave）
+ * 视觉与 garage.css 的卡片 / 品牌区保持一致：深空紫黑、透视网格、霓虹青/粉、玻璃辉光。
  */
 
 .auth-layer {
@@ -12,13 +12,14 @@
   justify-content: center;
   padding: 24px;
   background:
-    radial-gradient(1100px 600px at 18% -8%, rgba(78, 161, 255, 0.12), transparent 60%),
-    radial-gradient(900px 520px at 88% 108%, rgba(120, 92, 246, 0.1), transparent 55%),
-    linear-gradient(180deg, #f7f9fc 0%, #eef2f8 100%);
+    radial-gradient(520px 460px at 50% 4%, rgba(255, 46, 151, 0.16), transparent 68%),
+    radial-gradient(900px 520px at 82% 110%, rgba(255, 46, 151, 0.18), transparent 60%),
+    radial-gradient(1000px 600px at 12% -8%, rgba(0, 240, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, #0b0820 0%, #0a0a14 50%, #120a24 100%);
   background-attachment: fixed;
-  color: #1c2430;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: var(--text, #e8f6ff);
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .auth-layer::before {
@@ -26,9 +27,10 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: linear-gradient(rgba(40, 90, 170, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(40, 90, 170, 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 46, 151, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
   mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
   -webkit-mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
 }
@@ -37,11 +39,12 @@
   position: relative;
   width: 100%;
   max-width: 380px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
+  background: rgba(18, 16, 31, 0.86);
+  backdrop-filter: blur(14px);
   border-radius: 22px;
   padding: 32px 30px 28px;
-  box-shadow: 0 24px 60px rgba(20, 50, 110, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(0, 240, 255, 0.28), 0 0 30px rgba(177, 74, 237, 0.18);
 }
 
 .auth-card__brand {
@@ -50,13 +53,13 @@
   gap: 12px;
   margin-bottom: 6px;
 }
-/* 登录卡片是浅色背景，直接用去背后的黑线徽标即可，不需要反相。
-   与卡片标题「灵感改装」的 20px 字号对齐。 */
+/* 登录卡片是深色背景，去背后的黑线徽标需要反相成白线 */
 .auth-card__logo {
   height: 20px;
   width: auto;
   aspect-ratio: 353 / 324;
   display: block;
+  filter: invert(1) drop-shadow(0 0 8px rgba(0, 240, 255, 0.5));
 }
 .auth-card__brand-text {
   display: flex;
@@ -68,29 +71,31 @@
   font-size: 20px;
   font-weight: 900;
   letter-spacing: 0.04em;
-  color: #14233c;
+  color: #eafcff;
   font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
 }
 .auth-card__sub {
   margin: 2px 0 0;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #2b3f63;
-  font-style: italic;
+  color: var(--neon-cyan, #00f0ff);
+  font-family: 'Press Start 2P', 'Arial Black', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
 }
 
 .auth-card__heading {
   margin: 18px 0 4px;
   font-size: 17px;
   font-weight: 800;
-  color: #16243b;
+  color: #fff;
 }
 .auth-card__hint {
   margin: 0 0 18px;
   font-size: 12.5px;
-  color: #5a6b86;
+  color: var(--text-dim, #9aa7c7);
   line-height: 1.5;
 }
 
@@ -103,19 +108,19 @@
   height: 46px;
   padding: 0 14px;
   border-radius: 12px;
-  border: 1px solid rgba(40, 90, 170, 0.18);
-  background: #fff;
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  background: rgba(10, 10, 20, 0.6);
   font-size: 14px;
-  color: #1c2430;
+  color: var(--text, #e8f6ff);
   outline: none;
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 .auth-field__input::placeholder {
-  color: #9aa7bd;
+  color: var(--text-faint, #6b7390);
 }
 .auth-field__input:focus {
-  border-color: #2f7bff;
-  box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.16);
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.16), 0 0 16px rgba(0, 240, 255, 0.2);
 }
 
 .auth-error {
@@ -123,9 +128,9 @@
   padding: 9px 12px;
   border-radius: 10px;
   font-size: 12.5px;
-  color: #b4232a;
-  background: rgba(214, 40, 56, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(214, 40, 56, 0.28);
+  color: #ff8aa0;
+  background: rgba(255, 77, 109, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 109, 0.32), 0 0 14px rgba(255, 77, 109, 0.18);
 }
 
 .auth-submit {
@@ -137,15 +142,15 @@
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: #fff;
-  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
-  box-shadow: 0 10px 26px rgba(47, 123, 255, 0.34);
+  color: #0a0a14;
+  background: linear-gradient(100deg, var(--neon-pink, #ff2e97) 0%, #ff66c4 45%, var(--neon-cyan, #00f0ff) 100%);
+  box-shadow: 0 0 22px rgba(255, 46, 151, 0.35), 0 10px 26px rgba(0, 240, 255, 0.22);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.2s ease;
 }
 .auth-submit:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 32px rgba(47, 123, 255, 0.42);
+  box-shadow: 0 0 34px rgba(255, 46, 151, 0.55), 0 12px 32px rgba(0, 240, 255, 0.4);
 }
 .auth-submit:active {
   transform: translateY(0);
@@ -160,15 +165,16 @@
   margin-top: 16px;
   text-align: center;
   font-size: 12.5px;
-  color: #5a6b86;
+  color: var(--text-dim, #9aa7c7);
 }
 .auth-switch button {
   border: none;
   background: none;
-  color: #2f7bff;
+  color: var(--neon-cyan, #00f0ff);
   font-weight: 700;
   cursor: pointer;
   padding: 0 2px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
 }
 .auth-switch button:hover {
   text-decoration: underline;

@@ -173,40 +173,65 @@
 
 .jg-brand--overlay {
   /* 遮罩本身是 flex column + 居中，这里作为普通 flex 子元素插在最前面，
-     品牌在上、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
+     品牌字标在上、徽标在下、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
   margin-bottom: 6px;
   text-align: center;
   pointer-events: none;
 }
 
-.jg-brand--overlay .jg-brand__icon {
+/* 加载遮罩里的字标：保持静止，只用霓虹辉光 */
+.jg-brand--overlay .jg-brand__text {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  /* 加载时整体旋转：转速由 main.js 根据进度实时调整 */
-  animation: jg-spin var(--jg-spin-dur, 2.6s) linear infinite;
+  flex-direction: column;
+  gap: 6px;
+}
+.jg-brand--overlay .jg-brand__title {
+  font-family: 'Press Start 2P', 'Arial Black', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #eafcff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 46, 151, 0.32);
+}
+.jg-brand--overlay .jg-brand__sub {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, #9aa7c7);
 }
 
-/* 遮罩用的是完整锁定（徽标 + 字标），尺寸够大、字标看得清。
-   同样去掉白色卡片：完整 logo 图去背后，白底不再需要。 */
-.jg-brand--overlay .jg-icon {
+.jg-brand--overlay .jg-brand__icon {
+  position: relative;
+  display: block;
+  width: min-content;
+  height: 160px;
+}
+
+/* 六边形外框：静止不动 */
+.jg-brand--overlay .jg-icon--hex {
+  display: block;
   height: 160px;
   width: auto;
-  /* 与 logo-full-nobg.png 的固有比例一致，加载前就预留出正确宽度 */
-  aspect-ratio: 527 / 512;
   object-fit: contain;
-  /* 加载时上下跳跃 + 轻微呼吸；跳跃频率同样由进度驱动 */
-  animation:
-    jg-bounce var(--jg-bounce-dur, 0.9s) ease-in-out infinite,
-    jg-pulse 2.2s ease-in-out infinite;
+  filter: invert(1) drop-shadow(0 0 12px rgba(0, 240, 255, 0.35));
 }
 
-/* 图标容器旋转 —— 像车轮一样转动 */
-@keyframes jg-spin {
+/* 内部轮毂：像车轮一样旋转，转速由 main.js 根据进度实时调整 */
+.jg-brand--overlay .jg-icon--wheel {
+  position: absolute;
+  inset: 0;
+  height: 160px;
+  width: 100%;
+  object-fit: contain;
+  filter: invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  animation: jg-wheel-spin var(--jg-spin-dur, 2.6s) linear infinite;
+}
+
+@keyframes jg-wheel-spin {
   from {
     transform: rotate(0deg);
   }
@@ -215,32 +240,8 @@
   }
 }
 
-/* 图标上下跳跃 —— 像引擎启动时的跳动 */
-@keyframes jg-bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-14px);
-  }
-}
-
-@keyframes jg-pulse {
-  0%,
-  100% {
-    opacity: 0.86;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.03);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .jg-brand--overlay .jg-brand__icon,
-  .jg-brand--overlay .jg-icon {
+  .jg-brand--overlay .jg-icon--wheel {
     animation: none;
   }
 }
@@ -260,7 +261,9 @@
   .jg-brand--sidebar .jg-brand__sub {
     display: none;
   }
-  .jg-brand--overlay .jg-icon {
+  .jg-brand--overlay .jg-brand__icon,
+  .jg-brand--overlay .jg-icon--hex,
+  .jg-brand--overlay .jg-icon--wheel {
     height: 120px;
     width: auto;
   }

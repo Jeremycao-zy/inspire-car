@@ -1,19 +1,27 @@
-/* styles.css — 深色工业风控制台 */
+/* styles.css — 复古电子 / 霓虹赛博（synthwave）控制台 */
 
 :root {
-  --bg: #0b0d10;
-  --panel: #14171c;
-  --panel-2: #1a1e25;
-  --line: #262b34;
-  --text: #e7ebf0;
-  --text-dim: #8d97a5;
-  --text-faint: #5b6472;
-  --accent: #4ea1ff;
-  --accent-dim: rgba(78, 161, 255, 0.14);
-  --good: #35d07f;
-  --warn: #ffb020;
-  --err: #ff5f56;
-  --radius: 10px;
+  /* 深空紫黑底色 + 霓虹描边调色板 */
+  --bg: #0a0a14;
+  --panel: #12101f;
+  --panel-2: #171430;
+  --line: #2c2447;
+  --text: #e8f6ff;
+  --text-dim: #9aa7c7;
+  --text-faint: #6b7390;
+
+  /* 霓虹主色：青 / 粉 / 紫 */
+  --accent: #00f0ff;
+  --accent-dim: rgba(0, 240, 255, 0.14);
+  --neon-cyan: #00f0ff;
+  --neon-pink: #ff2e97;
+  --neon-purple: #b14aed;
+
+  --good: #39ff14;
+  --warn: #ffd000;
+  --err: #ff4d6d;
+
+  --radius: 6px;
 }
 
 * {
@@ -1377,4 +1385,198 @@ input[type='range']::-moz-range-thumb {
 .cw-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* =====================================================================
+ * 复古电子 / 霓虹赛博 · 全局氛围层（不碰 Three.js，仅视觉叠加）
+ * ===================================================================== */
+
+/* 全局 CRT 扫描线 + 暗角：固定满屏、不拦截鼠标事件。
+ * 只在内容之上蒙一层极淡的横线 + 四角压暗，营造老式显像管质感。 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0px,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(0, 0, 0, 0.16) 3px,
+      rgba(0, 0, 0, 0) 4px
+    ),
+    radial-gradient(120% 120% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.42) 100%);
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+
+/* 极小屏 / 低性能设备：扫描线关掉，避免糊字 */
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    opacity: 0.32;
+  }
+}
+
+/* 全局字体：优先 Noto Sans SC 承载中文，保留系统回退 */
+html,
+body {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* 终端等宽字体工具类：数字 / 拉丁标签用，强化电子仪表盘观感 */
+.mono,
+.ctl-value,
+.fit-num,
+.susp-val,
+.pricing-card__price .num,
+.appbar-loc {
+  font-family: 'Share Tech Mono', 'VT323', ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+/* ---- 霓虹滑块 ---- */
+input[type='range']::-webkit-slider-thumb {
+  box-shadow: 0 0 8px var(--neon-cyan), 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+input[type='range']::-moz-range-thumb {
+  box-shadow: 0 0 8px var(--neon-cyan);
+}
+input[type='range'] {
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.25), #2c2447);
+}
+
+/* ---- 霓虹滚动条（全局 webkit） ---- */
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--neon-purple), var(--neon-cyan));
+  border-radius: 6px;
+  border: 2px solid rgba(10, 10, 20, 0.9);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--neon-pink), var(--neon-cyan));
+}
+#sidebar::-webkit-scrollbar-thumb {
+  background: #3a2f5e;
+}
+
+/* ---- 霓虹按钮 / 选中态统一发光 ---- */
+.btn.primary {
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.5), 0 0 16px rgba(0, 240, 255, 0.35);
+}
+.btn.primary:hover {
+  box-shadow: 0 0 0 1px var(--neon-cyan), 0 0 24px rgba(0, 240, 255, 0.6);
+}
+.btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+.gb-back {
+  border-color: rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.22);
+}
+.gb-back:hover {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.45);
+}
+.seg-btn.on {
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.4);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+.chip.on {
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.3);
+}
+.tab.active {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+}
+
+/* 顶部登录用户条：改为深紫玻璃 + 霓虹按钮 */
+.auth-userbar {
+  background: rgba(18, 16, 31, 0.72);
+  box-shadow: 0 6px 18px rgba(177, 74, 237, 0.18), inset 0 0 0 1px rgba(0, 240, 255, 0.25);
+}
+.auth-userbar__name {
+  color: var(--text);
+}
+.auth-userbar__btn {
+  background: linear-gradient(100deg, var(--neon-pink) 0%, var(--neon-purple) 100%);
+  box-shadow: 0 4px 14px rgba(255, 46, 151, 0.35);
+}
+
+/* 加载遮罩底色跟随霓虹 */
+#overlay {
+  background: rgba(10, 10, 20, 0.86);
+}
+#overlay-text {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  letter-spacing: 0.04em;
+}
+.spinner {
+  border-color: rgba(0, 240, 255, 0.18);
+  border-top-color: var(--neon-cyan);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.35);
+}
+.hud-title {
+  color: var(--text-faint);
+}
+.hud-hint {
+  color: #5b6b8c;
+}
+
+/* 识别车型数据面板：深紫玻璃 + 霓虹描边 */
+.body-data {
+  border-color: rgba(0, 240, 255, 0.28);
+  background: rgba(18, 16, 31, 0.82);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.5), 0 0 22px rgba(177, 74, 237, 0.18);
+}
+.body-data__name {
+  color: #fff;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
+}
+.body-data__conf {
+  color: var(--neon-cyan);
+}
+.body-data__src {
+  border-top-color: rgba(0, 240, 255, 0.18);
+}
+
+/* 车漆色轮：霓虹描边与高亮统一 */
+.cw-orb {
+  box-shadow: 0 8px 22px rgba(200, 16, 46, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 18px rgba(255, 46, 151, 0.25);
+}
+.cw-swatch.active .cw-swatch-chip {
+  box-shadow: 0 0 0 2px var(--neon-cyan), 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 16px rgba(0, 240, 255, 0.4);
+}
+.cw-switch input:checked + .cw-switch-knob {
+  background: var(--neon-cyan);
+  border-color: rgba(0, 240, 255, 0.6);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+}
+.cw-bright::-webkit-slider-thumb {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 240, 255, 0.5);
+}
+.cw-bright::-moz-range-thumb {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+}
+.cw-select:focus {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.15);
 }
