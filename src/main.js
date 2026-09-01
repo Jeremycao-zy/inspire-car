@@ -728,15 +728,12 @@ document.addEventListener('glb:progress', (e) => {
   const pct = Math.min(100, Math.max(0, Number(e.detail.pct) || 0));
   overlayText.textContent = `加载模型 ${pct}%`;
 
-  // 进度越高，logo 旋转/跳跃越快，让用户感知「加载正在冲刺」
+  // 进度越高，遮罩里的轮毂图标旋转越快，让用户感知「加载正在冲刺」
   if (overlayIcon) {
     const ratio = pct / 100;
     // 0% -> 2.8s / 100% -> 0.42s
     const spinDur = Math.max(0.42, 2.8 * (1 - ratio * 0.85));
-    // 0% -> 1.0s / 100% -> 0.18s
-    const bounceDur = Math.max(0.18, 1.0 * (1 - ratio * 0.82));
     overlayIcon.style.setProperty('--jg-spin-dur', `${spinDur.toFixed(3)}s`);
-    overlayIcon.style.setProperty('--jg-bounce-dur', `${bounceDur.toFixed(3)}s`);
   }
 });
 
