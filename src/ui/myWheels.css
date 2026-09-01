@@ -1,0 +1,153 @@
+/* myWheels.css — 「我的轮毂」横向卡片列表 */
+
+.myw-empty {
+  padding: 18px 14px;
+  color: var(--text-faint);
+  font-size: 13px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.myw-grid {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 6px 2px 16px;
+  scroll-snap-type: x mandatory;
+}
+
+.myw-card {
+  position: relative;
+  flex: 0 0 126px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 14px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.18s ease;
+  /* 让卡片整体有点“悬浮”透视 */
+  transform-style: preserve-3d;
+}
+
+.myw-card:hover {
+  transform: translateY(-6px) perspective(520px) rotateX(4deg);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+  border-color: var(--accent);
+}
+
+.myw-card.active {
+  border-color: var(--good);
+  box-shadow: 0 0 0 1px var(--good), 0 12px 24px rgba(53, 208, 127, 0.12);
+}
+
+.myw-card.active::after {
+  content: '使用中';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--good);
+  border: 1px solid var(--good);
+  border-radius: 999px;
+}
+
+.myw-img-wrap {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0d0f12;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.myw-card:hover .myw-img-wrap {
+  transform: rotate(12deg) translateZ(18px);
+  box-shadow: 0 12px 28px rgba(78, 161, 255, 0.18);
+}
+
+.myw-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: myw-spin 16s linear infinite;
+}
+
+.myw-noimg {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 13px;
+  animation: myw-spin 16s linear infinite;
+}
+
+@keyframes myw-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.myw-info {
+  width: 100%;
+  text-align: center;
+}
+
+.myw-name {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+.myw-date {
+  color: var(--text-faint);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.myw-del {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 95, 86, 0.12);
+  color: var(--err);
+  font-size: 16px;
+  line-height: 22px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.myw-card:hover .myw-del {
+  opacity: 1;
+}
+
+.myw-del:hover {
+  background: rgba(255, 95, 86, 0.24);
+}

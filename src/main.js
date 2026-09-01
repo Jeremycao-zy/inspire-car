@@ -37,6 +37,7 @@ import {
 import { createPanel } from './ui/panel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
+import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
 import { fetchMe } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import './ui/styles.css';
@@ -94,6 +95,8 @@ const DEFAULTS = {
   rimOffsetY: 0, // 轮平面内的竖向微调，mm
   rimOffsetZ: 0, // 沿轮轴方向的 seating 微调，mm
   rimPreset: 'default', // 程序化轮毂款式 id（te37 / bbs-lm / rotiform / mesh / sport / default）
+  // 用户自己生成的轮毂模型 URL；rimPreset='custom' 表示当前不是预设款式
+  customWheelUrl: null,
   fenderOffsetF: 0, // 翼子板基准补偿（mm），PRD §4.6 R3.3
   fenderOffsetR: 0,
   // 车长（米）。查到真车数据后会被真实车长覆盖，见 applyRealSpecs()
@@ -1101,6 +1104,7 @@ const app = {
   async loadPresetWheel(style = 'default') {
     const preset = RIM_PRESETS.find((p) => p.style === style) || RIM_PRESETS[0];
     this.params.rimPreset = style;
+    this.params.customWheelUrl = null; // 切回预设款式，不再使用自定义生成轮毂
 
     if (preset.glbUrl) {
       const r = await this.loadWheelFromUrl(preset.glbUrl);
@@ -1824,6 +1828,12 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       if (kind === 'wheel' && res.mode === 'live') {
         app._wheelQuotaExceeded = false;
         app._wheelLastSig = '';
+        // 记录到「我的轮毂」库，清空上传区，方便继续生成下一只
+        app.params.customWheelUrl = res.url;
+        app.params.rimPreset = 'custom';
+        await recordGeneratedWheel({ url: res.url, files, name: title || '我的轮毂' });
+        u.reset?.();
+        panel?.syncMyWheels?.();
       }
       const t = res.title || title || '';
       u.setStatus(t ? `已生成：${t}` : `生成完成（${meta.label}）`, 'ok');
@@ -2188,6 +2198,12 @@ async function loadPlanCar() {
   if (typeof carGroup !== 'undefined' && carGroup) {
     app.refitCar({ recapture: false });
     app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
+  }
+  // 方案保存了自定义轮毂 → 重新载入；失败只记日志，保留程序化兜底
+  if (currentPlan?.params?.customWheelUrl) {
+    await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {
+      console.warn('[plan] 恢复自定义轮毂失败：', e.message);
+    });
   }
   // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
   await restoreBangForPlan();

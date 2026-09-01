@@ -13,6 +13,7 @@
 import { ET_REF } from '../tuning/wheelRig.js';
 import { RIM_PRESETS } from '../tuning/proceduralRim.js';
 import { createColorWheel } from './colorWheel.js';
+import { renderMyWheels } from './myWheels.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -257,6 +258,19 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
 
     /** 一次性把上一轮的失败痕迹清干净（重新开始生成时调用） */
     clearRecovery() {
+      actions.innerHTML = '';
+      detail.innerHTML = '';
+    },
+
+    /** 生成完成后完全清空上传区，方便用户继续上传下一张 */
+    reset() {
+      input.value = '';
+      thumbs.innerHTML = '';
+      nameInput.value = '';
+      status.textContent = '';
+      status.className = 'upload-status';
+      bar.style.display = 'none';
+      bar.firstChild.style.width = '0%';
       actions.innerHTML = '';
       detail.innerHTML = '';
     },
@@ -945,6 +959,14 @@ export function createPanel(app, mount) {
   tabBodies.body.appendChild(section('悬挂高度（分轴/分角）', suspensionBox));
   tabBodies.body.appendChild(collapsible('精细修正（相对偏移）', fineBox));
   tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
+
+  /* ---- 我的轮毂：生成后展示在这里，点击即可换装 ---- */
+  const myWheelsBox = el('div', { class: 'myw-section' });
+  function syncMyWheels() {
+    renderMyWheels(myWheelsBox, { app, activeUrl: app.params.customWheelUrl || null });
+  }
+  tabBodies.wheels.appendChild(section('我的轮毂', myWheelsBox));
+
   tabBodies.wheels.appendChild(
     section(
       '轮毂生成引擎',
@@ -1145,6 +1167,7 @@ export function createPanel(app, mount) {
     for (const s of sliders) s.render();
     renderSuspension();
     for (const s of lightRows) s();
+    syncMyWheels();
   }
 
   function updateReadout() {
@@ -1269,6 +1292,7 @@ export function createPanel(app, mount) {
       syncExposure();
     },
     syncScene,
+    syncMyWheels,
     carUpload,
     wheelUpload,
   };
