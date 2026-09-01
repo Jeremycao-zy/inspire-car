@@ -29,10 +29,17 @@
 5. 进入项目 → **Variables**，添加（敏感，**只在控制台填**）：
    - `HYPER3D_API_KEY` = 你的 key
    - `HUNYUAN3D_TOKEN` = 你的 token
+   - `AUTH_SECRET` = 一串随机 48 字节十六进制（固定下来，已登录用户的 token 才不会因重启失效）。
+     本地生成命令：`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
    （改完变量会自动重新部署）
 6. 部署完成后，Railway 分配 `https://<项目名>.railway.app` 域名，浏览器打开即可。
-7. **挂持久卷**（重要，否则重启丢用户数据）：
-   项目 → **Volumes** → **Add Volume**，Mount Path 填 `/app/.cache`。
+7. **挂持久卷（关键，否则重启/重部署会丢账号与模型）**：
+   ⚠️ 试用版（Trial）看不到 Volume 入口，需先绑卡：右上角头像 → **Billing** → 绑信用卡/ PayPal（预授权 $1 可退）→ 等待账户变为正式。
+   绑卡后：
+   - 项目 → 服务 `inspire-car` → **Settings** → **Volumes** → **Attach Volume**
+   - **Mount Path** 填 `/app/.cache`
+   - 保存，Railway 会自动重新部署一次
+   - 挂卷后该目录落到容器外持久存储，账号/生成模型/额度计数都不会再丢。
 
 ## 方式 B：Railway CLI 直连（不用 GitHub）
 
@@ -79,7 +86,12 @@ railway domain
 | 健康检查 | `GET /api/health` | `server/index.mjs` |
 | 静态服务 | 开（`SERVE_STATIC=1`） | `Dockerfile` ENV |
 | SPA 回落 | 开（`SPA_FALLBACK=1`） | `Dockerfile` ENV |
-| 持久化 | `/app/.cache` 挂卷 | `Dockerfile` VOLUME，需控制台挂 |
+| 持久化 | `/app/.cache` 挂卷 | **需控制台挂 Volume**（railway.toml 不支持声明卷，Dockerfile 已删 VOLUME 指令） |
+| 登录密钥 | `AUTH_SECRET` 环境变量 | 固定后 token 不会因容器重建失效；缺失时回退 `.cache/users/.secret` |
+
+> 排障：**登录提示「账号或密码错误」但密码没错** —— 99% 是没挂 Volume，之前部署清掉了
+> `/app/.cache/users/users.json` 里的账号。挂上 Volume 后重新注册一次即可永久保留。
+> 若挂了 Volume 仍登不上，八成是 `AUTH_SECRET` 变了导致旧 token 失效，重新登录即可。
 
 > 注意：本地 `start-garage.command` 仍走 `npm run dev`（HOST=127.0.0.1），不受影响；
 > 只有 Railway/Docker 生产镜像才用 `0.0.0.0`，两边互不影响。
