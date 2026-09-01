@@ -23,7 +23,7 @@
 
 import * as THREE from 'three';
 import { buildTire, tireOuterRadius } from './tire.js';
-import { buildProceduralRim } from './proceduralRim.js';
+import { buildProceduralRim, RIM_PRESETS } from './proceduralRim.js';
 import { autoFitCorners, detectWheelCenters, fitmentReport } from './wheelFit.js';
 
 /** 基准偏距：轮心正对轮拱中线时的 ET，用于换算"相对基准外移多少" */
@@ -64,6 +64,16 @@ export class WheelRig {
     /** 来自底盘的轮位规格（cornerSpec）；字段名沿用 detected 以兼容既有测试 */
     this.detected = null;
     /**
+     * 真车轴距/轮距（米）：{wheelbase, trackFront, trackRear, axleXFront?, axleXRear?}。
+     * 设置后**优先于**按车身尺寸估算的轮位（autoFitCorners），
+     * 因为估算值实测会偏 170mm 量级，而真车数据是准的。
+     *
+     * axleXFront / axleXRear 是前后轴的**绝对 x 坐标**（车长中心为 0、车头 +X），
+     * 来自 BANG 拆解测到的车轮质心。给了就用它定位，没有才退回 ±wheelbase/2 ——
+     * 真实车前后悬不等长，轴距中心 ≠ 车身包围盒中心，对称摆法会整体偏一个常量。
+     */
+    this.realGeometry = null;
+    /**
      * 车身半宽（米）。**必须**由 main.js 从 ShellMeasure 注入。
      * 旧实现用 `carSize.z / 2`，会被车底中央伪影撑大 114mm，
      * 直接淹没 ±5mm 的 Flush 判定区间。未注入时退化到 carSize.z / 2。
@@ -90,6 +100,95 @@ export class WheelRig {
    */
   setDetectedCorners(detected) {
     this.setCornerSpec(detected);
+  }
+
+  /**
+   * 注入真车轴距 / 轮距（米），让四个轮位落在**真实**位置上。
+   *
+   * 为什么要覆盖估算值：autoFitCorners 是按车身包围盒比例推的轮位，
+   * 实测与模型真实车轮差 170mm 量级（演示车 |z| 0.63 vs 估算 0.795），
+   * 会连带影响切除原车轮、齐边判定等一切依赖轮位的功能。
+   *
+   * 支持部分更新：只传 wheelbase 或只传轮距时，其余字段保持当前值；
+   * 首次调用且字段不齐时，缺失字段用当前估算值补齐，避免只调一项时车轮不动。
+   *
+   * @param {{wheelbase?:number, trackFront?:number, trackRear?:number,
+   *          axleXFront?:number, axleXRear?:number}} g
+   */
+  setRealGeometry(g) {
+    if (!g) return false;
+    const MIN = { wheelbase: 1.2, trackFront: 0.6, trackRear: 0.6 };
+    const next = { ...(this.realGeometry || {}) };
+    let changed = false;
+    for (const key of ['wheelbase', 'trackFront', 'trackRear']) {
+      const v = g[key];
+      if (Number.isFinite(v) && v > MIN[key]) {
+        next[key] = v;
+        changed = true;
+      }
+    }
+    /* 实测轴位置：只有"前轴确实在后轴前面"才采信，否则整对丢弃退回 ±wheelbase/2。
+     * 不做对称 clamp —— 实测值被截断就退化成估算解，等于白测（chassis.js 同款处理）。 */
+    for (const key of ['axleXFront', 'axleXRear']) {
+      const v = g[key];
+      if (Number.isFinite(v) && v !== next[key]) {
+        next[key] = v;
+        changed = true;
+      }
+    }
+    if (
+      Number.isFinite(next.axleXFront) &&
+      Number.isFinite(next.axleXRear) &&
+      next.axleXFront <= next.axleXRear
+    ) {
+      delete next.axleXFront;
+      delete next.axleXRear;
+    }
+    if (!changed) return false;
+
+    // 补齐缺失字段，让 _rebuildCorners 总能算出完整的四角
+    const est = autoFitCorners({ carSize: this.carSize, rimWidth: ((this.params?.front?.j || 8.5) * 25.4) / 1000 });
+    const estX = Math.abs(est.find((b) => b.id[0] === 'F')?.x || 0.85);
+    const estZf = Math.abs(est.find((b) => b.id === 'FL')?.z || 0.7);
+    const estZr = Math.abs(est.find((b) => b.id === 'RL')?.z || 0.7);
+    if (!Number.isFinite(next.wheelbase) || next.wheelbase <= MIN.wheelbase) {
+      next.wheelbase =
+        Number.isFinite(next.axleXFront) && Number.isFinite(next.axleXRear)
+          ? next.axleXFront - next.axleXRear
+          : estX * 2;
+    }
+    if (!Number.isFinite(next.trackFront) || next.trackFront <= MIN.trackFront) next.trackFront = estZf * 2;
+    if (!Number.isFinite(next.trackRear) || next.trackRear <= MIN.trackRear) next.trackRear = estZr * 2;
+
+    this.realGeometry = next;
+    this._rebuildCorners();
+    return true;
+  }
+
+  /** 清掉真车几何约束，退回按车身尺寸估算 */
+  clearRealGeometry() {
+    this.realGeometry = null;
+    this._rebuildCorners();
+  }
+
+  /**
+   * 只清掉实测轴位置（保留轴距 / 轮距）。
+   *
+   * 为什么必须能单独清：axleXFront / axleXRear 是**绝对坐标**（米），换一辆车后
+   * 留着上一辆车的值会把新轮毂直接摆飞；而轴距/轮距是标量，旧值只会略微不准。
+   * setRealGeometry() 是"部分更新"语义（传 null 不改动），清不掉，所以单开一个口子。
+   *
+   * @returns {boolean} 是否真的清掉了东西
+   */
+  clearAxlePositions() {
+    if (!this.realGeometry) return false;
+    if (this.realGeometry.axleXFront === undefined && this.realGeometry.axleXRear === undefined) {
+      return false;
+    }
+    delete this.realGeometry.axleXFront;
+    delete this.realGeometry.axleXRear;
+    this._rebuildCorners();
+    return true;
   }
 
   /**
@@ -142,8 +241,9 @@ export class WheelRig {
   }
 
   /** 没有轮毂模型时，退化为程序化轮毂，保证预览永远可用 */
-  useProceduralWheel() {
-    const g = buildProceduralRim({ diameter: 0.48, width: 0.216, spokes: 5 });
+  useProceduralWheel(style = 'default') {
+    const preset = RIM_PRESETS.find((p) => p.style === style) || RIM_PRESETS[0];
+    const g = buildProceduralRim({ diameter: 0.48, width: 0.216, spokes: preset.spokes, style: preset.style });
     this.setWheelSource(g, { diameter: 0.48, width: 0.216 });
   }
 
@@ -174,7 +274,26 @@ export class WheelRig {
     // 原因是：图生 3D 出来的轮毂 GLB 可能包含轮胎，量出来的宽度会远大于轮辋宽度，
     // 导致轮子被错误地塞到车身深处。用目标 J 值定位，才是用户真正想看的轮辋位置。
     const targetRimWidth = ((this.params?.front?.j || 8.5) * 25.4) / 1000;
-    const base = autoFitCorners({ carSize: this.carSize, rimWidth: targetRimWidth, detected: this.detected });
+    let base = autoFitCorners({ carSize: this.carSize, rimWidth: targetRimWidth, detected: this.detected });
+
+    /* 真车轴距/轮距优先：把估算出来的轮位强行校正到真实四角。
+     * 约定：车长沿 X（前 +X），车宽沿 Z（左 +Z，side>0）。 */
+    if (this.realGeometry) {
+      const { wheelbase, trackFront, trackRear, axleXFront, axleXRear } = this.realGeometry;
+      const hx = wheelbase / 2;
+      const zf = trackFront / 2;
+      const zr = trackRear / 2;
+      // 实测轴位置优先：axleXFront/Rear 是前后轴的绝对 x，直接就是轮毂该落的位置。
+      // 只有它们缺失时才退回 ±wheelbase/2（轴距中心 = 车身中心的对称假设）。
+      const xF = Number.isFinite(axleXFront) ? axleXFront : hx;
+      const xR = Number.isFinite(axleXRear) ? axleXRear : -hx;
+      base = base.map((b) => {
+        const isFront = b.id[0] === 'F';
+        const x = isFront ? xF : xR;
+        const half = isFront ? zf : zr;
+        return { ...b, x, z: (b.side >= 0 ? 1 : -1) * half };
+      });
+    }
 
     for (const b of base) {
       const mount = new THREE.Group();
@@ -357,6 +476,7 @@ export class WheelRig {
       const camberRad = THREE.MathUtils.degToRad(a.camber || 0);
 
       // ① ET：沿轴向整体外推 / 内收（接地点一起走）
+      // 悬挂高度只移动车身，不移动车轮；车轮始终贴地（mount.y = 0）
       const z = c.side * (c.baseHalfTrack + etOffset + trackAdj);
       c.mount.position.set(c.baseX + xShift, 0, z);
 

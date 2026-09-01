@@ -1,7 +1,7 @@
 /**
  * garage.js — 「灵感车库」第一层入口页（白色科技车库风）
  *
- * · 顶部：Logo + 灵感车库 品牌 + 新建方案按钮（对齐）
+ * · 顶部：Logo + 灵感车库 品牌
  * · Hero：标签语 + 实时 3D 车模预览（my-car.glb 自动旋转）+ CTA
  * · 我的改装方案：卡片网格，封面用保存时的 3D 快照
  *
@@ -13,10 +13,18 @@
 import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
 import { previewEngine, previewParamsOf } from './planPreview.js';
+import { currentUser, logout } from '../auth.js';
 import './garage.css';
-import logoIconUrl from '../assets/logo-icon.png';
+import logoMarkUrl from '../assets/logo-mark-nobg.png';
 
-const STORAGE_KEY = 'inspire-car-plans';
+/**
+ * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
+ * 未登录（理论上进不到这里）回落到 anon，避免 KeyError。
+ */
+function storageKey() {
+  const u = currentUser();
+  return `inspire-car-plans:${u?.id || 'anon'}`;
+}
 
 /** 默认示例方案（首次进入时展示，封面留空走占位） */
 const DEMO_PLANS = [
@@ -70,7 +78,7 @@ function el(tag, props = {}, ...children) {
 
 /** 灵感车库「风火轮风格」玩具卡背 logo SVG（替代原 Hot Wheels logo） */
 function inspireLogoSVG() {
-  return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感车库 INSPIRE CAR">
+  return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感改装 INSPIRE CAR">
     <defs>
       <linearGradient id="hwFlame" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0" stop-color="#e60012"/>
@@ -85,7 +93,7 @@ function inspireLogoSVG() {
           fill="url(#hwFlame)" filter="url(#hwShadow)" stroke="#fff" stroke-width="2"/>
     <path d="M30,48 C40,25 80,28 110,38 C130,44 150,38 175,32" fill="none" stroke="#fff7b3" stroke-width="3" stroke-linecap="round" opacity=".9"/>
     <text x="108" y="43" text-anchor="middle" font-size="24" font-weight="900" fill="#fff"
-          stroke="#a30e0e" stroke-width=".6" style="font-style:italic">灵感车库</text>
+          stroke="#a30e0e" stroke-width=".6" style="font-style:italic">灵感改装</text>
     <text x="108" y="60" text-anchor="middle" font-size="8" font-weight="800" fill="#1b2a44" letter-spacing="3">INSPIRE CAR</text>
   </svg>`;
 }
@@ -105,17 +113,45 @@ function formatDate(ts) {
 
 function readPlans() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    const raw = localStorage.getItem(storageKey());
+    if (raw) return migrateLegacyRedPaint(JSON.parse(raw));
   } catch {
     /* ignore */
   }
   return null;
 }
 
+/**
+ * 一次性迁移：早期版本默认车漆是竞速红 #c8102e，改默认白色之前保存的
+ * 存量方案里都带着这个红值，进改装间恢复参数时整车会变红。
+ * 统一洗成 #ffffff（白色着色叠加 = 透出原车贴图，保持原有状态显示）。
+ * 用 flag 保证只跑一次，用户之后主动选的红色不会被误清。
+ */
+function migrateLegacyRedPaint(plans) {
+  if (!Array.isArray(plans)) return plans;
+  const flagKey = storageKey() + ':red-paint-migrated';
+  try {
+    if (localStorage.getItem(flagKey)) return plans;
+    localStorage.setItem(flagKey, '1');
+  } catch {
+    /* ignore */
+  }
+  let changed = false;
+  for (const p of plans) {
+    const c = p?.params?.bodyColor;
+    if (typeof c === 'string' && c.toLowerCase() === '#c8102e') {
+      p.params.bodyColor = '#ffffff';
+      p.params.bodySolid = false;
+      changed = true;
+    }
+  }
+  if (changed) writePlans(plans);
+  return plans;
+}
+
 function writePlans(plans) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
+    localStorage.setItem(storageKey(), JSON.stringify(plans));
   } catch {
     /* ignore */
   }
@@ -192,7 +228,7 @@ function startPreview(container) {
   });
   ro.observe(container);
 
-  loadGLB('/models/my-car.glb')
+  loadGLB('/models/my-car.glb', { progress: false })
     .then(({ group }) => {
       if (disposed) return;
       pivot = new THREE.Group();
@@ -249,7 +285,7 @@ function createCard(plan, onClick, onDelete) {
     ? el('span', { class: 'garage-card__badge' }, plan.tags[0])
     : null;
 
-  // 删除按钮（卡片右上角，浮在泡壳上方）
+  // 删除按钮（收藏卡左上角，随卡片 3D 浮动）
   const del = el(
     'button',
     {
@@ -311,10 +347,10 @@ function createCard(plan, onClick, onDelete) {
     )
   );
 
-  // 整包 = 吊牌孔 + 背卡
-  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing);
+  // 整包 = 吊牌孔 + 背卡 + 徽章 + 删除按钮（全部放在 pack 内，跟随 3D 联动）
+  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing, badge, del);
 
-  const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack, badge, del);
+  const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
 
   // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）；透传方案车型地址
   if (previewEngine.ok) {
@@ -340,25 +376,42 @@ export function mountGarage({ onEnter, mount } = {}) {
   const root = mount || $('#garage');
   if (!root) return null;
   root.innerHTML = '';
+  root.classList.remove('hidden');
 
   let preview = null;
 
   /* 顶部品牌栏 */
+  const u = currentUser();
+  const userChip = el(
+    'div',
+    { class: 'garage-userchip' },
+    el('span', { class: 'garage-userchip__name' }, u?.username || '用户'),
+    el(
+      'button',
+      {
+        class: 'garage-userchip__btn',
+        type: 'button',
+        title: '注销登录',
+        onClick: () => logout(),
+      },
+      '注销'
+    )
+  );
   const header = el(
     'header',
     { class: 'garage-header' },
     el(
       'div',
       { class: 'garage-brand' },
-      el('img', { class: 'garage-logo', src: logoIconUrl, alt: 'INSPIRE CAR' }),
+      el('img', { class: 'garage-logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
       el(
         'div',
         { class: 'garage-brand__text' },
-        el('h1', { class: 'garage-brand__title' }, '灵感车库'),
-        el('p', { class: 'garage-brand__sub' }, 'INSPIRE CAR · TUNING STUDIO')
+        el('h1', { class: 'garage-brand__title' }, '灵感改装'),
+        el('p', { class: 'garage-brand__sub' }, 'INSPIRE CAR')
       )
     ),
-    el('button', { class: 'gb-btn primary', onClick: () => onEnter?.(null) }, '+ 新建方案')
+    userChip
   );
 
   /* Hero：文案 + 实时 3D 预览 */
@@ -370,7 +423,7 @@ export function mountGarage({ onEnter, mount } = {}) {
       'div',
       { class: 'garage-hero__text' },
       el('h2', { class: 'garage-hero__title' }, '把灵感，变现实'),
-      el('p', { class: 'garage-hero__sub' }, '上传爱车照片，AI 生成 3D 车模，保存每一套轮毂与姿态方案。'),
+      el('p', { class: 'garage-hero__sub' }, '看见每一套轮毂与姿态方案。'),
       el(
         'div',
         { class: 'garage-hero__actions' },
@@ -391,7 +444,7 @@ export function mountGarage({ onEnter, mount } = {}) {
   const body = el(
     'main',
     { class: 'garage-body' },
-    el('h2', { class: 'garage-section-title' }, '我的改装方案'),
+    el('h2', { class: 'garage-section-title' }, 'INSPIRATION GARAGE'),
     grid
   );
 

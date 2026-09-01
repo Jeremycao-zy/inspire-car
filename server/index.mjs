@@ -28,14 +28,44 @@ import * as hy3d from './hunyuan3d.mjs';
 import * as hyper3d from './hyper3d.mjs';
 import * as fal from './fal3d.mjs';
 import * as vision from './vision.mjs';
+import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
+import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
+import * as auth from './auth.mjs';
+import { createStaticServer } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const CACHE_DIR = path.join(ROOT, '.cache', 'models');
+const DIST_DIR = path.join(ROOT, 'dist');
 
-const PORT = Number(process.env.API_PORT || 8787);
+/** 监听地址：默认只监听回环，保持本地开发行为不变；容器/云平台需要 HOST=0.0.0.0 */
+const HOST = process.env.HOST || '127.0.0.1';
+/** 端口优先级：API_PORT（本项目原有配置）> PORT（云平台通用约定）> 8787 */
+const PORT = Number(process.env.API_PORT || process.env.PORT || 8787);
 const MAX_BODY = Number(process.env.MAX_BODY_MB || 80) * 1024 * 1024;
+
+/* 预置演示模型的候选目录（按顺序取第一个存在的）。
+ * 本地开发读 public/models；Docker 运行时只拷了 dist/，所以 dist/models 必须能兜住。 */
+const DEMO_MODEL_DIRS = [path.join(ROOT, 'public', 'models'), path.join(DIST_DIR, 'models')];
+
+/**
+ * 定位一个预置演示模型（my-car.glb / wheel.glb）。
+ * @param {string} name 文件名，不含目录
+ * @returns {string|null} 存在的绝对路径，找不到返回 null
+ */
+function demoModelPath(name) {
+  const safe = path.basename(name);
+  for (const dir of DEMO_MODEL_DIRS) {
+    const p = path.join(dir, safe);
+    try {
+      if (fs.statSync(p).isFile()) return p;
+    } catch {
+      /* 换下一个候选目录 */
+    }
+  }
+  return null;
+}
 
 /* 默认面数：标准档；请求体可带 faceCount 覆盖，用于实测上限或后续「高精档」UI */
 const DEFAULT_FACE_COUNT = {
@@ -250,9 +280,9 @@ async function handleGenerate(req, res) {
       emit({ stage: 'demo', progress: (i + 1) / steps.length, message: `[离线演示] ${steps[i]}` });
       await sleep(700);
     }
-    const exists = fs.existsSync(path.join(ROOT, 'public', 'models', demoFile));
+    const exists = Boolean(demoModelPath(demoFile));
     if (!exists) {
-      fail('演示模型缺失，请确认 public/models 下有 ' + demoFile);
+      fail('演示模型缺失，请确认 public/models 或 dist/models 下有 ' + demoFile);
       return;
     }
     emit({
@@ -462,6 +492,20 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     });
   };
 
+  /* ---------- 提示词规则（Hyper3D 调用契约：① 英文 prompt ② 业务说明） ----------
+   * kind 由上传入口决定（整车面板/轮毂面板）——这就是轮毂图/整车图的自动分类真值。
+   * 每次调用都自动拼接：通用基础模板 + 分支追加词（轮毂=独立可拆装 / 整车=预留安装位），
+   * 通过 SSE stage:'prompt' 回传给前端展示，DEMO 与 LIVE 一致。 */
+  const rodinPrompt = buildRodinPrompt(kind, body.prompt || '');
+  const taskNote = describeTask(kind);
+  emit({
+    stage: 'prompt',
+    progress: 0.03,
+    message: `已识别为${kind === 'wheel' ? '轮毂' : '整车'}任务，生成提示词已就绪`,
+    prompt: rodinPrompt,
+    taskNote,
+  });
+
   /* ---------- DEMO 模式 ---------- */
   if (!token) {
     const demoFile = kind === 'wheel' ? 'wheel.glb' : 'my-car.glb';
@@ -475,9 +519,9 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
       emit({ stage: 'demo', progress: (i + 1) / steps.length, message: `[离线演示] ${steps[i]}` });
       await sleep(700);
     }
-    const exists = fs.existsSync(path.join(ROOT, 'public', 'models', demoFile));
+    const exists = Boolean(demoModelPath(demoFile));
     if (!exists) {
-      fail('演示模型缺失，请确认 public/models 下有 ' + demoFile);
+      fail('演示模型缺失，请确认 public/models 或 dist/models 下有 ' + demoFile);
       return;
     }
     emit({
@@ -516,7 +560,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     try {
       sub = await hyper3d.submitRodin({
         imagesBase64: b64List,
-        prompt: body.prompt || '',
+        prompt: rodinPrompt, // 自动拼接的专业提示词（基础模板 + kind 分支词 + 用户附加）
         tier,
         meshMode: 'Raw',
         material: 'PBR',
@@ -634,7 +678,9 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
      * 不必把几十 MB 的 GLB 再上传一遍（省带宽也更快）。
      * 拆解失败不推翻已生成的整车：仍交付整车，只是没有部件。 */
     let parts = null;
-    if (body.autoBang !== false) {
+    /* 只给整车做拆解：轮毂拆成"轮辋/轮辐/中心盖"对项目没有价值（四轮 rig 用的是整只轮毂），
+     * 拆解还要再吃一次额度。所以 wheel 一律跳过自动 BANG。 */
+    if (body.autoBang !== false && kind === 'car') {
       try {
         parts = await runBangPhase({
           assetId: taskUuid,
@@ -644,6 +690,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
             ? body.bangMaterial
             : 'PBR',
           parent: kind,
+          parentAsset: name, // 这台车自身的资产名，写进 BANG 索引
           emit,
           isClosed,
           range: [0.93, 0.99], // 接在生成进度之后，进度条不跳变
@@ -887,13 +934,21 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
  * 解析前端传来的 modelUrl，落到本地 Buffer 或 Hyper3D asset_id。
  *   - UUID                       → { assetId }
  *   - /api/asset/:name           → 读 .cache/models/:name
- *   - /models/xxx.glb             → 读 public/models/xxx.glb
- *   - 其它本地路径 / 文件名        → 在 cache / public 目录里找
+ *   - /models/xxx.glb             → 读 public/models/ 或 dist/models/ 下的 xxx.glb
+ *   - 其它本地路径 / 文件名        → 在 cache / public / dist 目录里找
  */
 async function resolveBangModel(modelUrl) {
   if (!modelUrl) return null;
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidRe.test(modelUrl.trim())) return { assetId: modelUrl.trim() };
+
+  const isFile = (p) => {
+    try {
+      return fs.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  };
 
   let filePath = null;
   if (modelUrl.startsWith('/api/asset/')) {
@@ -901,27 +956,22 @@ async function resolveBangModel(modelUrl) {
     filePath = path.join(CACHE_DIR, nm);
   } else if (modelUrl.startsWith('/models/')) {
     const nm = path.basename(modelUrl.slice('/models/'.length));
-    filePath = path.join(ROOT, 'public', 'models', nm);
+    filePath = demoModelPath(nm);
   } else if (modelUrl.startsWith('/')) {
     const nm = path.basename(modelUrl);
-    const cands = [path.join(CACHE_DIR, nm), path.join(ROOT, 'public', 'models', nm)];
-    filePath = cands.find((p) => {
-      try {
-        return fs.statSync(p).isFile();
-      } catch {
-        return false;
-      }
-    }) || null;
+    const cands = [
+      path.join(CACHE_DIR, nm),
+      ...DEMO_MODEL_DIRS.map((d) => path.join(d, nm)),
+    ];
+    filePath = cands.find(isFile) || null;
   } else {
     const nm = path.basename(modelUrl);
-    const cands = [path.join(CACHE_DIR, nm), path.join(ROOT, 'public', 'models', nm), modelUrl];
-    filePath = cands.find((p) => {
-      try {
-        return fs.statSync(p).isFile();
-      } catch {
-        return false;
-      }
-    }) || null;
+    const cands = [
+      path.join(CACHE_DIR, nm),
+      ...DEMO_MODEL_DIRS.map((d) => path.join(d, nm)),
+      modelUrl,
+    ];
+    filePath = cands.find(isFile) || null;
   }
   if (!filePath || !fs.existsSync(filePath)) return null;
   const buf = await fsp.readFile(filePath);
@@ -934,6 +984,28 @@ async function writeBangPart(buffer, parent, index, hash, ext = '.glb') {
   await fsp.mkdir(CACHE_DIR, { recursive: true });
   await fsp.writeFile(path.join(CACHE_DIR, name), buffer);
   return `/api/asset/${name}`;
+}
+
+/* ---------------- BANG 索引：整车资产 → 它的拆解部件 ----------------
+ * 为什么需要：拆解产物过去只存在前端内存里，用户刷新页面 / 换设备后就没了，
+ * 再进来只剩"未拆解的整车"（空壳、轮拱是贴图）。有了这张索引，
+ * 只要这台车以前拆过，就能**零额度**直接把拆好的实体车身取回来。 */
+const BANG_INDEX = path.join(CACHE_DIR, 'bang-index.json');
+
+async function readBangIndex() {
+  try {
+    return JSON.parse(await fsp.readFile(BANG_INDEX, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+async function writeBangIndex(modelName, parts) {
+  if (!modelName || !Array.isArray(parts) || !parts.length) return;
+  const idx = await readBangIndex();
+  idx[modelName] = { parts, updatedAt: new Date().toISOString() };
+  await fsp.mkdir(CACHE_DIR, { recursive: true });
+  await fsp.writeFile(BANG_INDEX, JSON.stringify(idx, null, 2));
 }
 
 /**
@@ -964,6 +1036,7 @@ async function runBangPhase(o) {
     material = 'PBR',
     geometryFileFormat = 'glb',
     parent = 'model',
+    parentAsset = null, // 源整车资产名（写 BANG 索引用；仅用于文件名时为 parent）
     emit = () => {},
     isClosed = () => false,
     range = [0.05, 1],
@@ -1047,6 +1120,9 @@ async function runBangPhase(o) {
     e.bangEmpty = true;
     throw e;
   }
+
+  // 记进索引：下次再进这台车，直接取回拆好的实体车身，不用再花一次额度
+  await writeBangIndex(parentAsset || null, parts);
   return parts;
 }
 
@@ -1172,6 +1248,8 @@ async function handleBang(req, res) {
         material,
         geometryFileFormat,
         parent,
+        // 手动拆解时源模型就是本地资产，按它的文件名写索引
+        parentAsset: resolved.assetId ? null : resolved.modelName ? path.basename(resolved.modelName) : null,
         emit,
         isClosed: () => closed,
         range: [0.05, 1],
@@ -1355,7 +1433,125 @@ async function handleRecognize(req, res) {
   sendJson(res, 200, r);
 }
 
+/**
+ * POST /api/specs
+ * 入参：{ fullName, year? }   识别出的车型名
+ * 出参：{ available:true, length, width, height, wheelbase, trackFront, trackRear, ... }
+ *       { available:false, reason:'no-key'|'auth'|'error', detail? }
+ *
+ * 拿到真车尺寸后，前端用它做归一建模与四轮定位，
+ * 让所有后续调节都建立在真实比例上。
+ */
+async function handleSpecs(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const fullName = String(body?.fullName || '').trim();
+  if (!fullName) {
+    sendJson(res, 400, { error: '缺少 fullName' });
+    return;
+  }
+  const r = await specs.carSpecs(fullName, { year: body?.year });
+  sendJson(res, 200, r);
+}
+
+/* ------------------------- 认证（注册 / 登录 / 身份校验） ------------------------- */
+
+/**
+ * 从 Authorization: Bearer <token> 取 token；没有则返回 null。
+ */
+function bearerToken(req) {
+  const h = req.headers['authorization'] || '';
+  const m = /^Bearer\s+(.+)$/i.exec(h);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * POST /api/auth/register
+ * 入参：{ username, email?, password }
+ * 出参：{ token, user }  或 { error, code }
+ */
+async function handleAuthRegister(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const r = auth.registerUser(body);
+  if (!r.ok) {
+    sendJson(res, 400, { error: r.error, code: r.code });
+    return;
+  }
+  sendJson(res, 201, { token: r.token, user: r.user });
+}
+
+/**
+ * POST /api/auth/login
+ * 入参：{ login, password }    login 可为用户名或邮箱
+ * 出参：{ token, user }  或 { error, code }
+ */
+async function handleAuthLogin(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const r = auth.verifyCredentials(body);
+  if (!r.ok) {
+    sendJson(res, 401, { error: r.error, code: r.code });
+    return;
+  }
+  sendJson(res, 200, { token: r.token, user: r.user });
+}
+
+/**
+ * POST /api/auth/logout
+ * 无状态令牌：服务端不保留会话，客户端丢弃 token 即可。这里仅返回 204。
+ */
+function handleAuthLogout(req, res) {
+  res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+  res.end();
+}
+
+/**
+ * GET /api/auth/me
+ * 校验 Bearer token，返回当前用户；失败返回 401。
+ */
+function handleAuthMe(req, res) {
+  const token = bearerToken(req);
+  const payload = auth.verifyToken(token);
+  if (!payload) {
+    sendJson(res, 401, { error: '未登录或登录已过期', code: 'unauthorized' });
+    return;
+  }
+  const user = auth.getUserById(payload.uid);
+  if (!user) {
+    sendJson(res, 401, { error: '用户不存在', code: 'unauthorized' });
+    return;
+  }
+  sendJson(res, 200, { user });
+}
+
 /* ------------------------- 启动 ------------------------- */
+
+/* 生产单端口模式：API server 顺带服务 dist/ 构建产物。
+ * 默认关闭（见 server/static.mjs 的 resolveStaticMode），本地 `npm run dev` 行为完全不变。 */
+const staticServer = createStaticServer({
+  root: DIST_DIR,
+  flag: process.env.SERVE_STATIC,
+  spaFallback: process.env.SPA_FALLBACK,
+});
+
+/** 判断是否 API 请求（/api 与 /api/*）。API 请求永远不进静态逻辑，SSE 才不会被误伤。 */
+const isApiPath = (p) => p === '/api' || p.startsWith('/api/');
 
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -1370,19 +1566,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* ---------- 静态资源（生产单端口）----------
+   * 放在所有 /api 路由之前，但用 isApiPath 挡住 API，
+   * 保证 /api/generate 的 SSE 流不会被静态逻辑接管。 */
+  if (staticServer.enabled && !isApiPath(u.pathname)) {
+    await staticServer.handle(req, res, u.pathname);
+    return;
+  }
+
   if (u.pathname === '/api/health') {
     const tk = resolveToken();
     const hk = hyper3d.resolveToken();
+    const fk = fal.resolveToken();
     sendJson(res, 200, {
       ok: true,
+      // 顶层字段保留混元状态，保证旧客户端兼容；新客户端应优先读 engines[engine]
       mode: tk.token ? 'live' : 'demo',
       expiresAt: tk.expiresAt || null,
-      tokenId: tk.tokenId || null, // 只是 token 的短哈希，不含凭证本身
+      tokenId: tk.tokenId || null,
       endpoint: hy3d.ENDPOINT,
       engines: {
-        hunyuan: { mode: tk.token ? 'live' : 'demo' },
-        hyper3d: { mode: hk.token ? 'live' : 'demo', endpoint: hyper3d.ENDPOINT },
-        fal: { mode: fal.resolveToken().token ? 'live' : 'demo', endpoint: fal.ENDPOINT, model: fal.MODEL },
+        hunyuan: {
+          mode: tk.token ? 'live' : 'demo',
+          expiresAt: tk.expiresAt || null,
+          tokenId: tk.tokenId || null,
+        },
+        hyper3d: {
+          mode: hk.token ? 'live' : 'demo',
+          endpoint: hyper3d.ENDPOINT,
+          tokenId: hk.tokenId || null,
+          // API Key 通常无固定过期时间；null 表示按 Key 本身状态判断
+          expiresAt: null,
+        },
+        fal: {
+          mode: fk.token ? 'live' : 'demo',
+          endpoint: fal.ENDPOINT,
+          model: fal.MODEL,
+          tokenId: fk.tokenId || null,
+          expiresAt: null,
+        },
         higen3d: { available: higen.available(), endpoint: higen.ENDPOINT_INFO.ENDPOINT },
         vision: vision.getVisionStatus(),
       },
@@ -1403,6 +1625,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* GET /api/bang-index?model=<源整车资产名>
+   * 这台车以前拆过的话，直接返回拆好的部件（零额度），
+   * 前端据此把"拆开的实体车身"装回方案，而不是只剩未拆解的空壳整车。 */
+  if (u.pathname === '/api/bang-index' && req.method === 'GET') {
+    const model = new URL(req.url, 'http://x').searchParams.get('model') || '';
+    const idx = await readBangIndex();
+    const hit = model ? idx[model] : null;
+    sendJson(res, 200, { parts: hit?.parts || null, updatedAt: hit?.updatedAt || '' });
+    return;
+  }
+
   if (u.pathname.startsWith('/api/asset/')) {
     await handleAsset(req, res, u.pathname.slice('/api/asset/'.length));
     return;
@@ -1413,18 +1646,49 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (u.pathname === '/api/specs' && req.method === 'POST') {
+    await handleSpecs(req, res);
+    return;
+  }
+
   if (u.pathname === '/api/recognize' && req.method === 'POST') {
     await handleRecognize(req, res);
+    return;
+  }
+
+  /* ---------- 认证路由 ---------- */
+  if (u.pathname === '/api/auth/register' && req.method === 'POST') {
+    await handleAuthRegister(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/login' && req.method === 'POST') {
+    await handleAuthLogin(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/logout' && req.method === 'POST') {
+    handleAuthLogout(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/me' && req.method === 'GET') {
+    handleAuthMe(req, res);
     return;
   }
 
   sendJson(res, 404, { error: 'not found' });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, HOST, () => {
   const tk = resolveToken();
   const hk = hyper3d.resolveToken();
-  console.log(`\n  ▸ API 服务已启动  http://127.0.0.1:${PORT}`);
+  auth.initAuth(); // 预热用户数据目录与令牌密钥
+  const shownHost = HOST === '0.0.0.0' ? '127.0.0.1' : HOST;
+  console.log(`\n  ▸ API 服务已启动  http://${shownHost}:${PORT}`);
+  if (staticServer.enabled) {
+    console.log(`  ▸ 静态资源：已开启（${path.relative(ROOT, staticServer.root) || '.'}）— ${staticServer.reason}`);
+    console.log(`  ▸ SPA 回落：${staticServer.spaFallback ? '开启' : '关闭（本项目无前端路由）'}`);
+  } else {
+    console.log(`  ▸ 静态资源：关闭 — ${staticServer.reason}`);
+  }
   console.log(
     `  ▸ 运行模式：混元 ${tk.token ? 'LIVE' : 'DEMO'}  |  Hyper3D ${hk.token ? 'LIVE' : 'DEMO'}`
   );

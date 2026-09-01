@@ -88,6 +88,12 @@ export class ChassisParams {
     this.wheelbase = init.wheelbase ?? 0;
     this.axleX_F = init.axleX_F ?? 0;
     this.axleX_R = init.axleX_R ?? 0;
+    /**
+     * axleX_F / axleX_R 是否来自**实测**（BANG 拆解测到的车轮质心 x，或车型库轴坐标）。
+     * true 时 clampAll() / derive() 的兜底夹取对轴位置放宽为"合理性校验"，
+     * 见 derive() Step 4 的注释——实测值被对称 clamp 截断等于白测。
+     */
+    this.axleXMeasured = init.axleXMeasured ?? false;
     this.halfTrack_F = init.halfTrack_F ?? 0;
     this.halfTrack_R = init.halfTrack_R ?? 0;
     this.hubY_F = init.hubY_F ?? 0;
@@ -114,12 +120,17 @@ export class ChassisParams {
 
   /**
    * 从车壳测量值 + 轮轴参数推导全部主参数（设计 §3.2 四步）。
+   * 若调用方传入了真实轴距 / 轮距 / 离地间隙（来自车型识别），则优先使用。
    *
    * @param {{bodyHalfWidth:number, lengthNorm?:number}} metrics ShellMeasure.measure() 的结果
    * @param {{front:Object, rear:Object}} axleParams {rimInch, tireWidthMm, aspect, ...}
+   * @param {{wheelbase?:number, axleX_F?:number, axleX_R?:number,
+   *          halfTrack_F?:number, halfTrack_R?:number, rideHeight?:number}} [real]
+   *   真实参数，单位米。axleX_F / axleX_R 是前后轴的**绝对 x 坐标**（车长中心为 0、
+   *   车头 +X），优先于由 wheelbase 推出来的对称 ±wheelbase/2。
    * @returns {ChassisParams} this（便于链式）
    */
-  derive(metrics, axleParams) {
+  derive(metrics, axleParams, real = {}) {
     const L = this.carLength || metrics.lengthNorm || 4.6;
     const bhw = metrics.bodyHalfWidth;
     this.carLength = L;
@@ -134,27 +145,95 @@ export class ChassisParams {
     let axleX_R = -(L / 2 - RATIO.rearOverhang * L);
     let halfTrack_F = RATIO.trackFront * bhw;
     let halfTrack_R = RATIO.trackRear * bhw;
+    let rideHeight = RATIO.rideHeight * L;
 
-    // Step 4 — 兜底 clamp（换车鲁棒性）
+    // 若车型识别提供了真实值，优先覆盖估算值
+    //
+    // ⚠️ 轴位置有三档优先级，不要退化成 ±wheelbase/2：
+    //   ① real.axleX_F / axleX_R（实测绝对轴坐标）——最准，直接采信；
+    //   ② ±real.wheelbase / 2 ——只知道轴距时的次优解；
+    //   ③ RATIO 前后悬比例估算 ——什么都没有时的兜底。
+    // 真实车的前后悬不等长，**轴距中心 ≠ 车身包围盒中心**，②③ 都是对称假设，
+    // 会把两只轴整体平移同一个常量（BANG 样本实测偏差 11 / 41 / 98 mm）。
+    let axleMeasured = false;
+    if (Number.isFinite(real.wheelbase) && real.wheelbase > 0.5) {
+      wheelbase = real.wheelbase;
+    }
+    if (
+      Number.isFinite(real.axleX_F) &&
+      Number.isFinite(real.axleX_R) &&
+      real.axleX_F > real.axleX_R
+    ) {
+      axleX_F = real.axleX_F;
+      axleX_R = real.axleX_R;
+      axleMeasured = true;
+    } else if (Number.isFinite(real.wheelbase) && real.wheelbase > 0.5) {
+      axleX_F = wheelbase / 2;
+      axleX_R = -wheelbase / 2;
+    }
+    if (Number.isFinite(real.halfTrack_F) && real.halfTrack_F > 0.2) {
+      halfTrack_F = real.halfTrack_F;
+    }
+    if (Number.isFinite(real.halfTrack_R) && real.halfTrack_R > 0.2) {
+      halfTrack_R = real.halfTrack_R;
+    }
+    if (Number.isFinite(real.rideHeight) && real.rideHeight > 0.05) {
+      rideHeight = real.rideHeight;
+    }
+
+    /* Step 4 — 兜底 clamp（换车鲁棒性）
+     *
+     * 轴位置分两条路径，区别对待：
+     *
+     *   · 估算值（②③ 档）：走原来的对称 clamp [0.15L, 0.40L]。
+     *     估算本来就是从"经验比例"推的，夹回经验区间能挡住离谱输出。
+     *
+     *   · 实测值（① 档）：**不做对称 clamp，只做合理性校验**。
+     *     原 clamp 的上界 0.40L 是按"前悬 ≥ 0.10L"设计的兜底，但实测样本的
+     *     后轴到车身中心距离普遍超过 0.40L（样本 2 达 0.311L… 见 QA 报告），
+     *     一旦被截断，实测信息就退化回对称解，等于白测。
+     *     校验只挡真正不可能的情况：轴跑到车身外、前后轴顺序颠倒、
+     *     轴距超出整车物理范围。校验不过才退回 ±wheelbase/2 并重新走 clamp。
+     */
     wheelbase = clamp(wheelbase, 0.45 * L, 0.68 * L);
-    axleX_F = clamp(axleX_F, 0.15 * L, 0.40 * L);
-    axleX_R = clamp(axleX_R, -0.40 * L, -0.15 * L);
+    if (axleMeasured) {
+      const span = axleX_F - axleX_R;
+      const sane =
+        Number.isFinite(span) &&
+        span > 0.3 * L &&
+        span < 0.95 * L &&
+        axleX_F > 0 &&
+        axleX_R < 0 &&
+        axleX_F < 0.5 * L &&
+        axleX_R > -0.5 * L;
+      if (!sane) {
+        axleMeasured = false;
+        axleX_F = wheelbase / 2;
+        axleX_R = -wheelbase / 2;
+      }
+    }
+    if (!axleMeasured) {
+      axleX_F = clamp(axleX_F, 0.15 * L, 0.40 * L);
+      axleX_R = clamp(axleX_R, -0.40 * L, -0.15 * L);
+    }
     halfTrack_F = clamp(halfTrack_F, 0.62 * bhw, 0.95 * bhw);
     halfTrack_R = clamp(halfTrack_R, 0.62 * bhw, 0.95 * bhw);
     halfTrack_F = Math.max(0.3, halfTrack_F);
     halfTrack_R = Math.max(0.3, halfTrack_R);
+    rideHeight = clamp(rideHeight, 0.03, 0.4);
 
     this.wheelbase = wheelbase;
     this.axleX_F = axleX_F;
     this.axleX_R = axleX_R;
+    this.axleXMeasured = axleMeasured;
     this.halfTrack_F = halfTrack_F;
     this.halfTrack_R = halfTrack_R;
+    this.rideHeight = rideHeight;
 
     // 轮心高：严格等于 WheelRig 的 axle.position.y（未缩放 tireOuterRadius）
     this.hubY_F = tireOuterRadius(front.rimInch, front.tireWidthMm, front.aspect);
     this.hubY_R = tireOuterRadius(rear.rimInch, rear.tireWidthMm, rear.aspect);
 
-    this.rideHeight = RATIO.rideHeight * L;
     this.deckHeight = RATIO.deckHeight * L;
 
     // 车身升降：相对 OE 的轮心高差（Plus Sizing 守恒外径 → 通常为 0）
@@ -206,8 +285,17 @@ export class ChassisParams {
     const L = this.carLength;
     const bhw = this.bodyHalfWidth;
     this.wheelbase = clamp(this.wheelbase, 0.45 * L, 0.68 * L);
-    this.axleX_F = clamp(this.axleX_F, 0.15 * L, 0.40 * L);
-    this.axleX_R = clamp(this.axleX_R, -0.40 * L, -0.15 * L);
+    // 实测轴位置不套对称 clamp（理由同 derive() Step 4），只挡车身外的荒谬值
+    if (this.axleXMeasured) {
+      if (!(this.axleX_F > this.axleX_R && this.axleX_F < 0.5 * L && this.axleX_R > -0.5 * L)) {
+        this.axleX_F = clamp(this.axleX_F, 0.15 * L, 0.40 * L);
+        this.axleX_R = clamp(this.axleX_R, -0.40 * L, -0.15 * L);
+        this.axleXMeasured = false;
+      }
+    } else {
+      this.axleX_F = clamp(this.axleX_F, 0.15 * L, 0.40 * L);
+      this.axleX_R = clamp(this.axleX_R, -0.40 * L, -0.15 * L);
+    }
     this.halfTrack_F = clamp(Math.max(0.3, this.halfTrack_F), 0.62 * bhw, 0.95 * bhw);
     this.halfTrack_R = clamp(Math.max(0.3, this.halfTrack_R), 0.62 * bhw, 0.95 * bhw);
     this.rideHeight = clamp(this.rideHeight, 0.03, 0.4);
@@ -296,15 +384,16 @@ export class Chassis {
   /**
    * @param {Object} metrics ShellMeasure.measure()
    * @param {{front:Object, rear:Object}} axleParams
+   * @param {{wheelbase?:number,halfTrack_F?:number,halfTrack_R?:number,rideHeight?:number}} [real] 真实车型参数（米）
    * @returns {ChassisParams}
    */
-  derive(metrics, axleParams) {
+  derive(metrics, axleParams, real) {
     this.metrics = metrics;
     this.axleParams = axleParams;
     this.p = new ChassisParams({
       carLength: metrics.lengthNorm ?? this.p.carLength,
       shellLiftUser: this.p.shellLiftUser,
-    }).derive(metrics, axleParams);
+    }).derive(metrics, axleParams, real);
     this.derived = true;
     return this.p;
   }
@@ -561,13 +650,14 @@ export class Chassis {
   /* ---------------- 悬挂（车身相对车轮下移 Δ） ---------------- */
 
   /**
-   * 设置悬挂降低量 Δ（mm）。只移动 chassis.root 的 y 偏移，**不重建几何**，
-   * 车轮 rig 不受影响（轮胎几何/接地不变，低趴只是车身相对车轮下移）。
-   * @param {number} deltaMm Δ>0 表示车身降低
+   * 设置悬挂高度偏移。只移动 chassis.root 的 y 偏移，**不重建几何**。
+   * 车轮 rig 不受影响；车身相对车轮整体升降 + 平均分角升降。
+   * @param {number} deltaMm Δ>0 表示车身降低（全局）
+   * @param {number} bodyLiftMm 分角/分轴悬挂的平均升降量（mm），正值升高
    */
-  setSuspension(deltaMm = 0) {
+  setSuspension(deltaMm = 0, bodyLiftMm = 0) {
     this.suspensionDeltaMm = Number(deltaMm) || 0;
-    this.root.position.y = -this.suspensionDeltaMm / 1000;
+    this.root.position.y = -this.suspensionDeltaMm / 1000 + (Number(bodyLiftMm) || 0) / 1000;
   }
 
   /**

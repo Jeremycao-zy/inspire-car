@@ -35,13 +35,14 @@
   line-height: 0;
 }
 
+/* 去背资源本身就是「透明底 + 纯黑线」，所以白底卡片、圆角、描边、投影全部去掉，
+   只剩图形本身。
+   侧栏 / 水印 / 加载遮罩三处都是深色背景，反相后黑线变白线 —— 原图是纯灰度，
+   反相无损。注意不要给这里的图片加任何背景色，否则又会出现白色方块。 */
 .jg-brand__icon .jg-icon {
   display: block;
-  border-radius: 12px;
   object-fit: contain;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12),
-    0 4px 14px rgba(0, 0, 0, 0.18);
+  filter: invert(1);
 }
 
 .jg-brand__text {
@@ -166,12 +167,6 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
-.jg-brand--watermark .jg-icon {
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2),
-    0 2px 8px rgba(0, 0, 0, 0.25);
-}
-
 /* ---------------------------------------------------------------- */
 /* 3. 加载遮罩居中                                                     */
 /* ---------------------------------------------------------------- */
@@ -179,7 +174,9 @@
 .jg-brand--overlay {
   /* 遮罩本身是 flex column + 居中，这里作为普通 flex 子元素插在最前面，
      品牌在上、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
+  display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
   margin-bottom: 6px;
   text-align: center;
@@ -187,16 +184,19 @@
 }
 
 .jg-brand--overlay .jg-brand__icon {
-  display: block;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
+/* 遮罩用的是完整锁定（徽标 + 字标），尺寸够大、字标看得清。
+   同样去掉白色卡片：完整 logo 图去背后，白底不再需要。 */
 .jg-brand--overlay .jg-icon {
-  width: 160px;
   height: 160px;
-  border-radius: 32px;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 14px 44px rgba(0, 0, 0, 0.35);
+  width: auto;
+  /* 与 logo-full-nobg.png 的固有比例一致，加载前就预留出正确宽度 */
+  aspect-ratio: 527 / 512;
+  object-fit: contain;
   /* 加载时轻微呼吸，强化「待机启动」感 */
   animation: jg-pulse 2.2s ease-in-out infinite;
 }
@@ -235,8 +235,7 @@
     display: none;
   }
   .jg-brand--overlay .jg-icon {
-    width: 120px;
     height: 120px;
-    border-radius: 24px;
+    width: auto;
   }
 }

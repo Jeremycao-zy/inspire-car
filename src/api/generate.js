@@ -226,6 +226,29 @@ export async function generateModel({
 }
 
 /**
+ * 查这台车**以前**拆过的部件（零额度）。
+ *
+ * 场景：拆解产物以前只存在前端内存里，刷新页面 / 换设备就没了，
+ * 再进来只剩"未拆解的整车"（空壳、轮拱是贴图）。服务端 BANG 索引
+ * 记着「源整车资产 → 拆解部件」，这里按资产名取回即可。
+ *
+ * @param {string} modelUrl 整车资产地址（/api/asset/xxx.glb）
+ * @returns {Promise<Array<{name:string,url:string,index:number}>|null>}
+ */
+export async function lookupBangParts(modelUrl) {
+  const name = String(modelUrl || '').split('/').pop();
+  if (!name) return null;
+  try {
+    const r = await fetch(`/api/bang-index?model=${encodeURIComponent(name)}`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return Array.isArray(j?.parts) && j.parts.length ? j.parts : null;
+  } catch {
+    return null; // 查不到不影响主流程
+  }
+}
+
+/**
  * 查询后端当前运行模式。
  * 返回 { ok, mode:'live'|'demo', expiresAt?:string }
  * expiresAt 是凭证预计失效时刻（ISO8601）：凭证文件写了第二行就是精确值，
@@ -377,6 +400,32 @@ export async function bangModel({
   }
 
   throw new GenerateError('连接中断，拆解流意外结束', { reason: 'fail' });
+}
+
+/**
+ * 查询车型真实车身参数（长宽高 / 轴距 / 轮距 / 原厂胎规格）。
+ *
+ * 拿到真车数据后，前端用它做归一建模与四轮定位，
+ * 让比例和各种调节都建立在真实尺度上，而不是拍脑袋的默认值。
+ *
+ * @param {string} fullName 识别出的车型全名，如 "保时捷 911 Carrera"
+ * @param {string=} year
+ * @returns {Promise<{available:boolean, length?:number, width?:number, height?:number,
+ *   wheelbase?:number, trackFront?:number, trackRear?:number, rimInch?:number,
+ *   tireWidth?:number, aspect?:number, source?:string, confidence?:number,
+ *   reason?:string, detail?:string}>}
+ */
+export async function fetchCarSpecs(fullName, year) {
+  const r = await fetch('/api/specs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullName, year: year || undefined }),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    return { available: false, reason: 'error', detail: `HTTP ${r.status} ${t.slice(0, 120)}` };
+  }
+  return await r.json();
 }
 
 /**

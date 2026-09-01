@@ -26,7 +26,9 @@ import {
   generateModel,
   health,
   recognize,
+  fetchCarSpecs,
   bangModel,
+  lookupBangParts,
   uploadPart,
   GenerateError,
   PRECISION_TIERS,
@@ -34,6 +36,8 @@ import {
 import { createPanel } from './ui/panel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
+import { fetchMe } from './auth.js';
+import { showAuthOverlay } from './ui/auth.js';
 import './ui/styles.css';
 
 /** 文件指纹：同一张照片反复选择时 name/size/lastModified 一致，用于额度用尽后的去重拦截 */
@@ -69,8 +73,14 @@ const DEFAULTS = {
   // 生成引擎：fal / hyper3d / hunyuan / higen3d。
   // 启动时若该引擎没配凭证，refreshHealth 会自动回退到有凭证的那个（见 ENGINE_PRIORITY）。
   engine: 'fal',
+  // 轮毂生成引擎：与整车分开设置，默认 Hyper3D Rodin（轮毂必须走这家，见 runGenerate）
+  wheelEngine: 'hyper3d',
   falHighPack: false, // fal.ai 的 4K 贴图 + 高模附加包（画质更好，按 3 倍计费）
   suspensionDelta: 0, // 悬挂降低量 Δ（mm），>0 降低车身（与 shellLift 叠加）
+  // 分角悬挂高度偏移（mm）。正值 = 该角车身升高，负值 = 降低；
+  // 与全局 suspensionDelta 叠加。UI 提供「四轮/前轴/后轴/单角」四种作用域。
+  suspension: { FL: 0, FR: 0, RL: 0, RR: 0 },
+  suspensionTarget: 'all', // 'all' | 'front' | 'rear' | 'FL' | 'FR' | 'RL' | 'RR'
   front: { ...AXLE_DEFAULTS_FRONT },
   rear: { ...AXLE_DEFAULTS_REAR },
   trackF: 0,
@@ -82,9 +92,28 @@ const DEFAULTS = {
   rimOffsetX: 0, // 轮平面内的横向微调，mm
   rimOffsetY: 0, // 轮平面内的竖向微调，mm
   rimOffsetZ: 0, // 沿轮轴方向的 seating 微调，mm
+  rimPreset: 'default', // 程序化轮毂款式 id（te37 / bbs-lm / rotiform / mesh / sport / default）
   fenderOffsetF: 0, // 翼子板基准补偿（mm），PRD §4.6 R3.3
   fenderOffsetR: 0,
+  // 车长（米）。查到真车数据后会被真实车长覆盖，见 applyRealSpecs()
   carLength: 4.6,
+  // 真车参数（米 / 毫米 / 度）：由识别后整理，供面板直接展示与微调。
+  // null = 未查到，此时退回到默认车长并保持纯等比归一。
+  carWidth: null,          // m
+  carHeight: null,         // m
+  wheelbase: null,         // mm
+  trackFront: null,        // mm
+  trackRear: null,         // mm
+  // 实测前后轴的绝对 x 坐标（mm，车长中心为 0、车头 +X）。
+  // 来自 BANG 拆解测到的车轮质心（bangWheelGeom.xFront / xRear）。
+  // 有它才知道"轴距中心 ≠ 车身中心"这件事，只给 wheelbase 会被当成对称摆位。
+  axleXFront: null,        // mm
+  axleXRear: null,         // mm
+  groundClearance: null,   // mm
+  approachAngle: null,     // °
+  departureAngle: null,    // °
+  // 真车参数原始来源（毫米 / 度）：{length,width,height,wheelbase,trackFront,trackRear,groundClearance,approachAngle,departureAngle,rimInch,tireWidth,aspect,source,confidence}
+  realSpecs: null,
   showTire: true,
   spin: false,
   autoRotate: false,
@@ -94,7 +123,7 @@ const DEFAULTS = {
   chassis: {
     deckHeight: null, // = 车壳甲板高 = C1 底切高，默认 0.0652 × L
     shellLiftUser: 0, // 用户手动升降（mm），叠加在自动 shellLift 上
-    visible: true,
+    visible: false, // 默认隐藏程序化底盘框架，避免与用户上传车模冲突
   },
   // 车壳三道切割（车身降低改装必需，无 UI）
   shell: {
@@ -104,9 +133,17 @@ const DEFAULTS = {
     enableC2: true, // 侧向超限切
     enableC3: true, // 轮拱开口
   },
-  // 车漆改色：默认竞速红；bodySolid=true 时去掉原车 baseColor 贴图做纯色重喷
-  bodyColor: '#c8102e',
+  // 车漆规则：初始一律展示模型原始材质贴图（白色着色 = 不染色、贴图原样透出），
+  // 绝不默认红漆、不烘焙固定颜色；用户在车漆色轮里主动选色才上色。
+  // bodySolid=true 时去掉 baseColor 贴图做纯色重喷（用户显式操作）。
+  bodyColor: '#ffffff',
   bodySolid: false,
+  // Hyper3D 自动 BANG 拆解视图（产物按原坐标装配回整车，不是摆到旁边的第二辆车）
+  bangView: 'assembled', // assembled = 拆解装配体 / single = 未拆解整车单体
+  bangExplode: 0, // 爆炸视图 0~1，0 = 完全装配
+  // 按拆解实测校准出来的轮位（米）：{wheelbase, trackFront, trackRear, hubY}
+  // 车轮网格本身不入场景，只把位置信息交给四轮 rig
+  bangWheelGeom: null,
 };
 
 const stage = document.getElementById('stage');
@@ -126,15 +163,44 @@ carInner.name = 'carInner';
 carOuter.add(carInner);
 viewer.scene.add(carOuter);
 
-/* BANG 拆解部件挂载点。
- * 独立成组而不用 carInner：拆解产物是"另起一摊"的多个子模型，
- * 若塞进 carInner 会被 normalizeCar 的归一/切割逻辑二次处理而错位。 */
+/* BANG 散件挂载点（手动导入的多个独立 GLB，一字排开摆在车旁）。
+ * 独立于 carInner：这些散件不属于整车坐标系，不能参与归一/切割。 */
 const bangRoot = new THREE.Group();
 bangRoot.name = 'bangRoot';
 viewer.scene.add(bangRoot);
 
+/* Hyper3D 自动 BANG 的「拆解装配体」挂载点。
+ *
+ * 关键事实（实测 BANG 返回）：一次拆解返回的是**一个 GLB，内含多个子网格**
+ * （车身 1 + 四轮 4），且子网格顶点与原始整车**完全同一坐标系**
+ * （包围盒逐位相同）。所以正确做法是把它挂进 carInner、与 carGroup 共享
+ * 同一套归一变换 —— 部件会精确落在整车原位，既不是"摆到旁边的第二辆车"，
+ * 也不会有偏移/镂空/穿模。
+ *
+ * bangFit 只承载「对齐整车」的校正量（缩放 + 平移），
+ * bangAssembly 承载具体部件，两者分开便于随时重算校正而不动部件坐标。 */
+const bangFit = new THREE.Group();
+bangFit.name = 'bangFit';
+const bangAssembly = new THREE.Group();
+bangAssembly.name = 'bangAssembly';
+bangFit.add(bangAssembly);
+carInner.add(bangFit);
+
+/** 已挂载的拆解部件签名（url 列表），用于避免同一批部件重复挂载 */
+let bangMountedSig = '';
+
 let carGroup = null; // 当前车身 GLB 根节点
 let wheelGroup = null; // 当前轮毂模板
+
+/** 强制回到程序化轮毂，并释放当前轮毂模板 */
+function resetWheelToProcedural() {
+  if (wheelGroup) {
+    disposeObject(wheelGroup);
+    wheelGroup = null;
+  }
+  rig.useProceduralWheel(app.params.rimPreset);
+  app.apply();
+}
 
 /** 清掉上一轮 BANG 产物，避免多次拆解叠加在同一位置 */
 function clearBangParts() {
@@ -142,6 +208,108 @@ function clearBangParts() {
     bangRoot.remove(child);
     disposeObject(child);
   }
+  for (const child of [...bangAssembly.children]) {
+    bangAssembly.remove(child);
+    disposeBangPart(child);
+  }
+  bangFit.position.set(0, 0, 0);
+  bangFit.scale.setScalar(1);
+  bangFit.visible = true;
+  bangAssembly.visible = true;
+  app._bangParts = [];
+  app._bangWheelParts = [];
+  app._bangSpan = 1;
+  delete app.params.bangWheelGeom; // 轮位校准来源于这批部件，一起作废
+  app.params.axleXFront = null;
+  app.params.axleXRear = null;
+  bangMountedSig = '';
+  // 装配体清掉后要让整车重新显形，否则场景里一辆车都没有
+  if (carGroup) carGroup.visible = true;
+  // 拆下来的实体车身没了 → 恢复三道切割（整车单体的车轮是画在贴图上的，必须开口）
+  if (app.params.shell.enabled === false) app.params.shell.enabled = true;
+  // 拆解产物带来的轮位校准一并作废，轮毂也回到程序化款，避免残留异常模型
+  resetWheelToProcedural();
+}
+
+/**
+ * 释放一个拆解部件。
+ * 只释放几何：材质是 loadGLB 升级出来的、被多个部件共用，不能在这里释放。
+ */
+function disposeBangPart(mesh) {
+  mesh?.traverse?.((o) => {
+    if (o.isMesh) o.geometry?.dispose?.();
+  });
+}
+
+/**
+ * 把一个 BANG 产物 GLB 拆成「一个子网格 = 一个独立部件」。
+ *
+ * 为什么必须拆：BANG 把拆好的多个部件塞进同一个文件的多个子网格里，
+ * 直接整文件入场景就只能当成"一整辆车"，看不到任何拆解效果。
+ * 子网格顶点还带着各自的节点变换 —— 必须把世界变换烘焙进几何，
+ * 拆出来的每个部件才能独立移动 / 隐藏，且顶点回到整车原始坐标系。
+ *
+ * @param {THREE.Object3D} group loadGLB 返回的根节点
+ * @returns {THREE.Mesh[]}
+ */
+function splitBangFile(group) {
+  group.updateMatrixWorld(true);
+  const parts = [];
+  group.traverse((o) => {
+    if (!o.isMesh || !o.geometry?.attributes?.position) return;
+    const geo = o.geometry.clone();
+    geo.applyMatrix4(o.matrixWorld); // 烘焙世界变换 → 顶点回到整车原始坐标系
+    geo.computeBoundingBox();
+    const mesh = new THREE.Mesh(geo, o.material);
+    mesh.name = o.name || 'bang-part';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parts.push(mesh);
+  });
+  // 原始几何已克隆，这里只释放源文件的几何；材质留给新部件继续用
+  group.traverse((o) => {
+    if (o.isMesh) o.geometry?.dispose?.();
+  });
+  return parts;
+}
+
+/**
+ * 把装配体整体对齐到 carGroup 的世界包围盒。
+ *
+ * BANG 产物与整车理论上同坐标系（实测包围盒逐位相同），
+ * 但换车型 / 换拆解参数后不保证永远一致 —— 这里做一次世界空间校正兜底：
+ * 等比缩放 + 居中平移，误差超过 1% 才真正动手，正常情况下是恒等变换。
+ */
+function fitBangAssemblyToCar() {
+  if (!carGroup || !bangAssembly.children.length) return;
+  carOuter.updateMatrixWorld(true);
+  const A = boxOf(bangAssembly);
+  const B = boxOf(carGroup);
+  if (A.isEmpty() || B.isEmpty()) return;
+  const aSize = A.getSize(new THREE.Vector3());
+  const bSize = B.getSize(new THREE.Vector3());
+  const s =
+    (bSize.x / (aSize.x || 1) + bSize.y / (aSize.y || 1) + bSize.z / (aSize.z || 1)) / 3;
+  if (!Number.isFinite(s) || s <= 0) return;
+  if (Math.abs(s - 1) < 0.01 && A.getCenter(new THREE.Vector3()).distanceTo(B.getCenter(new THREE.Vector3())) < 0.01) {
+    return; // 已经对齐，不动
+  }
+  const m = carInner.matrixWorld;
+  const linInv = new THREE.Matrix3().setFromMatrix4(m).invert();
+  const tr = new THREE.Vector3().setFromMatrixPosition(m);
+  const a = A.getCenter(new THREE.Vector3()).sub(tr);
+  const b = B.getCenter(new THREE.Vector3()).sub(tr);
+  bangFit.scale.setScalar(s);
+  bangFit.position.copy(b.sub(a.multiplyScalar(s)).applyMatrix3(linInv));
+  bangFit.updateMatrixWorld(true);
+}
+
+/** 车身相关的根节点：未拆解的整车 + 拆解装配体（两者都参与上色/切割） */
+function bodyRoots() {
+  const roots = [];
+  if (carGroup) roots.push(carGroup);
+  if (bangAssembly?.children?.length) roots.push(bangAssembly);
+  return roots;
 }
 
 /**
@@ -316,8 +484,15 @@ function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08, autoAlign = tru
   let removed = 0;
   let touched = 0;
 
-  carGroup.traverse((o) => {
-    if (!o.isMesh || !o.geometry) return;
+  // 未拆解的整车 + 拆解装配体都要切：当前显示的是哪套，切口就必须在哪套上
+  const meshes = [];
+  for (const root of bodyRoots()) {
+    root.traverse((o) => {
+      if (o.isMesh && o.geometry) meshes.push(o);
+    });
+  }
+
+  for (const o of meshes) {
     const g = o.geometry;
     const pos = g.attributes?.position;
     if (!pos) return;
@@ -359,7 +534,7 @@ function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08, autoAlign = tru
       for (const m of mats) if (m) m.side = THREE.DoubleSide;
       touched += 1;
     }
-  });
+  }
 
   return { removed, meshes: touched, cylinders: cyls.length, drift, autoAlign };
 }
@@ -368,17 +543,107 @@ function cutOriginalWheels({ radiusScale = 1.2, widthPad = 0.08, autoAlign = tru
 function restoreOriginalWheels() {
   if (!carGroup) return { restored: 0 };
   let restored = 0;
-  carGroup.traverse((o) => {
-    if (!o.isMesh || !o.geometry) return;
-    if (o.userData._origIndex === undefined) return;
-    const g = o.geometry;
-    if (o.userData._origIndex) g.setIndex(Array.from(o.userData._origIndex));
-    else g.setIndex(null);
-    delete o.userData._origIndex;
-    g.computeBoundingSphere();
-    restored += 1;
-  });
+  for (const root of bodyRoots()) {
+    root.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      if (o.userData._origIndex === undefined) return;
+      const g = o.geometry;
+      if (o.userData._origIndex) g.setIndex(Array.from(o.userData._origIndex));
+      else g.setIndex(null);
+      delete o.userData._origIndex;
+      g.computeBoundingSphere();
+      restored += 1;
+    });
+  }
   return { restored };
+}
+
+/**
+ * 从 BANG 拆出来的车轮质心反推真实轮位（轴距 / 前后轮距 / 轮心高）。
+ *
+ * 坐标约定与整车归一后一致：+X = 车头，±Z = 左右，+Y = 上。
+ * 用「按 x 的中位切分 + 组内 z 极差」而不是固定取 4 个，
+ * 这样即使拆解更碎（一只轮被拆成轮辋 + 轮胎多件）也能算出合理值。
+ *
+ * @param {THREE.Vector3[]} centers 世界坐标下的车轮质心
+ * @returns {{wheelbase:number, xFront:number, xRear:number, trackFront:number,
+ *            trackRear:number, hubY:number, hubYFront:number, hubYRear:number}|null}
+ */
+function deriveWheelGeometry(centers) {
+  const cs = (centers || []).filter((c) => c && Number.isFinite(c?.x) && Number.isFinite(c?.z));
+  if (cs.length < 4) return null;
+  const xs = cs.map((c) => c.x);
+  const mid = (Math.max(...xs) + Math.min(...xs)) / 2;
+  const front = cs.filter((c) => c.x > mid);
+  const rear = cs.filter((c) => c.x <= mid);
+  if (front.length < 2 || rear.length < 2) return null;
+  const mean = (arr, k) => arr.reduce((a, c) => a + c[k], 0) / arr.length;
+  const extent = (arr) => Math.max(...arr.map((c) => c.z)) - Math.min(...arr.map((c) => c.z));
+  // 前后轴的**绝对 x 坐标**。这一步是"轮毂精确落进轮拱"的关键：
+  // 真实车前后悬不等长，轴距中心 ≠ 车身包围盒中心，只把 wheelbase 传下去、
+  // 下游再用 ±wheelbase/2 摆位，会整体偏一个常量（样本实测 11 / 41 / 98 mm）。
+  // 坐标系与归一后的整车一致（车长中心 x=0、车头 +X、贴地 y=0），可直接用。
+  const xFront = mean(front, 'x');
+  const xRear = mean(rear, 'x');
+  const wheelbase = Math.abs(xFront - xRear);
+  const trackFront = extent(front);
+  const trackRear = extent(rear);
+  const hubY = mean(cs, 'y');
+  // 分轴轮心高：前后轮尺寸不同时（常见的前窄后宽）各自用各自的值
+  const hubYFront = mean(front, 'y');
+  const hubYRear = mean(rear, 'y');
+  // 合理区间兜底：超出范围说明识别出的不是车轮，宁可不校准也不把轮毂摆飞
+  if (!(wheelbase > 1.2 && wheelbase < 6)) return null;
+  if (!(trackFront > 0.6 && trackFront < 3)) return null;
+  if (!(trackRear > 0.6 && trackRear < 3)) return null;
+  if (!(hubY > 0.15 && hubY < 0.8)) return null;
+  // 轴必须一前一后、且落在车身长度范围内，否则退回不校准
+  if (!(xFront > 0 && xRear < 0 && xFront > xRear)) return null;
+  return { wheelbase, xFront, xRear, trackFront, trackRear, hubY, hubYFront, hubYRear };
+}
+
+/**
+ * 判断一个模型是不是「盘状」（轮毂的形状特征）。
+ *
+ * 只看形状、不看绝对尺度——图生 3D 出来的轮毂尺寸本来就不统一，
+ * 但形状一定满足：两个大边近似相等（正圆截面）+ 第三个边明显更短（盘）。
+ *
+ * @param {THREE.Vector3|{x:number,y:number,z:number}} size 归一后的三边（米）
+ * @returns {{ok:boolean, roundness:number, thin:number, d1:number, d2:number, d3:number}}
+ */
+function wheelShapeOf(size) {
+  const d = [Number(size?.x) || 0, Number(size?.y) || 0, Number(size?.z) || 0].sort((a, b) => b - a);
+  const [d1, d2, d3] = d;
+  const roundness = d1 > 0 ? d2 / d1 : 0;
+  const thin = d1 > 0 ? d3 / d1 : 1;
+  return {
+    ok: roundness > 0.75 && thin >= 0.1 && thin <= 0.55,
+    roundness,
+    thin,
+    d1,
+    d2,
+    d3,
+  };
+}
+
+/**
+ * 由目标轮胎外半径反推扁平比，让轮毂直径与原车轮一致。
+ *
+ * 轮心高 = 轮胎外半径（车轮贴地），所以拿实测轮心高当目标半径，
+ * 解出合适的扁平比： sidewall = R − 轮辋半径，aspect = sidewall / 胎宽 × 100。
+ * 越界（<25 或 >80）返回 null，宁可保持用户当前设定也不塞不合理的值。
+ *
+ * @param {{rimInch:number, tireWidthMm:number}} wheel 该轴参数
+ * @param {number} R 目标轮胎外半径（米）
+ * @returns {number|null}
+ */
+function fitTireAspect(wheel, R) {
+  if (!wheel || !(R > 0.2 && R < 0.6)) return null;
+  const rimR = ((wheel.rimInch || 19) * 25.4) / 2 / 1000;
+  const sidewall = R - rimR;
+  if (!(sidewall > 0.03)) return null;
+  const aspect = Math.round((sidewall / ((wheel.tireWidthMm || 255) / 1000)) * 100);
+  return aspect >= 25 && aspect <= 80 ? aspect : null;
 }
 
 /** 当前整车长度（取水平方向最长边），供部件分类做尺度参照 */
@@ -424,14 +689,17 @@ function hideOverlay() {
   overlay.classList.remove('show');
 }
 document.addEventListener('glb:progress', (e) => {
-  showOverlay(`加载模型 ${e.detail.pct}%`);
+  // 防御：进度事件只「刷新」已经打开的加载遮罩（整车/轮毂显式加载时），
+  // 不允许单独把遮罩拉起——否则后台预览加载会把界面永久卡在「加载模型 100%」。
+  if (!overlay.classList.contains('show')) return;
+  overlayText.textContent = `加载模型 ${e.detail.pct}%`;
 });
 
 /* ---------------------------- 品牌标识 ---------------------------- */
 
-// 三处：侧栏顶部 / 3D 视口右下角水印 / 加载遮罩居中。
-// 必须在 createPanel 之前挂，prepend 才能保证侧栏 Logo 在最上面。
-mountBrandAll({ sidebar: sidebarEl, stage, overlay });
+// 两处：3D 视口右下角水印 / 加载遮罩居中。
+// 侧栏顶部品牌板块按需求已移除，不再挂载。
+mountBrandAll({ stage, overlay });
 
 /* ---------------------------- App ---------------------------- */
 
@@ -451,22 +719,68 @@ const app = {
   },
 
   /**
-   * 悬挂降低应用：把「车身相对车轮下移 Δ」落到场景。
-   *   车身最终偏移 = shellLift − Δ（与 shellLiftUser 叠加，见 panel 说明）。
-   *   车轮 rig 不动；仅 carInner 与 chassis.root 下移 Δ。
+   * 悬挂高度应用：车身相对车轮升降，车轮始终贴地不动。
+   *
+   * 输入：
+   *   - params.suspensionDelta：全局悬挂降低 Δ（mm），>0 降低车身（旧 slider，与分角叠加）
+   *   - params.suspension.{FL,FR,RL,RR}：分角/分轴车身高度偏移（mm），正值升高
+   *
+   * 输出：
+   *   - carInner 整体平移 = base + shellLift − Δ + avg(suspension)
+   *   - carInner 俯仰/侧倾由前后/左右高度差自然产生
+   *   - chassis.root 跟随平均高度（若用户把它显示出来）
+   *   - WheelRig 完全不动，轮胎接地点保持 y=0
    */
   applySuspension() {
+    const s = this.params.suspension || { FL: 0, FR: 0, RL: 0, RR: 0 };
     const deltaM = (this.params.suspensionDelta || 0) / 1000;
-    this.chassis.setSuspension(this.params.suspensionDelta || 0);
-    const deltaChanged = Math.abs(deltaM - (this._lastDeltaM ?? NaN)) >= 1e-6;
+    const avgSuspMm = (s.FL + s.FR + s.RL + s.RR) / 4;
+    const avgSuspM = avgSuspMm / 1000;
+
+    // 轴距 / 轮距：优先用车型数据，否则用底盘推导值
+    const wbM = (this.params.wheelbase ? this.params.wheelbase / 1000 : null)
+      || this.chassis?.p?.wheelbase
+      || 2.6;
+    const trackFrontM = (this.params.trackFront ? this.params.trackFront / 1000 : null)
+      || (this.chassis?.p?.halfTrack_F || 0.8) * 2
+      || 1.6;
+    const trackRearM = (this.params.trackRear ? this.params.trackRear / 1000 : null)
+      || (this.chassis?.p?.halfTrack_R || 0.8) * 2
+      || 1.6;
+    const trackAvgM = (trackFrontM + trackRearM) / 2;
+
+    // 前后平均差 → 俯仰（绕 Z 轴），左右平均差 → 侧倾（绕 X 轴）
+    const frontAvg = (s.FL + s.FR) / 2;
+    const rearAvg = (s.RL + s.RR) / 2;
+    const leftAvg = (s.FL + s.RL) / 2;
+    const rightAvg = (s.FR + s.RR) / 2;
+    const pitchRad = ((rearAvg - frontAvg) / 1000) / Math.max(0.5, wbM);
+    const rollRad = ((rightAvg - leftAvg) / 1000) / Math.max(0.5, trackAvgM);
+
     const lift = this.chassis?.p?.shellLift ?? 0;
     const base = this._baseShellY ?? carInner.position.y;
-    // 车身最终偏移 = base + shellLift − Δ
-    carInner.position.y = base + lift - deltaM;
-    if (!deltaChanged) return;
+
+    carInner.position.y = base + lift - deltaM + avgSuspM;
+    carInner.rotation.x = rollRad;
+    carInner.rotation.z = pitchRad;
+
+    // 底盘几何跟随平均车身高度（用户想隐藏，但万一打开也要对齐）
+    this.chassis.setSuspension(this.params.suspensionDelta || 0, avgSuspMm);
+
+    const changed =
+      Math.abs(deltaM - (this._lastDeltaM ?? NaN)) >= 1e-6 ||
+      Math.abs(avgSuspM - (this._lastAvgSuspM ?? NaN)) >= 1e-6 ||
+      Math.abs(pitchRad - (this._lastPitchRad ?? NaN)) >= 1e-6 ||
+      Math.abs(rollRad - (this._lastRollRad ?? NaN)) >= 1e-6;
+
     this._lastDeltaM = deltaM;
+    this._lastAvgSuspM = avgSuspM;
+    this._lastPitchRad = pitchRad;
+    this._lastRollRad = rollRad;
+
+    if (!changed) return;
     carOuter.updateMatrixWorld(true);
-    // 车壳下移 → 切割世界坐标缓存必须重算（沿用 applyShellMount 机制，不重建几何）
+    // 车身位姿变化 → 切割世界坐标缓存必须重算
     this.shellCutter.refresh();
   },
 
@@ -526,13 +840,84 @@ const app = {
    * 顺序严格按设计 §5.1：⑨ 切割必须在 ⑧ 注入轮位之后
    * （archR / hubY 依赖轮胎参数，顺序反了会切出错误尺寸的轮拱）。
    */
+  /**
+   * 把查到的真车参数落到建模上：车长/车宽/车高直接用于归一，
+   * 轴距与轮距交给四轮 rig，让轮位也是真的。
+   *
+   * @param {Object|null} s /api/specs 的返回（available 为真才生效）
+   * @returns {boolean} 是否应用成功
+   */
+  applyRealSpecs(s) {
+    if (!s?.available || !s.length) return false;
+    this.params.realSpecs = {
+      length: s.length,
+      width: s.width ?? null,
+      height: s.height ?? null,
+      wheelbase: s.wheelbase ?? null,
+      trackFront: s.trackFront ?? null,
+      trackRear: s.trackRear ?? null,
+      groundClearance: s.groundClearance ?? null,
+      approachAngle: s.approachAngle ?? null,
+      departureAngle: s.departureAngle ?? null,
+      rimInch: s.rimInch ?? null,
+      tireWidth: s.tireWidth ?? null,
+      aspect: s.aspect ?? null,
+      source: s.source || '',
+      confidence: s.confidence ?? 0,
+    };
+    // 车长（毫米 → 米）作为归一锚点
+    this.params.carLength = s.length / 1000;
+    // 其余真车尺寸落到 params，供「车型数据」面板直接展示与微调
+    this.params.carWidth = s.width ? s.width / 1000 : null;
+    this.params.carHeight = s.height ? s.height / 1000 : null;
+    this.params.wheelbase = s.wheelbase ?? null;
+    this.params.trackFront = s.trackFront ?? null;
+    this.params.trackRear = s.trackRear ?? null;
+    this.params.groundClearance = s.groundClearance ?? null;
+    this.params.approachAngle = s.approachAngle ?? null;
+    this.params.departureAngle = s.departureAngle ?? null;
+
+    /* 已有 BANG 实测轴位置时，轴距以实测为准 —— 实测值是从**当前这台模型**上
+     * 量出来的，比车型库数据更贴合几何；同时用实测轴距反算 wheelbase，
+     * 保证「轴距 = 前轴 x − 后轴 x」三者一致（混搭会让下游算出矛盾的四角）。 */
+    if (Number.isFinite(this.params.axleXFront) && Number.isFinite(this.params.axleXRear)) {
+      this.params.wheelbase = Math.round(this.params.axleXFront - this.params.axleXRear);
+    }
+
+    // 轴距 / 轮距：交给 rig 当轮位规格，优先于按车身尺寸估算
+    if (this.params.wheelbase && s.trackFront && s.trackRear) {
+      rig.setRealGeometry({
+        wheelbase: this.params.wheelbase / 1000,
+        trackFront: s.trackFront / 1000,
+        trackRear: s.trackRear / 1000,
+      });
+    }
+
+    /* 原厂轮毂/轮胎规格：把 OEM 数据种进轮胎滑杆，让"数据真"贯彻到底——
+     * 后续所有调参（ET/J/倾角/轮距）都从真车原厂胎开始，而不是 SL 350 默认。
+     * 仅当三项齐全才覆盖，缺任一字段就保留用户/默认设定，避免半截数据误导。
+     * J 值/ET/倾角属"改装取向"而非原厂公开参数，留作手动调参，不强行填。 */
+    if (s.rimInch && s.tireWidth && s.aspect) {
+      const seed = { rimInch: s.rimInch, tireWidthMm: s.tireWidth, aspect: s.aspect };
+      Object.assign(this.params.front, seed);
+      Object.assign(this.params.rear, seed);
+    }
+    return true;
+  },
+
   refitCar({ recapture = true } = {}) {
     if (!carGroup) return;
     // ② 摆正 + 归一
     carInner.position.set(0, 0, 0);
     carInner.quaternion.identity();
     carInner.scale.set(1, 1, 1);
-    normalizeCar(carInner, { targetLength: this.params.carLength, groundY: 0 });
+    // 有真车数据时按真实长宽高归一（否则只锁车长，保持纯等比）
+    normalizeCar(carInner, {
+      targetLength: this.params.carLength,
+      targetWidth: this.params.carWidth,
+      targetHeight: this.params.carHeight,
+      groundY: 0,
+    });
     carOuter.updateMatrixWorld(true);
     // 记下归一化后的挂载基准高度，shellLift 只能在这个基础上叠加
     this._baseShellY = carInner.position.y;
@@ -549,9 +934,34 @@ const app = {
     });
     shellMetrics.current = metrics;
 
-    // ⑤ 推导底盘参数
+    // ⑤ 推导底盘参数（车型识别数据优先于经验比例）
     this.chassis.p.shellLiftUser = this.params.chassis.shellLiftUser / 1000;
-    this.chassis.derive(metrics, { front: this.params.front, rear: this.params.rear });
+    const p = this.params;
+    this.chassis.derive(metrics, { front: this.params.front, rear: this.params.rear }, {
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      // 实测前后轴的绝对 x 坐标（米）。给了就采信，不给才退回 ±wheelbase/2。
+      axleX_F: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleX_R: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+      // ChassisParams 内部把 halfTrack_F/R 当半轮距直接用，因此传 track / 2000
+      halfTrack_F: p.trackFront ? p.trackFront / 2000 : null,
+      halfTrack_R: p.trackRear ? p.trackRear / 2000 : null,
+      rideHeight: p.groundClearance ? p.groundClearance / 1000 : null,
+    });
+    /* 同步用真实轴距 / 轮距 / 轴位置覆盖四轮位置
+     * （支持部分更新：只调 wheelbase 或只调轮距也会生效）。
+     * axleXFront / axleXRear 必须一起传：wheelRig 里 realGeometry 会盖掉
+     * chassis.cornerSpec 的 x，只修 chassis 不修这里等于白修。 */
+    // 没有实测轴位置时显式清掉：它是绝对坐标，换车后留着上一辆车的值会把轮毂摆飞
+    if (!(Number.isFinite(p.axleXFront) && Number.isFinite(p.axleXRear))) {
+      rig.clearAxlePositions();
+    }
+    rig.setRealGeometry({
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      trackFront: p.trackFront ? p.trackFront / 1000 : null,
+      trackRear: p.trackRear ? p.trackRear / 1000 : null,
+      axleXFront: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleXRear: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+    });
     // 面板覆盖了甲板高时，derive 之后再盖一次并重算派生量（skirtH 等）
     if (Number.isFinite(this.params.chassis.deckHeight)) {
       this.chassis.p.deckHeight = this.params.chassis.deckHeight;
@@ -587,17 +997,19 @@ const app = {
   collectBodyMaterials() {
     this.bodyMaterials = [];
     this._bodyMaps = [];
-    if (!carGroup) return;
-    carGroup.traverse((o) => {
-      if (!o.isMesh) return;
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of mats) {
-        if (m && m.isMeshPhysicalMaterial) {
-          this.bodyMaterials.push(m);
-          this._bodyMaps.push(m.map || null);
+    // 未拆解的整车 + 拆解装配体：谁在场景里显示就给谁上色
+    for (const root of bodyRoots()) {
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (m && m.isMeshPhysicalMaterial) {
+            this.bodyMaterials.push(m);
+            this._bodyMaps.push(m.map || null);
+          }
         }
-      }
-    });
+      });
+    }
   },
 
   /**
@@ -627,6 +1039,10 @@ const app = {
         carGroup.removeFromParent();
         disposeObject(carGroup);
       }
+      // 加载新车前清理上一轮 BANG 拆解产物，避免“整车 + 拆解车身”双车叠加
+      clearBangParts();
+      // 同时清掉上一轮轮毂模板，防止旧车的异常轮毂遗留到新车上
+      resetWheelToProcedural();
       carGroup = group;
       carInner.add(carGroup);
       // 车身材质收集 + 按当前方案色值上色（着色/纯色随 params）
@@ -663,20 +1079,48 @@ const app = {
   },
 
   /* ---- 轮毂 ---- */
+  /**
+   * 切换到程序化经典轮毂款式（te37 / bbs-lm / rotiform / mesh / sport / default）。
+   * 会保留当前 ET/J/倾角/尺寸等全部调节参数。
+   */
+  loadProceduralWheel(style = 'default') {
+    this.params.rimPreset = style;
+    rig.useProceduralWheel(style);
+    this.apply();
+  },
+
   async loadWheelFromUrl(url) {
     showOverlay('正在载入轮毂模型…');
     try {
       const { group } = await loadGLB(url);
       const measured = normalizeWheel(group);
+      /* 形状校验：图生 3D 拿轮毂照片有时会重建出整车/带车身的一大块
+       * （实测一次产物是 1.81×1.16×1.90m，明显是车不是轮）。
+       * 这种模板装到四轮上会被 rig 缩成"四个小车"，比没有还糟。
+       * 判据只看形状不看绝对尺寸：盘状 = 两个大边接近相等 + 厚度明显更小。 */
+      const shape = wheelShapeOf(measured.size);
+      if (!shape.ok) {
+        console.warn(
+          `[wheel] 生成的不是盘状轮毂（${shape.d1.toFixed(2)}×${shape.d2.toFixed(2)}×${shape.d3.toFixed(2)}m，` +
+            `圆度 ${shape.roundness.toFixed(2)} 厚径比 ${shape.thin.toFixed(2)}），已保留程序化轮毂`
+        );
+        disposeObject(group);
+        if (wheelGroup) disposeObject(wheelGroup);
+        wheelGroup = null;
+        rig.useProceduralWheel(this.params.rimPreset);
+        this.apply();
+        hideOverlay();
+        return { ...measured, rejected: true, shape };
+      }
       if (wheelGroup) disposeObject(wheelGroup);
       wheelGroup = group;
       rig.setWheelSource(group, measured);
       this.apply();
       hideOverlay();
-      return measured;
+      return { ...measured, rejected: false, shape };
     } catch (e) {
       console.warn('[wheel] 载入失败，回退程序化轮毂：', e.message);
-      rig.useProceduralWheel();
+      rig.useProceduralWheel(this.params.rimPreset);
       this.apply();
       hideOverlay();
       return null;
@@ -832,25 +1276,218 @@ const app = {
   },
 
   /**
-   * 把后端已经拆好的部件自动挂到场景里（生成流程内部调用，用户无需操作）。
+   * 挂载 BANG 拆解产物。
+   *
+   * 为什么不是"摆到车旁边"：
+   *   实测 Hyper3D BANG 一次返回的是**一个 GLB 文件、内含多个子网格**
+   *   （车身 1 + 四轮 4），坐标与原始整车完全一致。整文件摆到车边就变成
+   *   「整车 + 一整台复制品」的双车 BUG；而完全不摆，用户就只能看到
+   *   未拆解的整车。
+   *
+   * 正确做法（本函数默认 `assemble` 模式）：
+   *   ① 把文件里的每个子网格拆成独立可移动部件（烘焙世界变换）
+   *   ② 挂进 carInner，与 carGroup 共享归一变换 → 部件精确落在整车原位
+   *   ③ 隐藏未拆解的整车 → 场景里是"一辆由可拆部件组成的完整车"
+   *   ④ 只保留车身部件；车轮的**位置**反推成轴距/轮距交给四轮 rig，
+   *      生成的轮毂因此精确落在原车轮的位置上（车轮网格本身不入场景）
+   *
    * @param {Array<{name:string,url:string,index:number}>} parts
-   * @param {{offsetX?:number}=} opts offsetX 让部件摆到整车旁边，避免重叠
-   * @returns {Promise<number>} 成功载入的部件数
+   * @param {{mode?:'assemble'|'spread', offsetX?:number}=} opts
+   * @returns {Promise<{total:number, body:number, wheel:number, geom:Object|null}>}
    */
-  async applyBangParts(parts, { offsetX = 0 } = {}) {
-    if (!Array.isArray(parts) || !parts.length) return 0;
-    const loaded = [];
+  async applyBangParts(parts, { mode = 'assemble', offsetX = 3 } = {}) {
+    const empty = { total: 0, body: 0, wheel: 0 };
+    if (!Array.isArray(parts) || !parts.length) return empty;
     clearBangParts();
+
+    const loaded = [];
     for (const p of parts) {
       try {
         const { group } = await loadGLB(p.url);
-        loaded.push(group);
+        for (const m of splitBangFile(group)) loaded.push(m);
       } catch (e) {
         console.warn('[bang] 部件载入失败，已跳过：', p?.name, e.message);
       }
     }
-    if (loaded.length) layoutBangParts(loaded, { offsetX });
-    return loaded.length;
+    if (!loaded.length) return empty;
+
+    // 手动导入的散件：彼此坐标系无关，仍按一字排开摆在车旁
+    if (mode === 'spread') {
+      layoutBangParts(loaded, { offsetX });
+      bangMountedSig = parts.map((p) => p?.url).join('|');
+      return { total: loaded.length, body: loaded.length, wheel: 0 };
+    }
+
+    for (const m of loaded) {
+      m.position.set(0, 0, 0);
+      bangAssembly.add(m);
+    }
+    carOuter.updateMatrixWorld(true);
+    fitBangAssemblyToCar();
+    carOuter.updateMatrixWorld(true);
+
+    // 分类：车轮 vs 车身部件
+    const carLen = carLengthRef();
+    const body = [];
+    const wheel = [];
+    for (const m of [...bangAssembly.children]) {
+      const info = classifyPart(m, carLen);
+      (info.kind === 'wheel' ? wheel : body).push(m);
+    }
+
+    /* 用拆出来的四个车轮反推**真实轮位**（轴距 / 轮距 / 轮心高）。
+     * 这一步是"轮毂摆到车轮对应位置"的关键：rig 默认按车身包围盒比例估算轮位，
+     * 实测与模型真实车轮差 170mm 量级，轮毂会偏离轮拱甚至插进车身。
+     * 这里直接拿 BANG 分离出的车轮质心当真值，轮毂就落在原车轮的位置上。 */
+    const geom = deriveWheelGeometry(
+      wheel.map((m) => boxOf(m).getCenter(new THREE.Vector3()))
+    );
+
+    // 只要拆开的车身：车轮部件不入场景，位置信息交给 rig 后即释放
+    for (const m of wheel) {
+      bangAssembly.remove(m);
+      disposeBangPart(m);
+    }
+
+    // 爆炸方向：装配体局部空间中，从整体中心指向部件中心
+    const boxL = new THREE.Box3();
+    for (const m of [...bangAssembly.children]) {
+      if (m.geometry.boundingBox) boxL.union(m.geometry.boundingBox);
+    }
+    const center = boxL.isEmpty() ? new THREE.Vector3() : boxL.getCenter(new THREE.Vector3());
+    this._bangSpan = boxL.isEmpty() ? 1 : boxL.getSize(new THREE.Vector3()).length();
+    this._bangParts = [];
+    this._bangWheelParts = [];
+    for (const m of [...bangAssembly.children]) {
+      const c = m.geometry.boundingBox
+        ? m.geometry.boundingBox.getCenter(new THREE.Vector3())
+        : new THREE.Vector3();
+      const dir = c.sub(center);
+      if (dir.lengthSq() < 1e-9) dir.set(0, 1, 0);
+      dir.normalize();
+      this._bangParts.push({ mesh: m, dir });
+    }
+    if (geom) this.applyBangWheelGeometry(geom);
+
+    if (body.length) {
+      // 用装配体顶替整车：不隐藏就会两份几何重叠，正是"穿模"的来源
+      if (carGroup) carGroup.visible = false;
+      /* 关键：拆出来的车身本身就是**水密封闭实体**（实测 0 条边界边），
+       * 车轮分离后留下的就是真实轮拱与车底。三道切割（C1 底切 / C2 侧切 / C3 轮拱开口）
+       * 是为"车轮画在贴图里、没有几何"的整车载模型设计的，作用在这种车身上
+       * 只会把轮拱和车底切穿 → 从轮拱看进去是空壳。所以装配体在场时必须关掉切割。 */
+      this.params.shell.enabled = false;
+      // 重新接管车壳（关闭切割后仍要重切一次，把之前切掉的索引还原回来）
+      this.refitCar({ recapture: true });
+      this.collectBodyMaterials();
+      this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
+    }
+    this.setBangExplode(this.params.bangExplode ?? 0);
+    bangMountedSig = parts.map((p) => p?.url).join('|');
+    return { total: loaded.length, body: body.length, wheel: wheel.length, geom };
+  },
+
+  /**
+   * 把 BANG 实测出的轮位写进 params，让随后生成的轮毂落在原车轮位置上。
+   *
+   * 走的是既有链路：refitCar() → chassis.derive({wheelbase, halfTrack}) +
+   * rig.setRealGeometry({wheelbase, trackFront, trackRear})，
+   * 所以 ET / J / 倾角 / 轮距滑杆仍然照常生效，只是基准位置换成了实测值。
+   *
+   * @param {{wheelbase:number, trackFront:number, trackRear:number, hubY:number}} g 单位：米
+   */
+  applyBangWheelGeometry(g) {
+    this.params.wheelbase = Math.round(g.wheelbase * 1000);
+    this.params.trackFront = Math.round(g.trackFront * 1000);
+    this.params.trackRear = Math.round(g.trackRear * 1000);
+
+    /* 实测轴位置（必备）：只写 wheelbase 会让下游按 ±wheelbase/2 对称摆位，
+     * 而真实车前后悬不等长 → 两只轴会整体平移同一个常量，轮毂就出不了轮拱。
+     * 挂在 params 上，refitCar() 会同时喂给 chassis.derive 与 rig.setRealGeometry。 */
+    if (Number.isFinite(g.xFront) && Number.isFinite(g.xRear)) {
+      this.params.axleXFront = Math.round(g.xFront * 1000);
+      this.params.axleXRear = Math.round(g.xRear * 1000);
+    } else {
+      this.params.axleXFront = null;
+      this.params.axleXRear = null;
+    }
+
+    // 轮胎外径也对齐到原车轮：轮心高即外半径，反推扁平比，
+    // 否则轮毂会比轮拱小一圈（实测这台车差 24mm，视觉上就是轮子陷进去）
+    const aF = fitTireAspect(this.params.front, g.hubYFront ?? g.hubY);
+    const aR = fitTireAspect(this.params.rear, g.hubYRear ?? g.hubY);
+    if (aF) this.params.front.aspect = aF;
+    if (aR) this.params.rear.aspect = aR;
+
+    this.params.bangWheelGeom = { ...g, aspectFront: aF, aspectRear: aR, source: 'bang' };
+    console.log(
+      `[bang] 轮位按拆解实测校准：轴距 ${this.params.wheelbase}mm` +
+        ` / 前轮距 ${this.params.trackFront}mm / 后轮距 ${this.params.trackRear}mm` +
+        ` / 轴位置 前 ${this.params.axleXFront ?? '-'} 后 ${this.params.axleXRear ?? '-'} mm` +
+        ` / 轮心高 ${(g.hubY * 1000).toFixed(0)}mm` +
+        (aF || aR ? ` / 扁平比对齐为 前 ${aF ?? '-'} 后 ${aR ?? '-'}` : '')
+    );
+  },
+
+  /**
+   * 爆炸视图：把各部件沿"背离装配体中心"的方向推开。
+   * @param {number} t 0 = 完全装配，1 = 最大散开
+   */
+  setBangExplode(t) {
+    const k = Math.max(0, Math.min(1, Number(t) || 0));
+    this.params.bangExplode = k;
+    const span = this._bangSpan || 1;
+    for (const rec of [...(this._bangParts || []), ...(this._bangWheelParts || [])]) {
+      rec.mesh.position.copy(rec.dir).multiplyScalar(k * span * 0.55);
+    }
+    carOuter.updateMatrixWorld(true);
+  },
+
+  /**
+   * 整车显示模式切换。
+   * @param {'assembled'|'single'} mode
+   *   assembled = 拆解装配体（默认，一辆由可拆部件组成的完整车）
+   *   single    = 未拆解的整车单体
+   */
+  setBangView(mode) {
+    const hasAssembly = (this._bangParts?.length || 0) > 0;
+    const assembled = mode !== 'single' && hasAssembly;
+    if (this.params.bangView === (assembled ? 'assembled' : 'single') && bangAssembly.visible === assembled) {
+      return;
+    }
+    this.params.bangView = assembled ? 'assembled' : 'single';
+    bangAssembly.visible = assembled;
+    if (carGroup) carGroup.visible = !assembled;
+    /* 切割策略随视图切换：
+     * 拆解车身（封闭实体、自带轮拱）→ 关切割；
+     * 整车单体（车轮画在贴图上）→ 开切割，才轮拱开口让轮毂露出来。 */
+    const wantCut = !assembled;
+    if (this.params.shell.enabled !== wantCut) {
+      this.params.shell.enabled = wantCut;
+      this.refitCar({ recapture: true });
+    }
+  },
+
+  /** 拆解状态，供面板显示（含按拆解实测校准出来的轮位） */
+  bangInfo() {
+    const g = this.params.bangWheelGeom || null;
+    return {
+      total: this._bangParts?.length || 0,
+      body: this._bangParts?.length || 0,
+      wheel: 0, // 车轮不入场景，位置信息已转成轮位供轮毂使用
+      view: this._bangParts?.length ? this.params.bangView || 'assembled' : 'none',
+      geom: g
+        ? {
+            wheelbase: Math.round(g.wheelbase * 1000),
+            trackFront: Math.round(g.trackFront * 1000),
+            trackRear: Math.round(g.trackRear * 1000),
+            hubY: Math.round(g.hubY * 1000),
+            // 实测轴位置（mm，车长中心为 0、车头 +X），用于核对轮毂是否落进轮拱
+            axleXFront: Number.isFinite(g.xFront) ? Math.round(g.xFront * 1000) : null,
+            axleXRear: Number.isFinite(g.xRear) ? Math.round(g.xRear * 1000) : null,
+          }
+        : null,
+    };
   },
 
   /** 移除 BANG 拆解产物，恢复整车视图 */
@@ -876,8 +1513,8 @@ const app = {
   /** 当前是否已切过原车轮，供 UI 显示按钮状态 */
   hasCutOriginalWheels() {
     let cut = false;
-    if (carGroup) {
-      carGroup.traverse((o) => {
+    for (const root of bodyRoots()) {
+      root.traverse((o) => {
         if (o.isMesh && o.userData._origIndex !== undefined) cut = true;
       });
     }
@@ -977,12 +1614,27 @@ function uploaderOf(kind) {
  * 载入生成好的模型，并写回一句人话状态。
  *
  * parts：Hyper3D 生成后自动 BANG 拆解出的部件。
- * 这是流水线的一部分——**用户不需要点任何按钮**，生成完就已经拆好并摆到整车旁边。
+ * 这是流水线的一部分——**用户不需要点任何按钮**，生成完就已经拆好并按原坐标
+ * 装配回整车（不是摆到旁边的第二辆车，也不是没拆的整车单体）。
  */
 async function applyResult(kind, url, parts) {
   const u = uploaderOf(kind);
   if (kind === 'wheel') {
     const m = await app.loadWheelFromUrl(url);
+    if (m?.rejected) {
+      // 生成成功，但形状不像轮毂（多半是照片里带了整车）→ 说清楚并给出可执行的下一步
+      const s = m.shape || {};
+      u.setStatus(
+        `生成完成，但产出不是轮毂（量得 ${(s.d1 || 0).toFixed(2)}×${(s.d2 || 0).toFixed(2)}×${(s.d3 || 0).toFixed(2)}m，` +
+          `厚径比 ${(s.thin || 0).toFixed(2)}，像整车/带车身的一大块），已保留程序化轮毂`,
+        'err'
+      );
+      u.setDetail?.([
+        '请改上传**只有轮毂**的特写：正面 + 侧面 + 斜 45°，画面里不要出现车身、翼子板、地面以外的环境。',
+        '轮毂已固定走 Hyper3D Rodin；换图重传即可，不需要改任何设置。',
+      ]);
+      return;
+    }
     u.setStatus(
       m
         ? `生成完成，已装配 4 只（量得直径 ${(m.diameter * 1000).toFixed(0)}mm / 宽 ${(m.width * 1000).toFixed(0)}mm）`
@@ -993,16 +1645,37 @@ async function applyResult(kind, url, parts) {
   }
   await app.loadCarFromUrl(url);
   // 写回当前方案：这张整车模型就是用户提交的车型，预览卡片要显示它而非默认 SL 350
-  if (currentPlan) currentPlan.carModelUrl = url;
-
-  // 自动拆解产物：直接摆到整车右侧，用户不用做任何操作
-  if (Array.isArray(parts) && parts.length) {
-    if (currentPlan) currentPlan.bangParts = parts;
-    const n = await app.applyBangParts(parts, { offsetX: 3 });
-    u.setStatus(`生成完成，已装载你的车，并自动拆解为 ${n} 个部件`, 'ok');
-    return;
+  if (currentPlan) {
+    currentPlan.carModelUrl = url;
+    if (Array.isArray(parts)) currentPlan.bangParts = parts;
+    /* 立刻落盘。拆解产物原本只在内存里，用户不点「返回车库」就刷新页面会丢失，
+     * 再进来就只剩未拆解的整车（正是"车身不是实体、轮拱是空的"的成因）。 */
+    try {
+      garage?.upsertPlan?.({ ...currentPlan, updatedAt: Date.now() });
+    } catch (e) {
+      console.warn('[plan] 即时保存方案失败：', e.message);
+    }
   }
-  u.setStatus('生成完成，已装载你的车', 'ok');
+
+  // 新生成的整车必须保持原始车漆贴图，不套用方案里可能残留的旧色值
+  app.params.bodyColor = '#ffffff';
+  app.params.bodySolid = false;
+  app.setBodyColor('#ffffff', false);
+  panel?.syncColor?.();
+
+  // 拆解产物按原坐标装配回整车原位：得到"一辆由可拆部件组成的完整车身"，
+  // 同时用分离出来的车轮反推真实轮位，让生成的轮毂精确落在车轮位置上
+  let bangNote = '';
+  if (Array.isArray(parts) && parts.length) {
+    const r = await app.applyBangParts(parts);
+    if (r.body) bangNote += `，车身已拆解为 ${r.body} 个独立部件并装配回原位`;
+    if (r.geom) {
+      bangNote += `，轮位已按拆解实测校准（轴距 ${Math.round(r.geom.wheelbase * 1000)}mm / 前轮距 ${Math.round(r.geom.trackFront * 1000)}mm / 后轮距 ${Math.round(r.geom.trackRear * 1000)}mm）`;
+    }
+    // 扁平比被对齐过，滑杆要跟着刷新
+    panel?.syncAll?.();
+  }
+  u.setStatus('生成完成，已装载你的车' + bangNote, 'ok');
 }
 
 /**
@@ -1017,8 +1690,15 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
   const u = uploaderOf(kind);
   const meta = KIND_META[kind];
 
-  // 全新上传：先识别车型 → 回填任务名称（失败则手填，不阻塞）
-  if (files) {
+  /* 全新上传：整车先做视觉识别（车型 + 真车参数），轮毂**不做**。
+   * 轮毂照片识别不出车型，跑一次视觉接口纯属浪费时间与额度，
+   * 用户也明确要求取消——所以这里按 kind 分流，轮毂直接进入生成。 */
+  if (files && kind === 'wheel') {
+    u.setThumbs(files);
+    u.clearRecovery();
+    u.setProgress(0.01);
+    u.setStatus('开始生成轮毂…');
+  } else if (files) {
     u.setThumbs(files);
     u.clearRecovery();
     u.setProgress(0.01);
@@ -1033,6 +1713,37 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
         'ok'
       );
       u.setStatus(`识别为「${rec.fullName || '未知车型'}」，开始生成…`);
+
+      /* 识别到车型后，顺手把真车参数拉回来。
+       * 拿到就按真实长宽高建模、按真实轴距/轮距定位四轮——
+       * 后续所有调节（ET/J/倾角/轮距/悬挂）都建立在真车尺度上。
+       * 查询失败不影响生成，退回默认车长即可。 */
+      if (kind === 'car') {
+        u.setRecog(`已识别：${rec.fullName}（把握 ${pct}%）· 正在查真车参数…`, 'ok');
+        const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
+        if (sp?.available && app.applyRealSpecs(sp)) {
+          const rs = app.params.realSpecs;
+          u.setRecog(
+            `已识别：${rec.fullName}（把握 ${pct}%）· 真车参数已应用`,
+            'ok'
+          );
+          u.setDetail?.(
+            `真车 ${rs.length}×${rs.width || '?'}×${rs.height || '?'}mm，轴距 ${rs.wheelbase || '?'}mm` +
+              `，前/后轮距 ${rs.trackFront || '?'}/${rs.trackRear || '?'}mm` +
+              `，离地 ${rs.groundClearance || '?'}mm` +
+              `，接近/离去角 ${rs.approachAngle || '?'}/${rs.departureAngle || '?'}°（来源：${rs.source}）`
+          );
+          console.log('[specs] 应用真车参数', rs);
+          // 真车 OEM 轮毂/轮胎已种入 params.front/rear，刷新滑杆让 UI 立刻反映真车数据，
+          // 而不是停留在 SL 350 默认；后续所有调参都从真车原厂胎起步。
+          panel?.syncAll();
+        } else {
+          u.setRecog(
+            `已识别：${rec.fullName}（把握 ${pct}%）· 未查到真车参数，按默认比例`,
+            'warn'
+          );
+        }
+      }
     } else if (rec?.reason === 'no-key') {
       u.setRecog('未配置识别模型，可手动命名（详见对话说明）', 'warn');
       u.setStatus('未配置识别模型，开始生成（可手动填任务名称）…');
@@ -1053,11 +1764,17 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       resumeJobId,
       title,
       precision: app.params.precision,
-      engine: app.params.engine,
+      // 轮毂固定走 Hyper3D Rodin：与整车同一家，轮辋/辐条几何与螺栓孔位更准，
+      // 且不受全局引擎下拉框（默认 fal）影响——用户明确要求轮毂也用 Hyper3D。
+      engine: kind === 'wheel' ? app.params.wheelEngine || 'hyper3d' : app.params.engine,
       falHighPack: app.params.falHighPack,
       onProgress: (s) => {
         u.setProgress(s.progress);
         u.setStatus(s.message);
+        // Hyper3D 提示词规则：后端回传 ①完整英文 prompt ②业务执行说明，就地展示
+        if (s.stage === 'prompt' && s.prompt) {
+          u.setDetail?.([s.taskNote || '', `Hyper3D prompt：${s.prompt}`]);
+        }
       },
     });
 
@@ -1197,14 +1914,19 @@ function handleGenerateError(kind, e) {
  */
 const rejectedTokenIds = new Set();
 
-/** 把 /api/health 回包翻成状态卡的四态 */
-function classifyHealth(h) {
+/** 把 /api/health 回包按指定引擎翻成状态卡的四态 */
+function classifyHealth(h, engine = 'hunyuan') {
   if (!h?.ok) return 'unknown';
-  if (h.mode !== 'live') return 'demo';
+  const e = h.engines?.[engine];
+  if (engine === 'higen3d') {
+    return e?.available ? 'live' : 'demo';
+  }
+  if (e?.mode !== 'live') return 'demo';
   // 云端已经拒过这张票，比文件里声明的过期时间更可信
-  if (h.tokenId && rejectedTokenIds.has(h.tokenId)) return 'expired';
-  if (!h.expiresAt) return 'live';
-  const left = new Date(h.expiresAt).getTime() - Date.now();
+  if (e.tokenId && rejectedTokenIds.has(e.tokenId)) return 'expired';
+  // Hyper3D / fal 等 API Key 无固定过期时间，expiresAt 为 null 时直接视为 live
+  if (!e.expiresAt) return 'live';
+  const left = new Date(e.expiresAt).getTime() - Date.now();
   if (Number.isNaN(left)) return 'live';
   if (left <= 0) return 'expired'; // 文件还在，但票已经过期
   if (left <= 2 * 3600 * 1000) return 'expiring'; // 2 小时内提醒换票
@@ -1241,13 +1963,15 @@ function pickLiveEngine(engines) {
 
 async function refreshHealth() {
   const h = await health();
-  const state = classifyHealth(h);
   let engine = app.params.engine || 'hunyuan';
-  const engineStatus = h.engines?.[engine] || { mode: 'demo' };
+  const isEngineLive = (id) => {
+    if (id === 'higen3d') return !!h.engines?.[id]?.available;
+    return h.engines?.[id]?.mode === 'live';
+  };
 
   // 当前引擎没凭证时自动切到有凭证的引擎。
   // 否则会出现"配了混元 key，却因为默认引擎是没 key 的 hyper3d 而一直跑 DEMO"的假死状态。
-  if (engineStatus.mode !== 'live') {
+  if (!isEngineLive(engine)) {
     const better = pickLiveEngine(h.engines);
     if (better) {
       console.warn(`[engine] 引擎 ${engine} 无可用凭证，自动切换到 ${better}`);
@@ -1257,16 +1981,18 @@ async function refreshHealth() {
   }
   // 下拉框是在面板构建时按当时的 engine 初始化的，回退后要同步过去
   panel.syncEngine?.();
-  // 切换后要重取状态，否则状态卡显示的还是旧引擎的情况
-  const finalStatus = h.engines?.[engine] || { mode: 'demo' };
-  const isLive = engine === 'higen3d' ? !!finalStatus.available : finalStatus.mode === 'live';
-  // 状态卡必须反映"当前引擎"是否真的能跑 LIVE；别的引擎有 key 不代表当前引擎可用
+
+  // 切换后按最终引擎重新计算状态；状态卡必须反映"当前引擎"是否真的能跑 LIVE
+  const engineStatus = h.engines?.[engine] || { mode: 'demo' };
+  const state = classifyHealth(h, engine);
+  const isLive = engine === 'higen3d' ? !!engineStatus.available : engineStatus.mode === 'live';
   const effectiveState = !isLive && state === 'live' ? 'demo' : state;
+
   panel.setMode({
     state: effectiveState,
-    expiresAt: h.expiresAt || '',
+    expiresAt: engineStatus.expiresAt || '',
     // 区分"时间到了"和"票被云端拒了"：后者文件里写的有效期不可信，不能再显示"还有 xx 小时"
-    rejected: !!(h.tokenId && rejectedTokenIds.has(h.tokenId)),
+    rejected: !!(engineStatus.tokenId && rejectedTokenIds.has(engineStatus.tokenId)),
     // LIVE 正常时不挂按钮，保持面板干净；其余三态都需要用户动手
     onRefresh: effectiveState === 'live' ? null : refreshHealth,
     engine,
@@ -1317,23 +2043,22 @@ function startTuner() {
     setInterval(refreshHealth, 5 * 60 * 1000);
 
     // 无轮毂模型时先上程序化轮毂，保证一进来就能拖滑杆看效果
-    rig.useProceduralWheel();
+    rig.useProceduralWheel(app.params.rimPreset);
     app.apply();
 
     // 预置整车 + 预置轮毂（存在才加载）；重新进入方案时优先载入用户提交的车型
     const initialCar = currentPlan?.carModelUrl || '/models/my-car.glb';
     await app.loadCarFromUrl(initialCar);
+
+    // 方案里存过拆解产物 → 按原坐标装配回整车（零额度；失败只记日志）
+    await restoreBangForPlan();
     const wheelOk = await fetch('/models/wheel.glb', { method: 'HEAD' })
       .then((r) => r.ok)
       .catch(() => false);
     if (wheelOk) await app.loadWheelFromUrl('/models/wheel.glb');
 
-    // 方案里已保存的自动拆解部件，直接恢复；失败只记日志，不拖慢/中断整车载入
-    if (Array.isArray(currentPlan?.bangParts) && currentPlan.bangParts.length) {
-      app
-        .applyBangParts(currentPlan.bangParts, { offsetX: 3 })
-        .catch((e) => console.warn('[bang] 恢复部件失败：', e.message));
-    }
+    // 不再自动恢复方案里的拆解部件——之前会造成“整车 + 拆解车身”双车叠加。
+    // bangParts 仍保留在方案对象中，供后续如需手动拆解时复用。
 
     app.fitCamera();
     app.setView('iso');
@@ -1341,6 +2066,8 @@ function startTuner() {
 }
 
 // 调试入口：追加 chassis / shellCutter 供 CDP 验证脚本读取
+// ⚠️ 全文件只能有这一处赋值：早期在文件末尾还有一份，会把这份覆盖掉，
+//    导致 CDP 验证脚本拿到的 app/rig 是旧快照、panel 永远是 undefined。
 window.__garage = {
   app,
   rig,
@@ -1351,6 +2078,13 @@ window.__garage = {
   shellCutter,
   shellMetrics,
   startTuner,
+  enterTuner,
+  returnToGarage,
+  capturePreview,
+  // panel 是启动后才赋值的，用 getter 拿，避免快照到 undefined
+  get panel() {
+    return panel;
+  },
 };
 
 // 把当前 3D 视图截成方案封面（dataURL）
@@ -1366,6 +2100,9 @@ function capturePreview() {
 // 把方案参数注入编辑器（进入方案 / 重新进入时调用）
 function applyPlanToApp(plan) {
   if (plan?.params) app.params = structuredClone(plan.params);
+  // 每次进入方案都清掉上一轮可能残留的拆解产物 / 异常轮毂，避免旧状态污染新车
+  clearBangParts();
+  resetWheelToProcedural();
   if (!panel) return;
   panel.syncAll();
   if (plan?.title) panel.carUpload.setTaskName(plan.title);
@@ -1375,6 +2112,36 @@ function applyPlanToApp(plan) {
   // 车漆色随方案恢复（carGroup 为空时由 boot 的 loadCarFromUrl 接管上色）
   if (typeof carGroup !== 'undefined' && carGroup) app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
   if (panel?.syncColor) panel.syncColor();
+
+  restoreBangForPlan();
+}
+
+/**
+ * 把方案对应的「拆开的实体车身」装回场景。
+ *
+ * 三级取值，能不花额度就不花：
+ *   ① 方案自己带着 bangParts（上次生成时存下来的）
+ *   ② 方案没带，但这台车以前拆过 → 查服务端 BANG 索引（零额度）
+ *   ③ 都没有 → 保持未拆解的整车，面板给出「重新拆解」提示
+ */
+async function restoreBangForPlan() {
+  const carLoaded = typeof carGroup !== 'undefined' && carGroup;
+  if (!carLoaded) {
+    panel?.syncBang?.();
+    return;
+  }
+  let parts = (currentPlan?.bangParts || []).filter((p) => p?.url);
+  if (!parts.length && currentPlan?.carModelUrl) {
+    parts = (await lookupBangParts(currentPlan.carModelUrl)) || [];
+    if (parts.length && currentPlan) currentPlan.bangParts = parts;
+  }
+  const sig = parts.map((p) => p?.url).join('|');
+  if (sig && sig !== bangMountedSig) {
+    await app
+      .applyBangParts(parts)
+      .catch((e) => console.warn('[bang] 恢复拆解部件失败：', e.message));
+  }
+  panel?.syncBang?.();
 }
 
 // 进入第二层 TUNING STUDIO
@@ -1422,27 +2189,46 @@ function returnToGarage() {
 }
 
 // 第一层入口：灵感车库（白色科技车库风）。选择方案 / 新建 → 进入 TUNING STUDIO。
-garage = mountGarage({
-  onEnter(plan) {
-    enterTuner(plan);
-  },
-});
+// 门禁：未登录先弹登录浮层，登录成功后再挂载车库；注销/令牌失效回到浮层。
+async function bootGarage() {
+  const user = await fetchMe();
+  if (!user) {
+    showAuthOverlay((u) => {
+      mountGarageEntry(u);
+    });
+    return;
+  }
+  mountGarageEntry(user);
+}
+
+function mountGarageEntry() {
+  // 已登录：确保浮层隐藏，挂载/重挂车库
+  garage = mountGarage({
+    onEnter(plan) {
+      enterTuner(plan);
+    },
+  });
+}
 
 // 第二层顶部「返回灵感车库 · 保存」按钮
 document.getElementById('back-to-garage')?.addEventListener('click', returnToGarage);
 
-// 调试入口：追加 chassis / shellCutter 供 CDP 验证脚本读取
-window.__garage = {
-  app,
-  rig,
-  viewer,
-  THREE,
-  ET_REF,
-  chassis,
-  shellCutter,
-  shellMetrics,
-  startTuner,
-  enterTuner,
-  returnToGarage,
-  capturePreview,
-};
+// 登录态变化（来自 auth.js：登录成功 / 401 失效 / 主动注销）
+window.addEventListener('auth:change', (e) => {
+  const user = e.detail?.user;
+  if (!user) {
+    // 已登出：卸载车库，回到登录浮层
+    if (garage) {
+      garage.root?.classList?.add('hidden');
+    }
+    showAuthOverlay(() => {
+      mountGarageEntry();
+    });
+  }
+});
+
+// 启动门禁
+void bootGarage();
+
+/* 调试入口统一在文件上方（window.__garage 只赋值一次），
+ * 这里不再重复赋值——重复会把上面那份覆盖掉。 */

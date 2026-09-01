@@ -5,6 +5,18 @@
  * 所有按钮统一高度与圆角，位置对齐。
  */
 
+/* 品牌标题英文使用 Archivo 可变字体（粗斜体 display 风），本地打包不依赖外网 */
+@import '@fontsource-variable/archivo';
+@import '@fontsource-variable/archivo/wght-italic.css';
+/* 品牌标题中文使用优设标题黑（锋利力量感、水平倾斜8°的免费商用标题字体），本地打包 */
+@font-face {
+  font-family: 'YouSheBiaoTiHei';
+  src: url('/fonts/you-she-biao-ti-hei.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 .garage-layer {
   position: fixed;
   inset: 0;
@@ -106,12 +118,25 @@
   gap: 14px;
 }
 
+/* 品牌图已去背（透明底 + 纯黑线），这里不再套白色卡片 / 圆角 / 描边阴影，
+   只剩图形本身。
+
+   高度取 21px 而不是标题的 font-size 26px —— 这是实测值，不是估值：
+   「灵感改装」用 YouSheBiaoTiHei @26px 渲染时，CJK 字形的**墨迹**只有 20px 高
+   （差分隔离后逐行扫描得出，CJK 没有西文那样的升部/降部，ink/em ≈ 0.78）；
+   而 logo 裁到墨迹外框、上下各留 2px 透明边，视觉高度 = height × 320/324。
+   因此 height = 20 ÷ (320/324) ≈ 20.3px，取 21px 留约 3% 视觉补偿
+   （稀疏图形与密实方块字等高的情况下会略显小）。
+   实测结果：logo 墨迹 20.7px vs 文字墨迹 20px，差 +0.7px。
+   若直接写 26px，logo 会比标题高出 6px（130%），肉眼明显偏大。 */
 .garage-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 0 0 1px rgba(40, 90, 170, 0.12), 0 6px 18px rgba(30, 60, 120, 0.14);
+  height: 21px;
+  width: auto;
+  /* 与 logo-mark-nobg.png 的固有比例一致：
+     图片加载前就预留出正确宽度，避免布局抖动 */
+  aspect-ratio: 353 / 324;
+  display: block;
+  flex: 0 0 auto;
   object-fit: contain;
 }
 
@@ -123,19 +148,56 @@
 
 .garage-brand__title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
   color: #16243b;
+  font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei',
+    'Source Han Sans SC', sans-serif;
 }
 
 .garage-brand__sub {
   margin: 2px 0 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #6f8bbf;
+  color: #2b3f63;
+  font-family: 'Archivo Variable', 'Arial Black', 'PingFang SC', sans-serif;
+  font-style: italic;
+  font-variation-settings: 'wght' 900;
+}
+
+/* 顶部登录用户胶囊 + 注销 */
+.garage-userchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(40, 90, 170, 0.14);
+}
+.garage-userchip__name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #16243b;
+}
+.garage-userchip__btn {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(47, 123, 255, 0.28);
+  transition: filter 0.16s ease;
+}
+.garage-userchip__btn:hover {
+  filter: brightness(1.06);
 }
 
 /* ---------------- Hero ---------------- */
@@ -269,9 +331,6 @@
   position: relative;
   cursor: pointer;
   perspective: 1200px;
-  /* 注意：这里不能加 transform-style: preserve-3d —— 否则卡片的子元素会按 3D 深度排序，
-     悬停时 pack 的 translateZ(18px) 会把删除按钮/徽章盖住，导致「删不掉方案」。
-     3D 倾斜效果靠 perspective + pack 自身的 preserve-3d 即可保持。 */
 }
 
 .garage-card__pack {
@@ -508,29 +567,49 @@
   height: 100%;
   border-radius: 26px 26px 34px 34px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.14) 45%, rgba(255, 255, 255, 0.22) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.78);
+    /* 锐利左上角高光 */
+    radial-gradient(120% 80% at 16% 10%, rgba(255, 255, 255, 0.78) 0%, transparent 24%),
+    /* 右下角冷色反光 */
+    radial-gradient(100% 100% at 88% 90%, rgba(195, 220, 255, 0.42) 0%, transparent 28%),
+    /* 中心微隆起的光晕 */
+    radial-gradient(90% 70% at 50% 55%, rgba(255, 255, 255, 0.18) 0%, transparent 60%),
+    /* 吸塑成型表面微细条纹 */
+    repeating-linear-gradient(
+      96deg,
+      rgba(255, 255, 255, 0.045) 0px,
+      rgba(255, 255, 255, 0.045) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    /* PET 透明底色 */
+    linear-gradient(170deg, rgba(255, 255, 255, 0.40) 0%, rgba(230, 242, 255, 0.22) 50%, rgba(215, 232, 255, 0.34) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.86);
   box-shadow:
-    inset 0 0 28px rgba(255, 255, 255, 0.6),
-    inset 0 0 8px rgba(255, 255, 255, 0.95),
-    0 12px 32px rgba(30, 60, 120, 0.22),
-    0 8px 16px rgba(0, 0, 0, 0.12),
-    inset 0 -4px 10px rgba(180, 205, 240, 0.25);
+    /* 外层悬浮投影 */
+    0 14px 38px rgba(20, 50, 110, 0.20),
+    0 8px 18px rgba(0, 0, 0, 0.12),
+    /* 顶层边缘光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    /* 塑料厚度感：内侧冷阴影 */
+    inset 0 -5px 14px rgba(175, 200, 235, 0.30),
+    inset 0 0 24px rgba(255, 255, 255, 0.55),
+    inset 0 0 8px rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(5px);
   overflow: hidden;
   transform-style: preserve-3d;
 }
 
-/* 泡壳密封压边 */
+/* 泡壳密封压边：双层压纹 + 高频焊接感 */
 .garage-card__shell::before {
   content: '';
   position: absolute;
   inset: 7px;
   border-radius: 20px 20px 26px 26px;
-  border: 1.5px solid rgba(255, 255, 255, 0.62);
+  border: 1.5px solid rgba(255, 255, 255, 0.76);
   box-shadow:
-    inset 0 0 0 1px rgba(180, 200, 225, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.3);
+    inset 0 0 0 1px rgba(180, 200, 225, 0.50),
+    0 0 0 1px rgba(255, 255, 255, 0.38),
+    inset 0 0 10px rgba(255, 255, 255, 0.35);
   z-index: 3;
   pointer-events: none;
 }
@@ -544,8 +623,8 @@
   bottom: 5px;
   height: 10px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.14);
-  filter: blur(5px);
+  background: rgba(0, 0, 0, 0.16);
+  filter: blur(6px);
   z-index: 0;
   pointer-events: none;
 }
@@ -581,9 +660,15 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40%;
+  height: 42%;
   border-radius: 26px 26px 0 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.22) 55%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(235, 245, 255, 0.35) 45%,
+    rgba(255, 255, 255, 0.08) 72%,
+    transparent 100%
+  );
   z-index: 2;
   pointer-events: none;
 }
@@ -594,15 +679,15 @@
   inset: 0;
   border-radius: 26px 26px 34px 34px;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-    inset 0 0 12px rgba(255, 255, 255, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.35);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.92),
+    inset 0 0 14px rgba(255, 255, 255, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.38);
   background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 255, 255, 0) 35%,
-    rgba(255, 255, 255, 0) 65%,
-    rgba(255, 255, 255, 0.25) 100%
+    165deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.32) 100%
   );
   z-index: 3;
   pointer-events: none;
@@ -617,11 +702,12 @@
   bottom: 0;
   border-radius: 26px 26px 34px 34px;
   background:
-    radial-gradient(120% 120% at 18% 18%, rgba(255, 255, 255, 0.35) 0%, transparent 35%),
-    radial-gradient(100% 100% at 88% 78%, rgba(200, 225, 255, 0.22) 0%, transparent 30%);
+    radial-gradient(120% 120% at 20% 16%, rgba(255, 255, 255, 0.42) 0%, transparent 32%),
+    radial-gradient(100% 100% at 86% 78%, rgba(200, 225, 255, 0.28) 0%, transparent 28%),
+    radial-gradient(60% 40% at 72% 22%, rgba(255, 255, 255, 0.18) 0%, transparent 45%);
   z-index: 2;
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 0.92;
   transition: opacity 0.3s ease;
 }
 .garage-card:hover .garage-card__blister-refraction {
@@ -631,33 +717,34 @@
 /* 可移动眩光层 */
 .garage-card__blister-glare {
   position: absolute;
-  top: -22%;
-  right: -26%;
-  width: 70%;
-  height: 90%;
+  top: -24%;
+  right: -28%;
+  width: 74%;
+  height: 92%;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0) 28%,
-    rgba(255, 255, 255, 0.65) 46%,
-    rgba(255, 255, 255, 0) 64%
+    rgba(255, 255, 255, 0) 26%,
+    rgba(255, 255, 255, 0.72) 46%,
+    rgba(255, 255, 255, 0.22) 54%,
+    rgba(255, 255, 255, 0) 70%
   );
   transform: rotate(26deg);
   z-index: 5;
   pointer-events: none;
   transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
-  opacity: 0.8;
+  opacity: 0.82;
 }
 .garage-card:hover .garage-card__blister-glare {
-  transform: rotate(26deg) translate(-26px, 18px);
+  transform: rotate(26deg) translate(-28px, 20px);
   opacity: 1;
 }
 
-/* 收藏标签 */
+/* 收藏标签：放在 pack 内，随卡片 3D 抬起 */
 .garage-card__badge {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 20;
+  z-index: 30;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 10px;
@@ -667,14 +754,16 @@
   background: rgba(255, 255, 255, 0.95);
   box-shadow: 0 3px 10px rgba(20, 50, 110, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.8);
   pointer-events: none;
+  transform: translateZ(40px);
+  transform-style: preserve-3d;
 }
 
-/* 删除按钮：卡片右上角 */
+/* 删除按钮：放在 pack 内左上角，随卡片 3D 抬起 */
 .garage-card__delete {
   position: absolute;
   top: 8px;
   left: 8px;
-  z-index: 20;
+  z-index: 30;
   width: 28px;
   height: 28px;
   border: 0;
@@ -692,7 +781,8 @@
   cursor: pointer;
   opacity: 0.9;
   pointer-events: auto;
-  transform: scale(1);
+  transform: translateZ(40px) scale(1);
+  transform-style: preserve-3d;
   transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
 }
 .garage-card:hover .garage-card__delete {
@@ -703,7 +793,7 @@
   opacity: 1;
 }
 .garage-card__delete:active {
-  transform: scale(0.92);
+  transform: translateZ(40px) scale(0.92);
 }
 
 /* ---------------- 空状态 ---------------- */
@@ -750,6 +840,11 @@
   }
   .garage-brand__title {
     font-size: 19px;
+  }
+  /* 窄屏下 logo 继续跟随标题：19px 字号 -> 墨迹 15px -> height = 15 ÷ (320/324) ≈ 15.2，
+     取 16px（墨迹 15.8px，+0.8px）。与宽屏 21px 用同一套换算，保持一致。 */
+  .garage-logo {
+    height: 16px;
   }
   .garage-body {
     padding: 10px 18px 36px;
