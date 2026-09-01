@@ -1742,6 +1742,9 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
         const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
         if (sp?.available && app.applyRealSpecs(sp)) {
           const rs = app.params.realSpecs;
+          // 把识别到的车型名带进 realSpecs，供右上角车身数据面板展示
+          rs.fullName = rec.fullName || rs.query || '';
+          rs.query = rec.fullName || rs.query || '';
           u.setRecog(
             `已识别：${rec.fullName}（把握 ${pct}%）· 真车参数已应用`,
             'ok'
