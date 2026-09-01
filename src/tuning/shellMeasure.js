@@ -220,6 +220,86 @@ export function cutEdgeProfile(tris, range, deckHeight, N = 24, bandH = 0.06, fa
   return out;
 }
 
+/**
+ * 轮拱处车身半宽剖面（沿车长采样）。
+ *
+ * 在每个采样窗口内，取 y ∈ [yLo, yHi] 的三角形中 |z| 的最大值。
+ * 这个值比全局 bodyHalfWidth 更能代表「当前 X 位置处翼子板/轮拱能给轮胎留出的横向空间」。
+ *
+ * @param {{xs:Float64Array, ys:Float64Array, azs:Float64Array, n:number}} tris
+ * @param {{xMin:number, xMax:number}} range
+ * @param {number} yLo 轮拱高度下界（米，默认 0.22）
+ * @param {number} yHi 轮拱高度上界（米，默认 0.78）
+ * @param {number} N 采样段数（默认 32）
+ * @param {number} fallback 无三角形时的回退值
+ * @returns {number[]} 长度 N
+ */
+export function fenderProfile(tris, range, yLo = 0.22, yHi = 0.78, N = 32, fallback = NaN) {
+  const { xs, ys, azs, n } = tris;
+  const L = range.xMax - range.xMin;
+  const maxOf = new Float64Array(N).fill(-Infinity);
+  for (let i = 0; i < n; i++) {
+    const y = ys[i];
+    if (y < yLo || y > yHi) continue;
+    const t = (xs[i] - range.xMin) / L;
+    if (t < 0 || t >= 1) continue;
+    const b = Math.min(N - 1, Math.floor(t * N));
+    if (azs[i] > maxOf[b]) maxOf[b] = azs[i];
+  }
+  const fb = Number.isFinite(fallback) ? fallback : 0;
+  const out = new Array(N);
+  for (let b = 0; b < N; b++) {
+    out[b] = Number.isFinite(maxOf[b]) ? maxOf[b] : fb;
+  }
+  return out;
+}
+
+/**
+ * 轮拱下沿高度剖面（沿车长采样）。
+ *
+ * 对每个采样窗口，先在 [yLo, yHi] 内取该段半宽 fenderHw，再在
+ * |z| ∈ [zInner * fenderHw, zOuter * fenderHw] 的三角形中取最小 y，
+ * 即该 X 位置轮拱开口的下沿高度。轮胎顶部必须低于此高度。
+ *
+ * @param {{xs:Float64Array, ys:Float64Array, azs:Float64Array, n:number}} tris
+ * @param {{xMin:number, xMax:number}} range
+ * @param {number[]} fenderHw 各段轮拱半宽（米）
+ * @param {{yLo?:number, yHi?:number, zInner?:number, zOuter?:number, fallback?:number}} [opts]
+ * @returns {number[]} 长度与 fenderHw 相同
+ */
+export function archHeightProfile(tris, range, fenderHw, opts = {}) {
+  const yLo = opts.yLo ?? 0.18;
+  const yHi = opts.yHi ?? 1.0;
+  const zInner = opts.zInner ?? 0.45;
+  const zOuter = opts.zOuter ?? 0.95;
+  const fallback = opts.fallback ?? 0.75;
+
+  const { xs, ys, azs, n } = tris;
+  const L = range.xMax - range.xMin;
+  const N = fenderHw.length;
+  const minOf = new Float64Array(N).fill(Infinity);
+
+  for (let i = 0; i < n; i++) {
+    const y = ys[i];
+    if (y < yLo || y > yHi) continue;
+    const t = (xs[i] - range.xMin) / L;
+    if (t < 0 || t >= 1) continue;
+    const b = Math.min(N - 1, Math.floor(t * N));
+    const hw = fenderHw[b];
+    if (!Number.isFinite(hw) || hw <= 0) continue;
+    const zMin = zInner * hw;
+    const zMax = zOuter * hw;
+    if (azs[i] < zMin || azs[i] > zMax) continue;
+    if (ys[i] < minOf[b]) minOf[b] = ys[i];
+  }
+
+  const out = new Array(N);
+  for (let b = 0; b < N; b++) {
+    out[b] = Number.isFinite(minOf[b]) ? minOf[b] : fallback;
+  }
+  return out;
+}
+
 /** 车壳测量结果的形状（T02/T03 的接口契约） */
 /**
  * @typedef {Object} ShellMetrics
@@ -276,9 +356,29 @@ export function measure(root, opts = {}) {
     bhw * 0.82
   );
 
+  // Step 3 — 轮拱空间剖面：给 wheelRig 做精确防穿模用。
+  // N=32 足够覆盖前后轴附近的轮拱曲线，更新时线性插值。
+  const FENDER_N = 32;
+  const fProf = fenderProfile(
+    tris,
+    { xMin: box.min.x, xMax: box.max.x },
+    0.22,
+    0.58,
+    FENDER_N,
+    bhw
+  );
+  const aProf = archHeightProfile(
+    tris,
+    { xMin: box.min.x, xMax: box.max.x },
+    fProf,
+    { fallback: heightNorm * 0.55 }
+  );
+
   return {
     bodyHalfWidth: bhw,
     cutEdgeProfile: profile,
+    fenderProfile: fProf,
+    archHeightProfile: aProf,
     bbox: {
       min: { x: box.min.x, y: box.min.y, z: box.min.z },
       max: { x: box.max.x, y: box.max.y, z: box.max.z },

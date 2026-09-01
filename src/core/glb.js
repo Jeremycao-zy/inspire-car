@@ -27,9 +27,11 @@ try {
 /**
  * 加载 GLB/GLTF。
  * @param {string} url
+ * @param {{progress?: boolean}} [opts] progress=false 时不派发全局 glb:progress 事件
+ *   （车库卡片等后台预览加载用，避免把主界面加载遮罩拉起来）
  * @returns {Promise<{group: THREE.Group, animations: THREE.AnimationClip[]}>}
  */
-export function loadGLB(url) {
+export function loadGLB(url, { progress = true } = {}) {
   return new Promise((resolve, reject) => {
     loader.load(
       url,
@@ -52,7 +54,7 @@ export function loadGLB(url) {
         resolve({ group, animations: gltf.animations || [] });
       },
       (evt) => {
-        if (evt.lengthComputable) {
+        if (progress && evt.lengthComputable) {
           const pct = Math.round((evt.loaded / evt.total) * 100);
           document.dispatchEvent(
             new CustomEvent('glb:progress', { detail: { url, pct } })
@@ -170,10 +172,16 @@ export function detectCarAxes(size) {
     const H = s[c.H];
     if (!(L > 0 && W > 0 && H > 0)) continue;
     const score =
-      rangePenalty(L / W, 2.0, 3.2) +
-      rangePenalty(L / H, 2.8, 4.2) +
-      rangePenalty(W / H, 1.1, 1.9);
+      rangePenalty(L / W, 1.6, 3.8) +
+      rangePenalty(L / H, 2.5, 4.5) +
+      rangePenalty(W / H, 1.0, 2.0);
     if (!best || score < best.score) best = { ...c, score, Lv: L, Wv: W, Hv: H };
+  }
+  // 二级兜底：若最高分组合的"长边"和"宽边"接近（L/W < 1.5）或"长边"和"高边"
+  // 接近（L/H < 2.5），说明原始模型三轴相近、启发式判不准，
+  // 此时退回「X=长、Y=高、Z=宽」的最朴素约定，让后续旋转和非等比校正去处理。
+  if (best && (best.Lv / best.Wv < 1.3 || best.Lv / best.Hv < 2.0)) {
+    best = { L: 0, W: 2, H: 1, score: best.score + 0.5, Lv: s[0], Wv: s[2], Hv: s[1] };
   }
   return best || { L: 0, W: 2, H: 1, score: 99, Lv: s[0], Wv: s[2], Hv: s[1] };
 }
@@ -214,7 +222,10 @@ export function applyCarOrientation(g, axes) {
   g.updateMatrixWorld(true);
 }
 
-export function normalizeCar(g, { targetLength = 4.6, groundY = 0 } = {}) {
+export function normalizeCar(
+  g,
+  { targetLength = 4.6, targetWidth = null, targetHeight = null, groundY = 0 } = {}
+) {
   g.updateMatrixWorld(true);
 
   // 1) 先把模型摆正（长→X、高→Y、宽→Z），图生 3D 的朝向完全不可信
@@ -225,6 +236,19 @@ export function normalizeCar(g, { targetLength = 4.6, groundY = 0 } = {}) {
   // 2) 等比缩放到目标车长
   if (size.x > 0.05) {
     g.scale.multiplyScalar(targetLength / size.x);
+    g.updateMatrixWorld(true);
+  }
+  size = boxOf(g).getSize(new THREE.Vector3());
+
+  /* 2b) 按真车宽/高做非等比校正。
+   * 等比缩放只锁得住车长——图生 3D 模型自身的长宽高比例并不等于真车。
+   * 想让整体比例贴近真车，必须按真实宽高校正另外两轴。
+   * 仅在调用方给出真车数据时启用，没给就保持纯等比（不引入畸变风险）。 */
+  const corr = new THREE.Vector3(1, 1, 1);
+  if (targetWidth > 0.05 && size.z > 0.05) corr.z = targetWidth / size.z;
+  if (targetHeight > 0.05 && size.y > 0.05) corr.y = targetHeight / size.y;
+  if (corr.y !== 1 || corr.z !== 1) {
+    g.scale.multiply(corr);
     g.updateMatrixWorld(true);
   }
 

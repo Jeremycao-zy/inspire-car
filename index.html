@@ -5,19 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/logo-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/logo-180.png" />
-    <title>灵感车库 · TUNING STUDIO · 汽车改装 3D 预览</title>
+    <title>灵感改装 · INSPIRE CAR · 汽车改装 3D 预览</title>
   </head>
   <body>
     <div id="app">
       <!-- 第二层（TUNING STUDIO）顶部返回栏：返回灵感车库并保存方案 -->
       <header id="appbar">
         <div class="appbar-left">
-          <img class="appbar-logo" src="/src/assets/logo-icon.png" alt="INSPIRE CAR" />
+          <img class="appbar-logo" src="/src/assets/logo-mark-nobg.png" alt="INSPIRE CAR" />
           <span class="appbar-title">INSPIRE CAR</span>
           <span class="appbar-sep">/</span>
           <span class="appbar-loc">TUNING STUDIO</span>
         </div>
-        <button id="back-to-garage" class="gb-back" type="button">← 返回灵感车库 · 保存</button>
+        <button id="back-to-garage" class="gb-back" type="button">
+          <svg class="gb-back__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          <span>返回车库</span>
+        </button>
       </header>
 
       <div class="app-body">

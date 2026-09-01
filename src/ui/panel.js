@@ -11,6 +11,7 @@
  */
 
 import { ET_REF } from '../tuning/wheelRig.js';
+import { RIM_PRESETS } from '../tuning/proceduralRim.js';
 import { createColorWheel } from './colorWheel.js';
 import {
   fenderStatus,
@@ -64,12 +65,24 @@ const AXLE_PARAMS = [
   { key: 'aspect', label: '扁平比', unit: '%', min: 25, max: 60, step: 1, hint: '外径 = 轮辋 + 2×胎宽×扁平比' },
 ];
 
-/** 装配微调：前后轴各一个独立参数，同样受作用域控制 */
+/** 车型识别数据：由 /api/specs 整理后落地，直接驱动 3D 比例 */
+const VEHICLE_PARAMS = [
+  { key: 'carLength', label: '车长', unit: 'm', min: 3.0, max: 6.5, step: 0.01, hint: '车型识别后自动填入，可手动校正', global: true },
+  { key: 'carWidth', label: '车宽', unit: 'm', min: 1.4, max: 2.3, step: 0.01, hint: '不含后视镜', global: true },
+  { key: 'carHeight', label: '车高', unit: 'm', min: 1.2, max: 2.3, step: 0.01, hint: '整车高度', global: true },
+  { key: 'wheelbase', label: '轴距', unit: 'mm', min: 2000, max: 4200, step: 10, hint: '前后轴中心距', global: true },
+  { key: 'trackFront', label: '前轮距', unit: 'mm', min: 1200, max: 2200, step: 5, hint: '前轮中心距', global: true },
+  { key: 'trackRear', label: '后轮距', unit: 'mm', min: 1200, max: 2200, step: 5, hint: '后轮中心距', global: true },
+  { key: 'groundClearance', label: '离地间隙', unit: 'mm', min: 80, max: 500, step: 5, hint: '底盘最低点离地高度', global: true },
+  { key: 'approachAngle', label: '接近角', unit: '°', min: 5, max: 45, step: 0.5, hint: '前端通过角', readOnly: true, global: true },
+  { key: 'departureAngle', label: '离去角', unit: '°', min: 5, max: 45, step: 0.5, hint: '后端通过角', readOnly: true, global: true },
+  { key: 'suspensionDelta', label: '悬挂降低 Δ', unit: 'mm', min: -10, max: 75, step: 1, hint: 'Δ>0 降低车身；与车身升降叠加成最终偏移', global: true },
+];
+
+/** 装配精细修正（旧版相对偏移，保留给 flush/宽体微调） */
 const FINE_PARAMS = [
   { keyF: 'trackF', keyR: 'trackR', label: '轮距微调', unit: 'mm', min: -60, max: 60, step: 1, hint: '正 = 整体外扩' },
   { keyF: 'axleF', keyR: 'axleR', label: '轴位置前后', unit: 'mm', min: -150, max: 150, step: 5, hint: '正 = 往车头方向移' },
-  { key: 'carLength', label: '车长校准', unit: 'm', min: 3.4, max: 6.2, step: 0.05, hint: '图生 3D 尺度不定，按真车校正', global: true },
-  { key: 'suspensionDelta', label: '悬挂高低 Δ', unit: 'mm', min: -10, max: 75, step: 1, hint: 'Δ>0 降低车身；与车身升降叠加成最终偏移', global: true },
 ];
 
 /** 轮毂校准安全网：对 AI 生成的轮毂做手动微调（绕轮轴旋转 + 轮平面内/轴向小幅偏移） */
@@ -87,12 +100,28 @@ const AXLE_OPTIONS = [
   ['rear', '后轴'],
 ];
 
+const SUSPENSION_OPTIONS = [
+  ['all', '四轮'],
+  ['front', '前轴'],
+  ['rear', '后轴'],
+  ['FL', '左前'],
+  ['FR', '右前'],
+  ['RL', '左后'],
+  ['RR', '右后'],
+];
+
 /** 曝光滑杆范围（与场景预设无关，用户随时可覆盖） */
 const EXPOSURE = { min: 0.3, max: 2.5, step: 0.01 };
 
 /* ---------------------------- 上传区 ---------------------------- */
 
-function makeUploader({ title, hint, onFiles }) {
+/**
+ * 上传区控件。
+ * @param {Object} o
+ * @param {boolean=} o.recognition 是否启用视觉识别（车型识别 + 真车参数）。
+ *   轮毂传 false：轮毂照片识别不出车型，跑视觉接口没有意义（用户要求取消）。
+ */
+function makeUploader({ title, hint, onFiles, recognition = true }) {
   const input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
   input.addEventListener('change', () => {
     const files = Array.from(input.files || []);
@@ -108,11 +137,11 @@ function makeUploader({ title, hint, onFiles }) {
   // 失败原因的展开细节（错误码、JobId 等），默认收起
   const detail = el('div', { class: 'upload-detail' });
 
-  // 任务名称：由视觉模型识别后自动填入，也允许手动修改
+  // 任务名称：整车由视觉模型识别后自动填入；轮毂不做识别，纯手动（选填）
   const nameInput = el('input', {
     type: 'text',
     class: 'task-name',
-    placeholder: '上传后自动识别车型，可手动修改',
+    placeholder: recognition ? '上传后自动识别车型，可手动修改' : '可手动命名（选填）',
     maxlength: '40',
   });
   const nameWrap = el(
@@ -121,7 +150,7 @@ function makeUploader({ title, hint, onFiles }) {
     el('label', { class: 'task-name-label' }, '任务名称'),
     nameInput
   );
-  // 识别状态提示（识别中 / 已识别 / 未配置识别模型）
+  // 识别状态提示（识别中 / 已识别 / 未配置识别模型）——轮毂不启用，不渲染
   const recog = el('div', { class: 'recog-hint' }, '');
 
   const zone = el(
@@ -136,7 +165,8 @@ function makeUploader({ title, hint, onFiles }) {
     actions,
     detail,
     nameWrap,
-    recog
+    // 关掉识别的上传区（轮毂）不渲染识别行，避免留一行永远为空的提示
+    ...(recognition ? [recog] : [])
   );
 
   zone.addEventListener('click', (e) => {
@@ -238,12 +268,32 @@ function makeUploader({ title, hint, onFiles }) {
 export function createPanel(app, mount) {
   const sliders = [];
 
-  /** 按当前作用域读一个参数 */
+  /** 未识别到真车参数时的估算默认值 */
+  function fallbackValue(key) {
+    const L = app.params.carLength || 4.6;
+    const W = app.params.carWidth || L * 0.45;
+    switch (key) {
+      case 'carWidth': return L * 0.45;
+      case 'carHeight': return L * 0.32;
+      case 'wheelbase': return L * 1000 * 0.5645;
+      case 'trackFront': return W * 1000 * 0.859;
+      case 'trackRear': return W * 1000 * 0.852;
+      case 'groundClearance': return L * 1000 * 0.0272;
+      case 'approachAngle': return 15;
+      case 'departureAngle': return 15;
+      default: return 0;
+    }
+  }
+
+  /** 按当前作用域读一个参数（null 时返回估算默认值） */
   function readVal(spec) {
     const t = app.params.axleTarget;
-    if (spec.global) return app.params[spec.key];
-    if (spec.keyF) return t === 'rear' ? app.params[spec.keyR] : app.params[spec.keyF];
-    return t === 'rear' ? app.params.rear[spec.key] : app.params.front[spec.key];
+    let v;
+    if (spec.global) v = app.params[spec.key];
+    else if (spec.keyF) v = t === 'rear' ? app.params[spec.keyR] : app.params[spec.keyF];
+    else v = t === 'rear' ? app.params.rear[spec.key] : app.params.front[spec.key];
+    if (v == null && spec.global) return fallbackValue(spec.key);
+    return v;
   }
 
   /** 按当前作用域写一个参数 */
@@ -266,16 +316,19 @@ export function createPanel(app, mount) {
 
   function makeSlider(spec, onChange) {
     const valueLabel = el('span', { class: 'ctl-value' });
-    const input = el('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, id: spec.key, name: spec.key });
+    const input = spec.readOnly
+      ? null
+      : el('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, id: spec.key, name: spec.key });
 
     const render = () => {
       const d = decimals(spec);
       const t = app.params.axleTarget;
-      input.value = readVal(spec);
+      const val = readVal(spec);
+      if (input) input.value = val;
 
       let txt;
       if (spec.global) {
-        txt = `${Number(readVal(spec)).toFixed(d)} ${spec.unit}`;
+        txt = `${Number(val).toFixed(d)} ${spec.unit}`;
       } else if (t === 'all') {
         const fv = spec.keyF ? app.params[spec.keyF] : app.params.front[spec.key];
         const rv = spec.keyF ? app.params[spec.keyR] : app.params.rear[spec.key];
@@ -284,27 +337,28 @@ export function createPanel(app, mount) {
             ? `前${fv.toFixed(d)} / 后${rv.toFixed(d)} ${spec.unit}`
             : `${fv.toFixed(d)} ${spec.unit}`;
       } else {
-        txt = `${Number(readVal(spec)).toFixed(d)} ${spec.unit}`;
+        txt = `${Number(val).toFixed(d)} ${spec.unit}`;
       }
       valueLabel.textContent = txt;
     };
 
-    input.addEventListener('input', () => {
-      writeVal(spec, parseFloat(input.value));
-      onChange?.();
-      render();
-    });
+    if (input) {
+      input.addEventListener('input', () => {
+        writeVal(spec, parseFloat(input.value));
+        onChange?.();
+        render();
+      });
+    }
 
     render();
     sliders.push({ render });
 
-    return el(
-      'div',
-      { class: 'ctl' },
+    const children = [
       el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, spec.label), valueLabel),
-      input,
-      spec.hint ? el('div', { class: 'ctl-hint' }, spec.hint) : null
-    );
+    ];
+    if (input) children.push(input);
+    if (spec.hint) children.push(el('div', { class: 'ctl-hint' }, spec.hint));
+    return el('div', { class: 'ctl' }, ...children);
   }
 
   function makeSwitch(label, get, set) {
@@ -340,9 +394,31 @@ export function createPanel(app, mount) {
   });
   const wheelUpload = makeUploader({
     title: '② 上传轮毂照片',
-    hint: '建议 3–5 张：正面、侧面、斜 45°；生成后自动装配 4 只',
+    hint: '建议 3–5 张：只有轮毂的特写（正面 / 侧面 / 斜 45°），画面里不要带车身；生成后自动装配 4 只',
+    // 轮毂不做视觉识别：识别不出车型，纯浪费一次接口调用与时间
+    recognition: false,
     onFiles: (files) => app.generateWheel(files),
   });
+
+  /* ---- 轮毂生成引擎：默认 Hyper3D Rodin ----
+   * 与整车的引擎下拉框分开：轮毂必须走 Hyper3D，轮辋/辐条/螺栓孔位才准，
+   * 不受全局引擎（默认 fal）影响。 */
+  const WHEEL_ENGINE_OPTS = [
+    ['hyper3d', 'Hyper3D Rodin — 轮毂默认'],
+    ['fal', 'fal.ai Rodin — 按次付费'],
+    ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
+  ];
+  const wheelEngineSelect = el(
+    'select',
+    {
+      class: 'cw-select',
+      onchange: (e) => {
+        app.params.wheelEngine = e.target.value;
+      },
+    },
+    ...WHEEL_ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
+  );
+  wheelEngineSelect.value = app.params.wheelEngine || 'hyper3d';
 
   /* ---- 轮毂精度档位选择器（standard / high / extreme）---- */
   const PRECISION_OPTIONS = [
@@ -372,6 +448,22 @@ export function createPanel(app, mount) {
     for (const b of precButtons) b.classList.toggle('on', b.dataset.prec === app.params.precision);
   }
   syncPrec();
+
+  /* ---- 经典款式：程序生成的高精度轮毂，无需上传即可切换 ---- */
+  const presetHint = el('div', { class: 'ctl-hint' }, '或直接用下方的经典款式（程序生成，可继续调 ET/J/倾角）');
+  const rimPresetButtons = RIM_PRESETS.map((p) =>
+    el('button', {
+      class: 'chip',
+      'data-rim-preset': p.id,
+      onclick: () => app.loadProceduralWheel(p.style),
+    }, p.label)
+  );
+  const rimPresetBar = el('div', { class: 'prec-bar' }, ...rimPresetButtons);
+  wheelUpload.zone.appendChild(presetHint);
+  wheelUpload.zone.appendChild(rimPresetBar);
+  function syncRimPreset() {
+    for (const b of rimPresetButtons) b.classList.toggle('on', b.dataset.rimPreset === app.params.rimPreset);
+  }
 
   /* ---- 步骤 3：轮毂参数 ---- */
   const presetBar = el('div', { class: 'presets' });
@@ -406,17 +498,17 @@ export function createPanel(app, mount) {
   const suspNote = el(
     'div',
     { class: 'susp-note' },
-    '车身最终升降 = 车身升降（含 Plus Sizing 标定）− 悬挂降低 Δ'
+    '悬挂调节只移动车身，轮胎始终贴地；下方分角悬挂可与全局 Δ 叠加'
   );
 
-  /* ---- 微调 ---- */
-  const fineBox = el(
+  /* ---- 车型数据（由识别结果整理，直接驱动比例） ---- */
+  const vehicleBox = el(
     'div',
     { class: 'fine' },
-    ...FINE_PARAMS.map((spec) =>
+    ...VEHICLE_PARAMS.map((spec) =>
       makeSlider(spec, () => {
-        if (spec.key === 'carLength') app.rescaleCar(app.params.carLength);
-        else app.apply();
+        if (spec.key === 'suspensionDelta') app.apply();
+        else app.rescaleCar(app.params.carLength);
       })
     ),
     suspNote,
@@ -438,10 +530,95 @@ export function createPanel(app, mount) {
     el(
       'div',
       { class: 'btn-row' },
-      el('button', { class: 'btn ghost', onclick: () => app.rotateCar(1) }, '车身转 90°'),
-      el('button', { class: 'btn ghost', onclick: () => app.rotateCar(-1) }, '转 -90°'),
       el('button', { class: 'btn ghost', onclick: () => app.reset() }, '重置参数')
     )
+  );
+
+  /* ---- 悬挂高度（分角/分轴/四轮同时调节） ---- */
+  const suspValueLabel = el('span', { class: 'ctl-value' });
+  const suspInput = el('input', { type: 'range', min: -120, max: 120, step: 1, id: 'suspensionHeight', name: 'suspensionHeight' });
+  const suspReadoutCorners = el('div', { class: 'susp-corners' });
+
+  function avgSuspension(target) {
+    const s = app.params.suspension;
+    switch (target) {
+      case 'all': return (s.FL + s.FR + s.RL + s.RR) / 4;
+      case 'front': return (s.FL + s.FR) / 2;
+      case 'rear': return (s.RL + s.RR) / 2;
+      default: return s[target] || 0;
+    }
+  }
+  function setSuspension(target, v) {
+    const s = app.params.suspension;
+    switch (target) {
+      case 'all': s.FL = s.FR = s.RL = s.RR = v; break;
+      case 'front': s.FL = s.FR = v; break;
+      case 'rear': s.RL = s.RR = v; break;
+      default: s[target] = v; break;
+    }
+  }
+  function renderSuspensionReadout() {
+    const s = app.params.suspension;
+    const fmt = (n) => `${n > 0 ? '+' : ''}${n.toFixed(0)}`;
+    suspReadoutCorners.innerHTML = '';
+    const items = [
+      ['FL', '左前'], ['FR', '右前'], ['RL', '左后'], ['RR', '右后'],
+    ];
+    for (const [id, label] of items) {
+      const active = app.params.suspensionTarget === 'all' || app.params.suspensionTarget === id ||
+        (app.params.suspensionTarget === 'front' && id.startsWith('F')) ||
+        (app.params.suspensionTarget === 'rear' && id.startsWith('R'));
+      suspReadoutCorners.appendChild(
+        el('span', { class: `susp-corner ${active ? 'active' : ''}` }, `${label} ${fmt(s[id])}`)
+      );
+    }
+  }
+  function renderSuspension() {
+    const v = avgSuspension(app.params.suspensionTarget);
+    suspInput.value = v;
+    suspValueLabel.textContent = `${v > 0 ? '+' : ''}${v.toFixed(0)} mm`;
+    renderSuspensionReadout();
+  }
+  suspInput.addEventListener('input', () => {
+    setSuspension(app.params.suspensionTarget, parseFloat(suspInput.value));
+    app.apply();
+    renderSuspension();
+  });
+
+  const suspTargetButtons = SUSPENSION_OPTIONS.map(([val, label]) =>
+    el('button', {
+      class: 'seg-btn small',
+      'data-susp': val,
+      onclick: () => {
+        app.params.suspensionTarget = val;
+        syncSuspTarget();
+        renderSuspension();
+      },
+    }, label)
+  );
+  const suspTargetBar = el('div', { class: 'seg susp-seg' }, ...suspTargetButtons);
+  function syncSuspTarget() {
+    for (const b of suspTargetButtons) b.classList.toggle('on', b.dataset.susp === app.params.suspensionTarget);
+  }
+
+  const suspensionBox = el(
+    'div',
+    { class: 'fine' },
+    suspTargetBar,
+    el('div', { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '悬挂高度偏移'), suspValueLabel),
+      suspInput,
+      el('div', { class: 'ctl-hint' }, '正值 = 该角/轴车身升高；四轮同步即整车升降')
+    ),
+    suspReadoutCorners,
+    el('div', { class: 'ctl-hint' }, '正值 = 该角/轴车身相对地面升高；前后差会产生俯仰，左右差会产生侧倾')
+  );
+
+  /* ---- 装配精细修正（相对偏移，可选） ---- */
+  const fineBox = el(
+    'div',
+    { class: 'fine fine-secondary' },
+    ...FINE_PARAMS.map((spec) => makeSlider(spec, () => app.apply()))
   );
 
   /* ---- 场景与灯光 ---- */
@@ -681,9 +858,123 @@ export function createPanel(app, mount) {
     )
   );
 
+  /* ---- 拆解部件视图（Hyper3D BANG） ----
+   * 生成流水线会自动 BANG 拆解，产物按**原坐标装配回整车原位**，
+   * 所以这里看到的仍是"一辆完整的车"，只是它由可拆部件组成。
+   * 给两个视图切换 + 爆炸滑杆，用来核对拆出来的部件。 */
+  const bangStatus = el('div', { class: 'ctl-hint' }, '尚未拆解');
+  const bangExplodeVal = el('span', { class: 'ctl-value' }, '0%');
+  const bangExplode = el('input', {
+    type: 'range',
+    min: 0,
+    max: 100,
+    step: 1,
+    value: Math.round((app.params.bangExplode || 0) * 100),
+    oninput: (e) => {
+      const pct = Number(e.target.value);
+      bangExplodeVal.textContent = `${pct}%`;
+      app.setBangExplode(pct / 100);
+    },
+  });
+  function syncBang() {
+    const info = app.bangInfo();
+    if (!info.total) {
+      bangStatus.textContent = app.params.carModelUrl
+        ? '这台车还没有拆解产物：点下方「重新拆解」拿实体车身（未拆解的整车是空壳，轮拱是画在贴图上的）'
+        : '尚未拆解（生成整车时会自动拆解，不需要手动操作）';
+      return;
+    }
+    const g = info.geom;
+    bangStatus.textContent =
+      `已装配 ${info.body} 个车身部件（只放拆开的车身，车轮不进场景）· 当前${
+        info.view === 'single' ? '整车单体' : '拆解装配'
+      }视图` +
+      (g
+        ? ` · 轮位按拆解实测：轴距 ${g.wheelbase} / 前 ${g.trackFront} / 后 ${g.trackRear} mm`
+        : '');
+  }
+  const bangBox = el(
+    'div',
+    { class: 'fine' },
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', { class: 'btn small', onclick: () => { app.setBangView('assembled'); syncBang(); } }, '拆解装配视图'),
+      el('button', { class: 'btn small', onclick: () => { app.setBangView('single'); syncBang(); } }, '整车单体视图')
+    ),
+    el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '爆炸视图'), bangExplodeVal),
+      bangExplode
+    ),
+    el(
+      'div',
+      { class: 'btn-row' },
+      el(
+        'button',
+        {
+          class: 'btn ghost',
+          onclick: async () => {
+            bangStatus.textContent = '正在提交拆解…';
+            const r = await app.bangCurrentCar();
+            syncBang();
+            if (!r) bangStatus.textContent = '拆解失败（详见提示）';
+          },
+        },
+        '重新拆解（消耗 1 次额度）'
+      ),
+      el('button', { class: 'btn ghost', onclick: () => { app.clearBang(); syncBang(); } }, '清除拆解产物')
+    ),
+    bangStatus,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      'Hyper3D 生成完成后会自动拆解：只把拆开的**车身**按原坐标装回原位（车轮不入场景），所以不会是两辆车、也不会少件。拆出来的四个车轮用来反推真实轴距/轮距，生成的轮毂因此精确落在原车轮位置上，不会偏离轮拱造成穿模。拖爆炸滑杆可把车身部件散开核对。'
+    )
+  );
+
+  /* 车身朝向调正：Hyper3D 生成的车头朝向随机（左右可能颠倒），
+   * 点按钮兜底一键转 90°/180°，会重新归一 + 重算轮位。 */
+  const orientBox = el(
+    'div',
+    { class: 'fine' },
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(1) }, '↺ 左转 90°'),
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(-1) }, '↻ 右转 90°'),
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(2) }, '⇋ 翻转 180°')
+    ),
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      'Hyper3D 生成的车头朝向随机（左右可能颠倒），如果你的车看起来前后反了或侧面反了，点对应按钮一键旋转。每次点都会重新归一并按新朝向重算轮位。'
+    )
+  );
+
   tabBodies.body.appendChild(section('整车模型', carUpload.zone));
-  tabBodies.body.appendChild(section('装配微调', fineBox));
+  tabBodies.body.appendChild(section('车身朝向', orientBox));
+  tabBodies.body.appendChild(section('拆解部件（Hyper3D BANG）', bangBox));
+  tabBodies.body.appendChild(section('车型数据', vehicleBox));
+  tabBodies.body.appendChild(section('悬挂高度（分轴/分角）', suspensionBox));
+  tabBodies.body.appendChild(collapsible('精细修正（相对偏移）', fineBox));
   tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
+  tabBodies.wheels.appendChild(
+    section(
+      '轮毂生成引擎',
+      el(
+        'div',
+        { class: 'fine' },
+        el('div', { class: 'ctl' }, wheelEngineSelect),
+        el(
+          'div',
+          { class: 'ctl-hint' },
+          '轮毂固定走 Hyper3D Rodin（与整车同一家，按订阅额度计费），不受整车引擎下拉框影响；轮毂不做自动拆解，省一次额度。'
+        )
+      )
+    )
+  );
   tabBodies.wheels.appendChild(section('轮毂校准（生成模型摆位不正时微调）', rimCalibBox));
   tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
 
@@ -820,10 +1111,14 @@ export function createPanel(app, mount) {
 
   function syncAll() {
     syncSeg();
+    syncSuspTarget();
     syncScene();
     syncPrec();
+    syncRimPreset();
     syncExposure();
+    syncBang();
     for (const s of sliders) s.render();
+    renderSuspension();
     for (const s of lightRows) s();
   }
 
@@ -933,6 +1228,12 @@ export function createPanel(app, mount) {
     setMode,
     // 车漆色随方案恢复时同步色轮显示（不回调，避免重复上色）
     syncColor: () => colorWheel.set(app.params.bodyColor, app.params.bodySolid),
+    // 拆解部件装配/清除后同步状态行与滑杆
+    syncBang: () => {
+      syncBang();
+      bangExplode.value = Math.round((app.params.bangExplode || 0) * 100);
+      bangExplodeVal.textContent = `${Math.round((app.params.bangExplode || 0) * 100)}%`;
+    },
     // 引擎可能在 refreshHealth 里被自动回退，下拉框建好之后仍要能跟着改
     syncEngine: () => {
       engineSelect.value = app.params.engine;

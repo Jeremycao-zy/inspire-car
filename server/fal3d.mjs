@@ -17,6 +17,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { URL } from 'node:url';
 
 /** 可用 FAL_ENDPOINT 覆盖，便于自测指向 mock */
@@ -38,7 +39,10 @@ export function resolveToken() {
       /* 未配置 */
     }
   }
-  return { token };
+  return {
+    token,
+    tokenId: token ? crypto.createHash('sha256').update(token).digest('hex').slice(0, 8) : '',
+  };
 }
 
 function ensureToken(token) {

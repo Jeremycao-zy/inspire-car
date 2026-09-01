@@ -1,0 +1,175 @@
+/**
+ * auth.css — 登录 / 注册浮层（灵感车库白色科技 · 车库风）
+ * 视觉与 garage.css 的卡片 / 品牌区保持一致：浅色背景、蓝图网格、青蓝强调色、软阴影。
+ */
+
+.auth-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1100px 600px at 18% -8%, rgba(78, 161, 255, 0.12), transparent 60%),
+    radial-gradient(900px 520px at 88% 108%, rgba(120, 92, 246, 0.1), transparent 55%),
+    linear-gradient(180deg, #f7f9fc 0%, #eef2f8 100%);
+  background-attachment: fixed;
+  color: #1c2430;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.auth-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(40, 90, 170, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 90, 170, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+}
+
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-radius: 22px;
+  padding: 32px 30px 28px;
+  box-shadow: 0 24px 60px rgba(20, 50, 110, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+}
+
+.auth-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+/* 登录卡片是浅色背景，直接用去背后的黑线徽标即可，不需要反相。
+   与卡片标题「灵感改装」的 20px 字号对齐。 */
+.auth-card__logo {
+  height: 20px;
+  width: auto;
+  aspect-ratio: 353 / 324;
+  display: block;
+}
+.auth-card__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.auth-card__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #14233c;
+  font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.auth-card__sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2b3f63;
+  font-style: italic;
+}
+
+.auth-card__heading {
+  margin: 18px 0 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #16243b;
+}
+.auth-card__hint {
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  color: #5a6b86;
+  line-height: 1.5;
+}
+
+.auth-field {
+  position: relative;
+  margin-bottom: 14px;
+}
+.auth-field__input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(40, 90, 170, 0.18);
+  background: #fff;
+  font-size: 14px;
+  color: #1c2430;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.auth-field__input::placeholder {
+  color: #9aa7bd;
+}
+.auth-field__input:focus {
+  border-color: #2f7bff;
+  box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.16);
+}
+
+.auth-error {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: #b4232a;
+  background: rgba(214, 40, 56, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(214, 40, 56, 0.28);
+}
+
+.auth-submit {
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(100deg, #2f7bff 0%, #4ea1ff 55%, #6f7bff 100%);
+  box-shadow: 0 10px 26px rgba(47, 123, 255, 0.34);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+.auth-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(47, 123, 255, 0.42);
+}
+.auth-submit:active {
+  transform: translateY(0);
+}
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.auth-switch {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #5a6b86;
+}
+.auth-switch button {
+  border: none;
+  background: none;
+  color: #2f7bff;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.auth-switch button:hover {
+  text-decoration: underline;
+}

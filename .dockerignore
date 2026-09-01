@@ -1,0 +1,26 @@
+# 依赖与构建产物
+node_modules
+dist
+
+# ⚠️ .cache 约 1GB（GLB 模型 + 用户账号 + 额度计数）
+# 绝不能打进镜像：它应由运行时挂载持久卷提供，否则重启即丢且镜像臃肿
+.cache
+
+# 版本控制与编辑器
+.git
+.gitignore
+.vscode
+.idea
+
+# 日志与系统垃圾
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地环境
+.env
+.env.local
+.env.*.local
+
+# 临时/诊断脚本产物
+/tmp

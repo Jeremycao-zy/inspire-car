@@ -364,3 +364,16 @@ export async function recognize({ dataUrl }) {
     return { available: false, reason: isAuth ? 'auth' : 'error', detail: e.message };
   }
 }
+
+/**
+ * 对外暴露"可直接发起 chat 请求"的完整配置，供其它模块（如 server/specs.js）
+ * 复用同一套 Key / 端点 / 模型，避免各模块重复实现凭证解析。
+ *
+ * @returns {{name:string, key:string, endpoint:string, model:string}|null}
+ */
+export function resolveChatConfig() {
+  const vk = getVisionKey();
+  if (!vk) return null;
+  const { endpoint, model } = resolveProvider(vk.name);
+  return { name: vk.name, key: vk.key, endpoint, model };
+}

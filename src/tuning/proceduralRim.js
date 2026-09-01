@@ -1,17 +1,139 @@
 /**
- * proceduralRim.js — 兜底程序化轮毂
+ * proceduralRim.js — 兜底程序化轮毂 + 经典款式预设
  *
  * 用户还没上传轮毂照片、或 GLB 生成失败时，用它保证预览永远有东西可看、可调。
  * 结构与真实锻造轮毂一致：轮辋筒身 + 辐条 + 中心盘 + 螺栓，轴向对齐 Z。
+ *
+ * 新增经典款式：te37 / bbs-lm / rotiform / mesh / sport，均为程序生成，无版权限制，
+ * 可直接在「轮毂模型」区切换，切换后 ET/J/倾角/尺寸调节仍然生效。
  */
 
 import * as THREE from 'three';
 
+export const RIM_PRESETS = [
+  { id: 'default', label: '五辐锻造', style: 'default', spokes: 5 },
+  { id: 'te37', label: 'TE37 · 六辐', style: 'te37', spokes: 6 },
+  { id: 'bbs-lm', label: 'BBS LM · 双叉', style: 'bbs-lm', spokes: 10 },
+  { id: 'rotiform', label: 'Rotiform · 深唇', style: 'rotiform', spokes: 7 },
+  { id: 'mesh', label: 'Mesh · 密辐', style: 'mesh', spokes: 16 },
+  { id: 'sport', label: '运动 · 双五辐', style: 'sport', spokes: 10 },
+];
+
 /**
- * @param {{diameter?:number, width?:number, spokes?:number}} opts 单位：米
+ * 按风格向 pivot（已绕 Z 轴旋转到对应角度）添加一根/一组辐条。
+ */
+function addSpokeByStyle(pivot, style, { R, width, halfW, rimMat, darkMat, i, spokeCount }) {
+  const makeBox = (w, h, d, x, y, z, mat = rimMat) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    pivot.add(m);
+    return m;
+  };
+
+  switch (style) {
+    case 'te37': {
+      // 经典 6 辐：梯形粗辐条，外端宽、内端窄，带内凹
+      const len = R * 0.66;
+      const wOut = R * 0.16;
+      const wIn = R * 0.10;
+      const spokeShape = new THREE.Shape();
+      spokeShape.moveTo(-wIn / 2, 0);
+      spokeShape.lineTo(wIn / 2, 0);
+      spokeShape.lineTo(wOut / 2, len);
+      spokeShape.lineTo(-wOut / 2, len);
+      spokeShape.lineTo(-wIn / 2, 0);
+      const geo = new THREE.ExtrudeGeometry(spokeShape, { depth: width * 0.38, bevelEnabled: false, curveSegments: 8 });
+      const m = new THREE.Mesh(geo, rimMat);
+      m.position.z = -width * 0.18;
+      m.castShadow = true;
+      pivot.add(m);
+      break;
+    }
+    case 'bbs-lm': {
+      // 经典 BBS LM：每组两根细叉辐条，5 组共 10 根
+      const pairOffset = Math.PI / spokeCount; // 半组夹角
+      const len = R * 0.62;
+      const w = R * 0.045;
+      const d = width * 0.34;
+      [-1, 1].forEach((side) => {
+        const sub = new THREE.Group();
+        sub.rotation.z = side * pairOffset * 0.32;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, d), rimMat);
+        m.position.set(0, len * 0.52, -width * 0.14);
+        m.castShadow = true;
+        sub.add(m);
+        pivot.add(sub);
+      });
+      break;
+    }
+    case 'rotiform': {
+      // Rotiform 深唇：粗 Y 形辐条，外端分叉并接深唇
+      const len = R * 0.68;
+      const w = R * 0.13;
+      const d = width * 0.44;
+      // 主辐条
+      makeBox(w, len, d, 0, len * 0.48, -width * 0.12);
+      // 外端两侧小叉
+      [-1, 1].forEach((side) => {
+        const branch = new THREE.Mesh(new THREE.BoxGeometry(w * 0.55, len * 0.35, d * 0.8), rimMat);
+        branch.position.set(side * w * 0.55, len * 0.78, -width * 0.12);
+        branch.rotation.z = side * 0.28;
+        branch.castShadow = true;
+        pivot.add(branch);
+      });
+      break;
+    }
+    case 'mesh': {
+      // 密辐 Mesh：细辐条 + 外圈细环连接
+      const len = R * 0.60;
+      const w = R * 0.035;
+      const d = width * 0.28;
+      makeBox(w, len, d, 0, len * 0.52, -width * 0.10);
+      // 外圈环片段
+      if (i % 2 === 0) {
+        const ringSeg = new THREE.Mesh(
+          new THREE.TorusGeometry(R * 0.82, R * 0.018, 8, 32, (Math.PI * 2) / spokeCount),
+          rimMat
+        );
+        ringSeg.position.z = -width * 0.10;
+        ringSeg.castShadow = true;
+        pivot.add(ringSeg);
+      }
+      break;
+    }
+    case 'sport': {
+      // 运动双五辐：每组两根，外端分叉
+      const len = R * 0.66;
+      const w = R * 0.075;
+      const d = width * 0.40;
+      [-1, 1].forEach((side) => {
+        const sub = new THREE.Group();
+        sub.rotation.z = side * 0.14;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, d), rimMat);
+        m.position.set(0, len * 0.50, -width * 0.12);
+        m.castShadow = true;
+        sub.add(m);
+        pivot.add(sub);
+      });
+      break;
+    }
+    default: {
+      // 默认五辐锻造：宽辐条，带内凹
+      const len = R * 0.72;
+      const w = R * 0.15;
+      const d = width * 0.50;
+      makeBox(w, len, d, 0, len * 0.40, -width * 0.12);
+      break;
+    }
+  }
+}
+
+/**
+ * @param {{diameter?:number, width?:number, spokes?:number, style?:string}} opts 单位：米
  * @returns {THREE.Group} 已居中、轴向为 Z 的轮毂
  */
-export function buildProceduralRim({ diameter = 0.48, width = 0.216, spokes = 5 } = {}) {
+export function buildProceduralRim({ diameter = 0.48, width = 0.216, spokes = 5, style = 'default' } = {}) {
   const g = new THREE.Group();
   g.name = 'procedural-rim';
 
@@ -52,15 +174,14 @@ export function buildProceduralRim({ diameter = 0.48, width = 0.216, spokes = 5 
   lipIn.position.z = -halfW + R * 0.02;
   g.add(lipIn);
 
-  // 辐条：从中心盘放射到外唇，带一点内凹（concave）
-  const spokeGeo = new THREE.BoxGeometry(R * 0.72, R * 0.15, width * 0.5);
-  for (let i = 0; i < spokes; i++) {
+  // 辐条：按 style 生成不同经典款式
+  const spokeCount = spokes;
+  const effectiveStyle = RIM_PRESETS.find((p) => p.style === style)?.style || 'default';
+  for (let i = 0; i < spokeCount; i++) {
+    const angle = (i / spokeCount) * Math.PI * 2;
     const pivot = new THREE.Group();
-    pivot.rotation.z = (i / spokes) * Math.PI * 2;
-    const s = new THREE.Mesh(spokeGeo, rimMat);
-    s.position.set(R * 0.38, 0, -width * 0.12); // 内凹：辐条面往里缩
-    s.castShadow = true;
-    pivot.add(s);
+    pivot.rotation.z = angle;
+    addSpokeByStyle(pivot, effectiveStyle, { R, width, halfW, rimMat, darkMat, i, spokeCount });
     g.add(pivot);
   }
 

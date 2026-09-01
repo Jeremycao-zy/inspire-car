@@ -11,9 +11,12 @@
     "build": "vite build",
     "preview": "vite preview --port 4173",
     "verify": "node scripts/verify.mjs",
-    "repro:tire": "node scripts/_repro-tire.mjs"
+    "repro:tire": "node scripts/_repro-tire.mjs",
+    "start": "SERVE_STATIC=1 SPA_FALLBACK=1 node server/index.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/zcool-qingke-huangyou": "^5.3.0",
     "https-proxy-agent": "^9.1.0",
     "three": "^0.160.1"
   },

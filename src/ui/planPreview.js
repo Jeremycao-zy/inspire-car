@@ -47,7 +47,7 @@ export const DEFAULT_PREVIEW_PARAMS = {
   spin: false,
   autoRotate: false,
   envId: 'studio',
-  chassis: { deckHeight: null, shellLiftUser: 0, visible: true },
+  chassis: { deckHeight: null, shellLiftUser: 0, visible: false },
   shell: { enabled: true, doubleSide: true, enableC1: true, enableC2: true, enableC3: true },
 };
 
@@ -72,7 +72,7 @@ const DEFAULT_CAR_URL = '/models/my-car.glb';
 function loadCarSource(url) {
   const key = url || DEFAULT_CAR_URL;
   if (_carPromiseByUrl.has(key)) return _carPromiseByUrl.get(key);
-  const p = loadGLB(key)
+  const p = loadGLB(key, { progress: false })
     .then(({ group }) => group)
     .catch((e) => {
       console.warn('[plan-preview] 车型载入失败，回退默认车模', key, e);
@@ -172,7 +172,7 @@ class PreviewEngine {
       if (!this.ok) return;
       for (const inst of this.instances.values()) {
         if (!inst.built || !inst.visible) continue;
-        inst.pivot.rotation.y += 0.004;
+        // 卡片内车模不旋转，保持静态侧视摆放
         this.renderer.render(inst.scene, inst.camera);
         inst.ctx.drawImage(this.renderer.domElement, 0, 0, inst.canvas.width, inst.canvas.height);
       }
@@ -377,6 +377,27 @@ function fitView(pivot, camera) {
   camera.updateProjectionMatrix();
 }
 
+/** 卡片缩略图专用：侧视水平摆放，带安全边距不压泡壳 */
+function fitCardSideView(pivot, camera) {
+  const box = new THREE.Box3().setFromObject(pivot);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  // 侧视：相机从 +Z 看向原点，车长（X 轴）在画面中水平展开
+  const fovRad = (camera.fov * Math.PI) / 180;
+  const padding = 1.18; // 留出塑料泡壳边缘安全距离
+  const distX = (size.x * padding * 0.5) / Math.tan(fovRad * 0.5);
+  const distY = (size.y * padding * 0.5) / Math.tan(fovRad * 0.5) / camera.aspect;
+  const dist = Math.max(distX, distY, size.z * 1.5) + 0.4;
+
+  camera.position.set(center.x, center.y + size.y * 0.06, center.z + dist);
+  camera.lookAt(center);
+  camera.near = 0.1;
+  camera.far = 600;
+  camera.updateProjectionMatrix();
+}
+
 async function buildScene(engine, inst) {
   const params = inst.params;
   const preset = getPreset(inst.envId) || getPreset('studio');
@@ -444,7 +465,11 @@ async function buildScene(engine, inst) {
   rig.update(params);
   inst.rig = rig;
 
-  // 软接地阴影
+  // 卡片内整体再缩小一圈，避免车模压到塑料泡壳边缘
+  pivot.scale.setScalar(0.82);
+  pivot.updateMatrixWorld(true);
+
+  // 软接地阴影（跟随整车一起缩放）
   const box = boxOf(pivot);
   const size = box.getSize(new THREE.Vector3());
   const blob = new THREE.Mesh(
@@ -458,7 +483,7 @@ async function buildScene(engine, inst) {
   // 相机
   const camera = new THREE.PerspectiveCamera(38, TILE_W / TILE_H, 0.1, 600);
   inst.camera = camera;
-  fitView(pivot, camera);
+  fitCardSideView(pivot, camera);
 
   inst.built = true;
 }

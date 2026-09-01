@@ -1,7 +1,8 @@
 /**
- * colorWheel.js — HSV 色轮改色控件（车漆）
+ * colorWheel.js — 车漆 HSV 色轮控件（高端车厂 configurator 风格 · 第二版）
  *
  * 圆形色轮：角度 = 色相 H，半径 = 饱和度 S；下方滑杆 = 明度 V。
+ * 顶部玻璃质感预览球实时反映当前车漆色（含高光与暗部）。
  * 默认「着色叠加」（保留车身原贴图，色轮色与贴图乘算）；
  * 切到「纯色喷漆」开关则去掉 baseColor 贴图，整车变纯色车漆。
  *
@@ -9,6 +10,10 @@
  */
 
 /* ---------------------------- 颜色工具 ---------------------------- */
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
 
 function hsvToRgb(h, s, v) {
   const c = v * s;
@@ -46,7 +51,7 @@ function toHex(r, g, b) {
   return (
     '#' +
     [r, g, b]
-      .map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0'))
+      .map((v) => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, '0'))
       .join('')
   );
 }
@@ -58,6 +63,10 @@ function hexToRgb(hex) {
     parseInt(h.slice(2, 4), 16) / 255,
     parseInt(h.slice(4, 6), 16) / 255,
   ];
+}
+
+function rgbStr(r, g, b) {
+  return `rgb(${Math.round(clamp(r, 0, 1) * 255)}, ${Math.round(clamp(g, 0, 1) * 255)}, ${Math.round(clamp(b, 0, 1) * 255)})`;
 }
 
 /* ---------------------------- DOM 小工具 ---------------------------- */
@@ -81,53 +90,120 @@ function el(tag, props = {}, ...children) {
 
 /* ---------------------------- 组件 ---------------------------- */
 
-export function createColorWheel({ value = '#c8102e', solid = false, onChange } = {}) {
-  const SIZE = 220;
+export function createColorWheel({ value = '#ffffff', solid = false, onChange } = {}) {
+  const SIZE = 264;
+  const PAD = 11;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
-  const maxR = SIZE / 2 - 2;
+  const maxR = SIZE / 2 - PAD - 7;
 
-  /* 色轮画布 */
+  /* 色轮画布：锥形色相 + 径向饱和度 */
   const canvas = el('canvas', { class: 'cw-wheel', width: String(SIZE), height: String(SIZE) });
   const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(SIZE, SIZE);
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const dx = x - cx,
-        dy = y - cy;
-      const r = Math.hypot(dx, dy);
-      const idx = (y * SIZE + x) * 4;
-      if (r > maxR) {
-        img.data[idx + 3] = 0;
-        continue;
-      }
-      let h = (Math.atan2(dy, dx) * 180) / Math.PI;
-      if (h < 0) h += 360;
-      const s = Math.min(1, r / maxR);
-      const [rr, gg, bb] = hsvToRgb(h, s, 1);
-      img.data[idx] = rr * 255;
-      img.data[idx + 1] = gg * 255;
-      img.data[idx + 2] = bb * 255;
-      img.data[idx + 3] = 255;
+
+  function drawWheel() {
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    const curRgb = rgbStr(...hsvToRgb(curH, curS, curV));
+
+    // 金属斜切外圈
+    const ring = ctx.createLinearGradient(0, 0, SIZE, SIZE);
+    ring.addColorStop(0, '#4a525e');
+    ring.addColorStop(0.5, '#20252c');
+    ring.addColorStop(1, '#4a525e');
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR + 7, 0, Math.PI * 2);
+    ctx.fillStyle = ring;
+    ctx.fill();
+
+    // 当前色发光环
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = curRgb;
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = curRgb;
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 内细亮环
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR + 1.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 锥形色相
+    const hue = ctx.createConicGradient(0, cx, cy);
+    for (let i = 0; i <= 360; i += 12) {
+      const [r, g, b] = hsvToRgb(i, 1, 1);
+      hue.addColorStop(i / 360, rgbStr(r, g, b));
     }
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR, 0, Math.PI * 2);
+    ctx.fillStyle = hue;
+    ctx.fill();
+
+    // 径向饱和度：中心白
+    const sat = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+    sat.addColorStop(0, 'rgba(255,255,255,1)');
+    sat.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR, 0, Math.PI * 2);
+    ctx.fillStyle = sat;
+    ctx.fill();
+
+    // 暗角
+    const vig = ctx.createRadialGradient(cx, cy, maxR * 0.5, cx, cy, maxR);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.32)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR, 0, Math.PI * 2);
+    ctx.fillStyle = vig;
+    ctx.fill();
+
+    // 中心枢轴
+    ctx.beginPath();
+    ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+    ctx.fillStyle = '#0b0d10';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
-  ctx.putImageData(img, 0, 0);
 
+  // 玻璃高光（CSS 叠加层，pointer-events:none）
+  const gloss = el('div', { class: 'cw-gloss' });
   const marker = el('div', { class: 'cw-marker' });
-  const wheelWrap = el('div', { class: 'cw-wheel-wrap' }, canvas, marker);
+  const wheelWrap = el('div', { class: 'cw-wheel-wrap' }, canvas, gloss, marker);
 
-  /* 明度滑杆 + 当前色值 */
-  const bright = el('input', { type: 'range', class: 'cw-bright', min: '0', max: '100', step: '1' });
-  const hexText = el('span', { class: 'cw-hex' }, value);
-  const brightRow = el(
-    'div',
-    { class: 'cw-bright-row' },
-    el('span', { class: 'cw-bright-label' }, '明度'),
-    bright,
-    hexText
-  );
+  /* 顶部玻璃预览球 */
+  const orb = el('div', { class: 'cw-orb' });
+  const orbName = el('span', { class: 'cw-orb-name' }, '');
 
-  /* 预设色板 */
+  /* 明度滑杆 */
+  const bright = el('input', {
+    type: 'range',
+    class: 'cw-bright',
+    min: '0',
+    max: '100',
+    step: '1',
+    value: '100',
+  });
+  const brightTrack = el('div', { class: 'cw-bright-track' });
+  const brightWrap = el('div', { class: 'cw-bright-wrap' }, brightTrack, bright);
+
+  /* HEX 输入 */
+  const hexInput = el('input', {
+    type: 'text',
+    class: 'cw-hex-input',
+    value,
+    maxlength: 7,
+    spellcheck: false,
+  });
+  const hexChip = el('div', { class: 'cw-hex-chip' });
+  const hexBox = el('div', { class: 'cw-hex-box' }, hexChip, hexInput);
+
+  /* 预设色板（烤漆小方块） */
   const PRESETS = [
     ['#c8102e', '竞速红'],
     ['#f2f3f5', '极地白'],
@@ -140,40 +216,66 @@ export function createColorWheel({ value = '#c8102e', solid = false, onChange } 
     ['#6f3fd0', '星云紫'],
     ['#2b2f36', '哑光黑'],
   ];
+  const swatchEls = new Map();
   const swatches = el('div', { class: 'cw-swatches' });
   for (const [c, name] of PRESETS) {
-    swatches.appendChild(
-      el('button', {
+    const sEl = el(
+      'button',
+      {
         class: 'cw-swatch',
         title: name,
         'aria-label': name,
-        style: `background:${c}`,
         onclick: () => applyHex(c),
-      })
+      },
+      el('span', { class: 'cw-swatch-chip', style: `background:${c}` })
     );
+    swatchEls.set(c, sEl);
+    swatches.appendChild(sEl);
   }
 
-  /* 纯色喷漆开关 */
+  /* 纯色喷漆开关：iOS 风格 */
   const solidChk = el('input', { type: 'checkbox' });
   solidChk.checked = !!solid;
   solidChk.addEventListener('change', () => emit());
+  const solidSwitch = el('span', { class: 'cw-switch-knob' });
+  const solidTrack = el('label', { class: 'cw-switch' }, solidChk, solidSwitch);
   const solidRow = el(
-    'label',
-    { class: 'switch cw-solid' },
-    solidChk,
-    el('span', {}, '纯色喷漆（覆盖原车贴图）')
+    'div',
+    { class: 'cw-solid-row' },
+    el('div', { class: 'cw-solid-text' }, el('span', { class: 'cw-row-label' }, '纯色喷漆'), el('span', { class: 'cw-solid-hint' }, '覆盖原车贴图')),
+    solidTrack
   );
 
   const resetBtn = el(
     'button',
-    { class: 'btn ghost small', onclick: () => applyHex('#c8102e') },
-    '还原默认色'
+    {
+      class: 'btn ghost cw-reset',
+      onclick: () => {
+        solidChk.checked = false;
+        applyHex('#ffffff');
+      },
+    },
+    '还原原车色'
   );
 
   /* 状态 */
   let curH = 0,
     curS = 0,
     curV = 1;
+
+  function currentColor() {
+    return toHex(...hsvToRgb(curH, curS, curV));
+  }
+
+  function paintSphere(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    const [h, s, v] = rgbToHsv(r, g, b);
+    const light = rgbStr(...hsvToRgb(h, Math.min(1, s * 0.7), Math.min(1, v * 1.18 + 0.05)));
+    const dark = rgbStr(...hsvToRgb(h, Math.min(1, s + 0.05), Math.max(0.18, v * 0.5)));
+    orb.style.background = `radial-gradient(circle at 33% 28%, ${light} 0%, ${hex} 42%, ${dark} 100%)`;
+    orb.style.boxShadow = `0 8px 22px ${hex}55, inset 0 0 0 1px rgba(255,255,255,0.14)`;
+    hexChip.style.background = hex;
+  }
 
   function placeMarker() {
     const ang = (curH * Math.PI) / 180;
@@ -182,9 +284,24 @@ export function createColorWheel({ value = '#c8102e', solid = false, onChange } 
     marker.style.top = `${cy + rad * Math.sin(ang)}px`;
   }
 
+  function updateBrightnessGradient() {
+    const [r, g, b] = hsvToRgb(curH, curS, 1);
+    brightTrack.style.background = `linear-gradient(90deg, #0c0e11 0%, ${rgbStr(r, g, b)} 100%)`;
+  }
+
+  function setActiveSwatch(hex) {
+    let name = '';
+    for (const [c, btn] of swatchEls) {
+      const on = c.toLowerCase() === hex.toLowerCase();
+      btn.classList.toggle('active', on);
+      if (on) name = btn.getAttribute('aria-label') || '';
+    }
+    orbName.textContent = name;
+  }
+
   function emit() {
-    const hex = toHex(...hsvToRgb(curH, curS, curV));
-    hexText.textContent = hex;
+    const hex = currentColor();
+    hexInput.value = hex;
     onChange?.(hex, { solid: solidChk.checked });
   }
 
@@ -196,26 +313,31 @@ export function createColorWheel({ value = '#c8102e', solid = false, onChange } 
     curV = v;
     bright.value = String(Math.round(v * 100));
     placeMarker();
-    hexText.textContent = hex;
+    updateBrightnessGradient();
+    paintSphere(hex);
+    drawWheel();
+    setActiveSwatch(hex);
     if (doEmit) emit();
   }
 
   function setFromWheel(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const dx = x - cx,
-      dy = y - cy;
+    const dx = clientX - rect.left - cx;
+    const dy = clientY - rect.top - cy;
     const r = Math.hypot(dx, dy);
     let h = (Math.atan2(dy, dx) * 180) / Math.PI;
     if (h < 0) h += 360;
-    const s = Math.min(1, r / maxR);
+    const s = clamp(r / maxR, 0, 1);
     curH = h;
     curS = s;
     placeMarker();
+    updateBrightnessGradient();
+    paintSphere(currentColor());
+    drawWheel();
     emit();
   }
 
+  /* 事件 */
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
     setFromWheel(e.clientX, e.clientY);
@@ -225,26 +347,41 @@ export function createColorWheel({ value = '#c8102e', solid = false, onChange } 
   });
   bright.addEventListener('input', () => {
     curV = parseInt(bright.value, 10) / 100;
+    paintSphere(currentColor());
+    drawWheel();
     emit();
   });
+  hexInput.addEventListener('change', () => {
+    let v = hexInput.value.trim();
+    if (!v.startsWith('#')) v = '#' + v;
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) applyHex(v.toLowerCase());
+    else hexInput.value = currentColor();
+  });
+  hexInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') hexInput.blur();
+  });
 
-  // 初始色值（不回调，避免覆盖外部已设好的状态）
+  // 初始色值（不回调）
   applyHex(value, false);
-  hexText.textContent = value;
 
   const root = el(
     'div',
     { class: 'cw' },
+    el(
+      'div',
+      { class: 'cw-header' },
+      el('div', { class: 'cw-head-text' }, el('span', { class: 'cw-title' }, '车漆改色'), orbName),
+      orb
+    ),
     wheelWrap,
-    brightRow,
-    swatches,
+    el('div', { class: 'cw-bright-block' }, el('div', { class: 'cw-bright-row' }, el('span', { class: 'cw-row-label' }, '明度'), hexBox), brightWrap),
+    el('div', { class: 'cw-section' }, el('span', { class: 'cw-row-label' }, '精选车漆'), swatches),
     solidRow,
-    el('div', { class: 'btn-row' }, resetBtn)
+    el('div', { class: 'cw-reset-row' }, resetBtn)
   );
 
   return {
     root,
-    /** 方案恢复时同步色轮显示（不触发 onChange） */
     set(hex, s) {
       solidChk.checked = !!s;
       applyHex(hex, false);
