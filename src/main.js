@@ -693,14 +693,27 @@ document.addEventListener('glb:progress', (e) => {
   // 防御：进度事件只「刷新」已经打开的加载遮罩（整车/轮毂显式加载时），
   // 不允许单独把遮罩拉起——否则后台预览加载会把界面永久卡在「加载模型 100%」。
   if (!overlay.classList.contains('show')) return;
-  overlayText.textContent = `加载模型 ${e.detail.pct}%`;
+  const pct = Math.min(100, Math.max(0, Number(e.detail.pct) || 0));
+  overlayText.textContent = `加载模型 ${pct}%`;
+
+  // 进度越高，logo 旋转/跳跃越快，让用户感知「加载正在冲刺」
+  if (overlayIcon) {
+    const ratio = pct / 100;
+    // 0% -> 2.8s / 100% -> 0.42s
+    const spinDur = Math.max(0.42, 2.8 * (1 - ratio * 0.85));
+    // 0% -> 1.0s / 100% -> 0.18s
+    const bounceDur = Math.max(0.18, 1.0 * (1 - ratio * 0.82));
+    overlayIcon.style.setProperty('--jg-spin-dur', `${spinDur.toFixed(3)}s`);
+    overlayIcon.style.setProperty('--jg-bounce-dur', `${bounceDur.toFixed(3)}s`);
+  }
 });
 
 /* ---------------------------- 品牌标识 ---------------------------- */
 
 // 两处：3D 视口右下角水印 / 加载遮罩居中。
 // 侧栏顶部品牌板块按需求已移除，不再挂载。
-mountBrandAll({ stage, overlay });
+const brands = mountBrandAll({ stage, overlay });
+const overlayIcon = brands.overlay?.querySelector('.jg-brand__icon');
 
 /* ---------------------------- App ---------------------------- */
 
