@@ -1563,6 +1563,7 @@ const app = {
   /** 移除 BANG 拆解产物，恢复整车视图 */
   clearBang() {
     clearBangParts();
+    hideOverlay();
   },
 
   /**
