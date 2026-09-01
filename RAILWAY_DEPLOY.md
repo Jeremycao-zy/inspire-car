@@ -11,6 +11,9 @@
 2. 真实 3D key（二选一或都配，不配也能跑 DEMO 模式）：
    - `HYPER3D_API_KEY` —— Hyper3D (Rodin / BANG) 商业 API Key
    - `HUNYUAN3D_TOKEN` —— 混元 3D 的 tempToken（`tk_` 开头）或 JWT
+3. 车型识别 key（可选，不配则车型识别走离线演示）：
+   - `QWEN_API_KEY`（或 `DASHSCOPE_API_KEY` / `BAILIAN_API_KEY`）—— 阿里通义千问视觉 Qwen3-VL，推荐
+   - 本机已缓存 key 在 `~/.workbuddy/tokens/qwen-vision`（首行即 key）
 3. 代码已提交到本地 `main`（已 done）。上架需推到可访问的仓库，或用 CLI 直传。
 
 ---
@@ -29,6 +32,8 @@
 5. 进入项目 → **Variables**，添加（敏感，**只在控制台填**）：
    - `HYPER3D_API_KEY` = 你的 key
    - `HUNYUAN3D_TOKEN` = 你的 token
+   - `QWEN_API_KEY` = 你的视觉 key（车型识别用；本机 `~/.workbuddy/tokens/qwen-vision` 首行即 key）
+   - 说明：前两个决定「车模生成」是否真实；`QWEN_API_KEY` 决定「上传照片自动识别车型」是否在线。
    - `AUTH_SECRET` = 一串随机 48 字节十六进制（固定下来，已登录用户的 token 才不会因重启失效）。
      本地生成命令：`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
    （改完变量会自动重新部署）
@@ -57,6 +62,7 @@ railway link        # 已有项目则选它；首次用 railway init 新建
 # 4. 设置敏感环境变量（只在 Railway 侧，不进本地文件）
 railway variables set HYPER3D_API_KEY=你的key
 railway variables set HUNYUAN3D_TOKEN=你的token
+railway variables set QWEN_API_KEY=你的视觉key   # 车型识别用
 
 # 5. 一键部署当前目录（读 railway.toml + Dockerfile）
 railway up
