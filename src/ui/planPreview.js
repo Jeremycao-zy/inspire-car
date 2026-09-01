@@ -386,7 +386,7 @@ function fitCardSideView(pivot, camera) {
 
   // 侧视：相机从 +Z 看向原点，车长（X 轴）在画面中水平展开
   const fovRad = (camera.fov * Math.PI) / 180;
-  const padding = 1.18; // 留出塑料泡壳边缘安全距离
+  const padding = 1.06; // 只留很小泡壳边缘安全距离，让车身尽量大
   const distX = (size.x * padding * 0.5) / Math.tan(fovRad * 0.5);
   const distY = (size.y * padding * 0.5) / Math.tan(fovRad * 0.5) / camera.aspect;
   const dist = Math.max(distX, distY, size.z * 1.5) + 0.4;
@@ -445,7 +445,9 @@ async function buildScene(engine, inst) {
   const chassis = new Chassis(pivot);
   chassis.derive(metrics, { front: params.front, rear: params.rear });
   chassis.build();
-  chassis.setVisible(true);
+  // 卡片预览只展示用户改装后的车身外观（车身+车轮），隐藏底盘结构，
+  // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
+  chassis.setVisible(params.chassis?.visible === true);
   inst.chassis = chassis;
 
   const cutter = new ShellCutter();
@@ -465,8 +467,8 @@ async function buildScene(engine, inst) {
   rig.update(params);
   inst.rig = rig;
 
-  // 卡片内整体再缩小一圈，避免车模压到塑料泡壳边缘
-  pivot.scale.setScalar(0.82);
+  // 卡片内整体稍微缩小，让车身填满泡壳但又比塑料壳小一点边距
+  pivot.scale.setScalar(0.94);
   pivot.updateMatrixWorld(true);
 
   // 软接地阴影（跟随整车一起缩放）
