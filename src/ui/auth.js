@@ -9,7 +9,7 @@
 
 import './auth.css';
 import { register, login } from '../auth.js';
-import logoMarkUrl from '../assets/logo-mark-nobg.png';
+import logoMarkUrl from '../assets/logo-mark-neon.png';
 
 function $(sel) {
   return document.querySelector(sel);

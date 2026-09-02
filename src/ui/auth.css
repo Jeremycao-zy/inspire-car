@@ -53,13 +53,15 @@
   gap: 12px;
   margin-bottom: 6px;
 }
-/* 登录卡片是深色背景，去背后的黑线徽标需要反相成白线 */
+/* 登录卡片：直接用霓虹青线条源图，无需反相；放大到与右侧灵感改装/INSPIRE CAR 两行文字块等高，
+   仅两层轻晕勾勒轮廓，避免多层叠加把线条糊成光团。 */
 .auth-card__logo {
-  height: 20px;
+  height: 38px;
   width: auto;
   aspect-ratio: 353 / 324;
   display: block;
-  filter: invert(1) drop-shadow(0 0 8px rgba(0, 240, 255, 0.5));
+  filter: drop-shadow(0 0 2px rgba(0, 240, 255, 0.55))
+  drop-shadow(0 0 6px rgba(0, 240, 255, 0.28));
 }
 .auth-card__brand-text {
   display: flex;
