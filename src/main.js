@@ -1422,6 +1422,19 @@ const app = {
   async applyBangParts(parts, { mode = 'assemble', offsetX = 3 } = {}) {
     const empty = { total: 0, body: 0, wheel: 0 };
     if (!Array.isArray(parts) || !parts.length) return empty;
+
+    // 预设展示车不参与 BANG 拆解。原因：
+    //   · 预设车是第三方 shaded 单网格模型，强行切轮会切坏车身
+    //   · parts 是按用户自己生成的车在 Hyper3D 拆解的坐标，装到预设车上
+    //     对不上位，必穿模
+    // 实际症状：之前没有这个 guard 时，用户的旧方案（carModelUrl=预设 +
+    // bangParts=老数据）进入时直接调到这里、切了预设车、显示破损。
+    if (isPresetCarUrl(currentPlan?.carModelUrl)) {
+      console.warn('[bang] 预设展示车跳过 BANG 装配（拆解产物与车身不匹配）');
+      clearBangParts();
+      return empty;
+    }
+
     clearBangParts();
 
     const loaded = [];
@@ -2296,6 +2309,16 @@ function applyPlanToApp(plan) {
 async function restoreBangForPlan() {
   const carLoaded = typeof carGroup !== 'undefined' && carGroup;
   if (!carLoaded) {
+    panel?.syncBang?.();
+    return;
+  }
+
+  // 预设展示车跳过 BANG 索引查询（不仅省一次网络往返，更是关键安全门）：
+  //   旧方案里若 carModelUrl=预设 但 bangParts 是按老车拆的旧数据，
+  //   装配到预设车上必穿模；查询会再写回 bangParts 把穿模结果固化进 localStorage。
+  if (isPresetCarUrl(currentPlan?.carModelUrl)) {
+    clearBangParts();
+    if (currentPlan) currentPlan.bangParts = [];
     panel?.syncBang?.();
     return;
   }
