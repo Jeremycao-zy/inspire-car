@@ -386,11 +386,10 @@ function fitCardSideView(pivot, camera) {
 
   // 侧视：相机从 +Z 看向原点，车长（X 轴）在画面中水平展开
   const fovRad = (camera.fov * Math.PI) / 180;
-  // 车身放大 2×：padding 减半 + distZ 最低距离减半 + 偏移减半，使 car 占满卡片宽度
-  const padding = 0.50; // 1.0 → 0.5，让车宽方向贴边且两倍大
+  const padding = 1.00; // 几乎贴边，让车身尽量充满卡片
   const distX = (size.x * padding * 0.5) / Math.tan(fovRad * 0.5);
   const distY = (size.y * padding * 0.5) / Math.tan(fovRad * 0.5) / camera.aspect;
-  const dist = Math.max(distX, distY, size.z * 0.75) + 0.2;
+  const dist = Math.max(distX, distY, size.z * 1.5) + 0.4;
 
   camera.position.set(center.x, center.y + size.y * 0.06, center.z + dist);
   camera.lookAt(center);
