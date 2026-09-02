@@ -250,13 +250,46 @@ function startPreview(container) {
       console.warn('[garage-preview] 车模载入失败', e);
     });
 
+  /* 复合转动：Y 轴匀速自转 + X 轴俯仰摆动 + Z 轴轻微侧摆。
+     三轴用互不相同的频率，形成不重复的李萨如式姿态变化。
+
+     为什么 X 轴是"摆动"而不是连续翻滚：
+       车翻过来会露出底盘，展示效果很怪。小幅俯仰（±12°左右）既让动作
+       明显变复杂，又始终保持车顶朝上、姿态可读。
+
+     为什么用 dt 时间累积而不是每帧固定增量：
+       固定增量会让转速随帧率漂移（120Hz 屏快一倍）。按秒累积才是真匀速。 */
+  const SPIN = {
+    yawSpeed: 0.24, // Y 轴自转角速度（弧度/秒，约 14°/s）
+    pitchAmp: 0.21, // X 轴俯仰摆幅（弧度，约 ±12°）
+    pitchHz: 0.09,  // X 轴摆动频率（Hz，周期约 11s）
+    rollAmp: 0.05,  // Z 轴侧摆摆幅（弧度，约 ±3°）
+    // 与 pitchHz 的比值取黄金比例（0.09 / 1.618）：无理数比 → 两轴永不同步，
+    // 姿态不会周期性重复。若取 1.5、2 这类整数/有理比，每 20 来秒就会转回原样。
+    rollHz: 0.0556, // Z 轴摆动频率（Hz，周期约 18s）
+  };
+
   let auto = true;
-  function loop() {
-    if (pivot && auto) pivot.rotation.y += 0.004;
+  let yaw = 0;
+  let phase = 0;
+  let lastT = 0;
+
+  function loop(now) {
+    // dt 限幅：切后台再切回来时时间戳会跳很大，不限制会让车瞬间转过一大截
+    const dt = lastT ? Math.min((now - lastT) / 1000, 0.1) : 0;
+    lastT = now;
+
+    if (pivot && auto) {
+      yaw += SPIN.yawSpeed * dt;
+      phase += dt;
+      pivot.rotation.y = yaw;
+      pivot.rotation.x = Math.sin(phase * SPIN.pitchHz * Math.PI * 2) * SPIN.pitchAmp;
+      pivot.rotation.z = Math.sin(phase * SPIN.rollHz * Math.PI * 2) * SPIN.rollAmp;
+    }
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   }
-  loop();
+  raf = requestAnimationFrame(loop);
 
   return {
     resume() {
