@@ -1128,9 +1128,11 @@ const app = {
       //
       // 预设展示车完全不切：它是第三方 shaded 单网格模型，怎么切都会要么
       // 切穿车底、要么切不干净。原样展示整车，等用户生成自己的车再启用改装。
-      if (!isPresetCarUrl(url)) {
-        cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
-      }
+      //
+      // 模式切换放在这里（而不是只在 loadPlanCar 里），是因为用户生成自己的车
+      // 走的是 app.loadCarFromUrl 直调，不经过 loadPlanCar——若不在这里恢复，
+      // rig.root.visible 会一直保持 false，新车同样装不上轮毂。
+      applyCarMode(url);
 
       this.fitCamera();
       hideOverlay();
@@ -2274,8 +2276,11 @@ async function loadPlanCar() {
   const preset = isPresetCarUrl(src);
 
   if (src !== currentCarUrl) {
-    await app.loadCarFromUrl(src);
+    await app.loadCarFromUrl(src); // 内部已调 applyCarMode
     currentCarUrl = src;
+  } else {
+    // 车没换也要确保模式正确（例如从预设车方案切到自己的车方案，反之亦然）
+    applyCarMode(src);
   }
   // 车已载入：按本方案参数重算底盘 / 轮位，并还原车漆着色
   if (typeof carGroup !== 'undefined' && carGroup) {
@@ -2283,15 +2288,7 @@ async function loadPlanCar() {
     app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
   }
 
-  if (preset) {
-    // 预设展示车：整车原样展示，不装配可改动轮毂。
-    // 隐藏 rig.root（四轮）——原车的轮子已经长在车身上，再叠一套程序化轮毂
-    // 会重叠穿模。用户生成自己的车后（非预设 URL）自动恢复显示。
-    if (typeof rig !== 'undefined' && rig?.root) rig.root.visible = false;
-    showPresetGuide(true);
-  } else {
-    if (typeof rig !== 'undefined' && rig?.root) rig.root.visible = true;
-    showPresetGuide(false);
+  if (!preset) {
     // 方案保存了自定义轮毂 → 重新载入；失败只记日志，保留程序化兜底
     if (currentPlan?.params?.customWheelUrl) {
       await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {
@@ -2304,6 +2301,44 @@ async function loadPlanCar() {
 
   app.fitCamera();
   app.setView('iso');
+}
+
+/**
+ * 按车型 URL 切换「可改装 / 纯展示」两种模式。
+ *
+ * 预设展示车（用户还没生成自己的车）→ 原样展示整车：
+ *   · 不做任何几何切割（第三方 shaded 单网格，切了不是穿底就是切不干净）
+ *   · 隐藏 rig.root——原车轮已长在车身上，再叠一套程序化轮毂会穿模
+ *   · 显示引导条，引导去生成自己的车
+ *
+ * 用户自己的车 → 完整改装模式：
+ *   · 按轮位切掉原车轮（保守参数）
+ *   · 恢复 rig 显示，隐藏引导条
+ *
+ * 放在这里而不是只在 loadPlanCar 里，是因为用户生成自己的车走的是
+ * app.loadCarFromUrl 直调、不经过 loadPlanCar；若只在 loadPlanCar 处理，
+ * rig.root.visible 会一直保持 false，新车同样装不上轮毂。
+ *
+ * @param {string} url 车型 URL
+ * @returns {boolean} 是否可改装（非预设车）
+ */
+function applyCarMode(url) {
+  const preset = isPresetCarUrl(url);
+  const hasRig = typeof rig !== 'undefined' && rig?.root;
+
+  if (preset) {
+    if (hasRig) rig.root.visible = false;
+    showPresetGuide(true);
+    return false;
+  }
+
+  // 已切过就不再重复切：cutOriginalWheels 幂等，但没必要每帧重算索引
+  if (!hasCutOriginalWheels()) {
+    cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
+  }
+  if (hasRig) rig.root.visible = true;
+  showPresetGuide(false);
+  return true;
 }
 
 /**
