@@ -52,7 +52,7 @@ const MAX_BODY = Number(process.env.MAX_BODY_MB || 80) * 1024 * 1024;
 const DEMO_MODEL_DIRS = [path.join(ROOT, 'public', 'models'), path.join(DIST_DIR, 'models')];
 
 /**
- * 定位一个预置演示模型（my-car.glb / wheel.glb）。
+ * 定位一个预置演示模型（base-high-shaded.glb / wheel.glb）。
  * @param {string} name 文件名，不含目录
  * @returns {string|null} 存在的绝对路径，找不到返回 null
  */
@@ -271,7 +271,7 @@ async function handleGenerate(req, res) {
 
   /* ---------- DEMO 模式：不消耗额度，走预置模型 ---------- */
   if (!token) {
-    const demoFile = kind === 'wheel' ? 'wheel.glb' : 'my-car.glb';
+    const demoFile = kind === 'wheel' ? 'wheel.glb' : 'base-high-shaded.glb';
     const demoUrl = `/models/${demoFile}`;
     const steps =
       kind === 'wheel'
@@ -510,7 +510,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
 
   /* ---------- DEMO 模式 ---------- */
   if (!token) {
-    const demoFile = kind === 'wheel' ? 'wheel.glb' : 'my-car.glb';
+    const demoFile = kind === 'wheel' ? 'wheel.glb' : 'base-high-shaded.glb';
     const demoUrl = `/models/${demoFile}`;
     const steps =
       kind === 'wheel'

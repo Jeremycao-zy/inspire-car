@@ -62,7 +62,10 @@ export function previewParamsOf(plan) {
 /* ------------------------------------------------------------------ */
 
 const _carPromiseByUrl = new Map();
-const DEFAULT_CAR_URL = '/models/my-car.glb';
+// 与 main.js 的 PRESET_CAR_URL 保持一致（预设展示车）。
+// 文件名带内容标识而非通用的 my-car：静态模型走 /models/ 固定路径、不带 hash，
+// 浏览器会强缓存——换内容必须换 URL，否则用户端永远拿到旧文件。
+const DEFAULT_CAR_URL = '/models/base-high-shaded.glb';
 
 /**
  * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存）。
