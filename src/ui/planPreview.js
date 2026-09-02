@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 import { loadGLB, normalizeCar, boxOf } from '../core/glb.js';
-import { PRESET_CAR_URL } from '../core/presetCar.js';
+import { PRESET_CAR_URL, isPresetCarUrl } from '../core/presetCar.js';
 import { WheelRig } from '../tuning/wheelRig.js';
 import { Chassis } from '../tuning/chassis.js';
 import { ShellCutter } from '../tuning/shellCutter.js';
@@ -434,38 +434,43 @@ async function buildScene(engine, inst) {
   normalizeCar(carInner, { targetLength: params.carLength || 4.6, groundY: 0 });
   groundCar(carOuter);
 
-  const metrics = measure(carOuter, {
-    deckHeight:
-      params.chassis && Number.isFinite(params.chassis.deckHeight)
-        ? params.chassis.deckHeight
-        : 0.3,
-  });
+  // 预设展示车：原样完整显示，不做底盘/切轮/装配 procedural 轮毂。
+  // 这样卡片里看到的是「完整模型」，而不是被切掉原车轮后再装上程序化轮毂的残缺效果。
+  // 用户自己的车：走完整改装预览（切轮 + procedural 轮毂 + 姿态）。
+  if (!isPresetCarUrl(inst.carModelUrl)) {
+    const metrics = measure(carOuter, {
+      deckHeight:
+        params.chassis && Number.isFinite(params.chassis.deckHeight)
+          ? params.chassis.deckHeight
+          : 0.3,
+    });
 
-  // 底盘 + 车壳三道切 + 四轮
-  const chassis = new Chassis(pivot);
-  chassis.derive(metrics, { front: params.front, rear: params.rear });
-  chassis.build();
-  // 卡片预览只展示用户改装后的车身外观（车身+车轮），隐藏底盘结构，
-  // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
-  chassis.setVisible(params.chassis?.visible === true);
-  inst.chassis = chassis;
+    // 底盘 + 车壳三道切 + 四轮
+    const chassis = new Chassis(pivot);
+    chassis.derive(metrics, { front: params.front, rear: params.rear });
+    chassis.build();
+    // 卡片预览只展示用户改装后的车身外观（车身+车轮），隐藏底盘结构，
+    // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
+    chassis.setVisible(params.chassis?.visible === true);
+    inst.chassis = chassis;
 
-  const cutter = new ShellCutter();
-  cutter.capture(carOuter);
-  const plan = chassis.cutPlan();
-  if (Number.isFinite(params.chassis?.deckHeight)) plan.deckHeight = params.chassis.deckHeight;
-  plan.enableC1 = params.shell?.enableC1 ?? true;
-  plan.enableC2 = params.shell?.enableC2 ?? true;
-  plan.enableC3 = params.shell?.enableC3 ?? true;
-  cutter.apply(plan, { doubleSide: params.shell?.doubleSide ?? true });
-  inst.cutter = cutter;
+    const cutter = new ShellCutter();
+    cutter.capture(carOuter);
+    const plan = chassis.cutPlan();
+    if (Number.isFinite(params.chassis?.deckHeight)) plan.deckHeight = params.chassis.deckHeight;
+    plan.enableC1 = params.shell?.enableC1 ?? true;
+    plan.enableC2 = params.shell?.enableC2 ?? true;
+    plan.enableC3 = params.shell?.enableC3 ?? true;
+    cutter.apply(plan, { doubleSide: params.shell?.doubleSide ?? true });
+    inst.cutter = cutter;
 
-  const rig = new WheelRig(pivot);
-  rig.useProceduralWheel();
-  rig.setCornerSpec(chassis.cornerSpec());
-  rig.setBodyHalfWidth(metrics.bodyHalfWidth);
-  rig.update(params);
-  inst.rig = rig;
+    const rig = new WheelRig(pivot);
+    rig.useProceduralWheel();
+    rig.setCornerSpec(chassis.cornerSpec());
+    rig.setBodyHalfWidth(metrics.bodyHalfWidth);
+    rig.update(params);
+    inst.rig = rig;
+  }
 
   // 卡片内整体放大，让车模在预览区更突出，仍保留泡壳边缘安全距离
   pivot.scale.setScalar(1.08);
