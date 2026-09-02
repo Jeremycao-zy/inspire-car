@@ -38,6 +38,7 @@ import { createPanel } from './ui/panel.js';
 import { createCopilotPanel } from './ui/copilotPanel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
+import { mountPhotoGuide } from './ui/photoGuide.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
 import { fetchMe } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
@@ -2168,6 +2169,7 @@ let copilotPanel = null;
 let tunerStarted = false;
 let currentPlan = null; // 当前在第二层编辑的方案（含 id / title / params）
 let garage = null; // 第一层「灵感车库」实例
+let photoGuide = null; // 拍照引导层实例
 let currentCarUrl = null; // 当前已载入的车模 URL，用于判断切换方案时是否需要重新载车
 
 function startTuner() {
@@ -2420,38 +2422,38 @@ function showPresetGuide(show) {
   presetGuideEl = document.createElement('div');
   presetGuideEl.className = 'preset-guide';
   presetGuideEl.innerHTML = `
-    <div class="preset-guide__title">这是一台示例车</div>
     <div class="preset-guide__text">
-      换轮毂、调姿态需要先有你自己的 3D 车模。<br>
-      在左下角「整车」里上传一张车的照片，生成后即可开始改装。
+      这是一台示例车，在左下角「整车」上传照片生成自己的 3D 车模后即可开始改装。
     </div>
   `;
   (document.getElementById('stage') || document.body).appendChild(presetGuideEl);
 }
 
+// 创建一份空白方案
+function createBlankPlan() {
+  return {
+    id: 'plan-' + Date.now(),
+    title: '未命名方案',
+    desc: '',
+    tags: [],
+    params: structuredClone(DEFAULTS), // 深拷贝，避免与全局 DEFAULTS 共享引用
+    carModelUrl: PRESET_CAR_URL, // 预设展示车：等用户生成自己的车后替换
+    bangParts: [],
+  };
+}
+
 // 进入第二层 TUNING STUDIO
-async function enterTuner(plan) {
-  // —— 新建方案：一份完全独立的空白方案，初始化数据全部归零（仅取中性默认值）——
-  if (!plan) {
-    plan = {
-      id: 'plan-' + Date.now(),
-      title: '未命名方案',
-      desc: '',
-      tags: [],
-      params: structuredClone(DEFAULTS), // 深拷贝，避免与全局 DEFAULTS 共享引用
-      carModelUrl: PRESET_CAR_URL, // 预设展示车：等用户生成自己的车后替换
-      bangParts: [],
-    };
-  } else {
-    // 进入已有方案：深拷贝，避免与车库卡片列表共享同一对象导致方案之间互相污染
-    plan = structuredClone(plan);
-    if (!plan.params) plan.params = structuredClone(DEFAULTS);
-    if (!plan.carModelUrl) plan.carModelUrl = PRESET_CAR_URL;
-    // 旧方案存的可能是已删除的 my-car.glb，进入时就改写，
-    // 后面 loadPlanCar / restoreBangForPlan 读到的都是当前实际路径
-    plan.carModelUrl = normalizeCarUrl(plan.carModelUrl);
-    if (!plan.bangParts) plan.bangParts = [];
-  }
+async function enterTuner(plan, opts = {}) {
+  if (!plan) plan = createBlankPlan();
+  // 进入已有方案：深拷贝，避免与车库卡片列表共享同一对象导致方案之间互相污染
+  plan = structuredClone(plan);
+  if (!plan.params) plan.params = structuredClone(DEFAULTS);
+  if (!plan.carModelUrl) plan.carModelUrl = PRESET_CAR_URL;
+  // 旧方案存的可能是已删除的 my-car.glb，进入时就改写，
+  // 后面 loadPlanCar / restoreBangForPlan 读到的都是当前实际路径
+  plan.carModelUrl = normalizeCarUrl(plan.carModelUrl);
+  if (!plan.bangParts) plan.bangParts = [];
+
   currentPlan = plan;
 
   const garageEl = document.getElementById('garage');
@@ -2459,6 +2461,27 @@ async function enterTuner(plan) {
   startTuner(); // 首次进入做一次性初始化（载车已下放到 loadPlanCar）
   applyPlanToApp(currentPlan); // 注入参数、清空上一方案残留的拆解/轮毂、同步 UI
   await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
+
+  // 若从拍照引导带入了原始照片，在这里做一次车型识别 + 真车参数应用，
+  // 让轮位/悬挂从真实尺寸起步，不再重复生成扣额度。
+  const sourceFiles = opts?.sourceFiles;
+  if (sourceFiles?.length && !isPresetCarUrl(currentPlan.carModelUrl)) {
+    try {
+      const rec = await recognize(sourceFiles).catch(() => null);
+      if (rec?.available) {
+        const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
+        if (sp?.available && app.applyRealSpecs(sp)) {
+          const rs = app.params.realSpecs;
+          rs.fullName = rec.fullName || rs.query || '';
+          rs.query = rec.fullName || rs.query || '';
+          panel?.syncAll();
+          console.log('[photoGuide→studio] 应用真车参数', rs);
+        }
+      }
+    } catch (e) {
+      console.warn('[photoGuide→studio] 识别失败，不影响建模结果', e);
+    }
+  }
 }
 
 // 返回第一层：保存当前方案 → 刷新卡片 → 显示车库
@@ -2495,6 +2518,35 @@ function returnToGarage() {
   }
 }
 
+// 打开拍照引导层。existingPlan 为 null 表示新建方案；传入已有但尚未建模的方案时，
+// 建模完成后会把 carModelUrl 写回该方案再进入 studio。
+function showPhotoGuide(existingPlan = null) {
+  if (photoGuide) {
+    photoGuide.destroy();
+    photoGuide = null;
+  }
+  if (garage?.root) garage.root.classList.add('hidden');
+
+  photoGuide = mountPhotoGuide({
+    onModeled({ url, mode, files }) {
+      const plan = existingPlan ? structuredClone(existingPlan) : createBlankPlan();
+      plan.carModelUrl = url;
+      if (photoGuide) {
+        photoGuide.destroy();
+        photoGuide = null;
+      }
+      enterTuner(plan, { sourceFiles: files });
+    },
+    onCancel() {
+      if (photoGuide) {
+        photoGuide.destroy();
+        photoGuide = null;
+      }
+      mountGarageEntry();
+    },
+  });
+}
+
 // 第一层入口：灵感车库（白色科技车库风）。选择方案 / 新建 → 进入 TUNING STUDIO。
 // 门禁：未登录先弹登录浮层，登录成功后再挂载车库；注销/令牌失效回到浮层。
 async function bootGarage() {
@@ -2512,6 +2564,11 @@ function mountGarageEntry() {
   // 已登录：确保浮层隐藏，挂载/重挂车库
   garage = mountGarage({
     onEnter(plan) {
+      // 新方案 / 还没有真实车模的方案 → 先走拍照引导，建模完成后再进 studio
+      if (!plan || isPresetCarUrl(plan?.carModelUrl)) {
+        showPhotoGuide(plan);
+        return;
+      }
       enterTuner(plan);
     },
   });

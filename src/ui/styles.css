@@ -1589,38 +1589,34 @@ input[type='range'] {
 .preset-guide {
   position: absolute;
   left: 50%;
-  bottom: 26px;
+  bottom: 18px;
   transform: translateX(-50%);
   z-index: 20;
-  max-width: 380px;
-  padding: 12px 16px;
-  border-radius: 12px;
+  max-width: 560px;
+  padding: 6px 12px;
+  border-radius: 999px;
   text-align: center;
   pointer-events: none;
-  background: rgba(10, 10, 20, 0.88);
-  border: 1px solid rgba(0, 240, 255, 0.32);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 22px rgba(0, 240, 255, 0.12);
-  backdrop-filter: blur(10px);
-}
-
-.preset-guide__title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #eafcff;
-  margin-bottom: 5px;
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+  background: rgba(10, 10, 20, 0.75);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
 }
 
 .preset-guide__text {
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 11px;
+  line-height: 1.5;
   color: #9fd8e6;
+  white-space: nowrap;
 }
 
 @media (max-width: 860px) {
   .preset-guide {
-    bottom: 14px;
-    max-width: calc(100% - 32px);
+    bottom: 12px;
+    max-width: calc(100% - 24px);
+    border-radius: 12px;
+  }
+  .preset-guide__text {
+    white-space: normal;
   }
 }
