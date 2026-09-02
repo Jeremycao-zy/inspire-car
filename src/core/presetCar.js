@@ -10,13 +10,21 @@
  */
 
 /**
- * 预设展示车模型路径。
+ * TUNING STUDIO 预设展示车模型路径（用户尚未生成自己的车时显示）。
  * 2026-09-02 起由 base_high_shaded.glb（单网格 shaded）换成 base_high_pbr.glb
  * （PBR：baseColor + normal + metallicRoughness）。两者都是「原样展示、不切轮」
  * 的第三方整车模型，仅作改装位置示意。PBR 版经选择性压缩（Draco 几何 +
  * 仅 baseColor 转 JPEG92，normal/metalRough 保持 PNG 无损），体积 55.6MB→18MB。
  */
 export const PRESET_CAR_URL = '/models/base-high-pbr.glb';
+
+/**
+ * 首页 HERO 旋转展示车模型路径。
+ * 注意：首页这台车用户明确要求保持「以前的」外观，不受 TUNING STUDIO 预设车
+ * （PBR）切换影响，所以单独成常量。它用 base_high_shaded.glb——PBR 切换前首页
+ * 一直显示的那个模型。两者都是「原样展示、不切轮」的第三方整车模型。
+ */
+export const HERO_CAR_URL = '/models/base-high-shaded.glb';
 
 /**
  * 历史遗留的预设车路径。

@@ -88,8 +88,8 @@ export const AXLE_DEFAULTS_REAR = {
 // 注意：文件名带内容标识（base-high-shaded）而不是通用的 my-car，
 // 是为了让「换模型」必然伴随「换 URL」——静态模型走 /models/ 固定路径、
 // 不带 hash，浏览器会强缓存，改内容不改名字的话用户端永远拿到旧文件。
-export { PRESET_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
-import { PRESET_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
+export { PRESET_CAR_URL, HERO_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
+import { PRESET_CAR_URL, HERO_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
 
 /** @deprecated 前后轴已分开，保留仅为兼容旧引用 */
 export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
