@@ -1,0 +1,178 @@
+/**
+ * legal.css — 用户协议 / 社区守则 弹窗
+ * 风格沿用项目霓虹赛博 / synthwave，保证与登录、订阅弹窗一致。
+ */
+
+.legal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 4, 12, 0.72);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.legal-overlay.is-open {
+  opacity: 1;
+}
+
+.legal-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(82vh, 780px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(10, 10, 20, 0.96);
+  border: 1px solid rgba(0, 240, 255, 0.26);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 240, 255, 0.12);
+}
+
+.legal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.16);
+  background: linear-gradient(100deg, rgba(255, 46, 151, 0.1), rgba(0, 240, 255, 0.08));
+}
+
+.legal-head__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #eafcff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+}
+
+.legal-head__close {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #9fd8e6;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.15s ease;
+}
+.legal-head__close:hover {
+  color: #0a0a14;
+  background: var(--neon-cyan, #00f0ff);
+}
+
+.legal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 22px 26px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: #c8dbe6;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.3) transparent;
+}
+.legal-body::-webkit-scrollbar {
+  width: 6px;
+}
+.legal-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.3);
+  border-radius: 3px;
+}
+
+.legal-body h1 {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #eafcff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+.legal-body h2 {
+  margin: 26px 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #7fe9ff;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.16);
+}
+.legal-body h3 {
+  margin: 20px 0 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #9fd8e6;
+}
+.legal-body h4 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #9fd8e6;
+}
+
+.legal-body p {
+  margin: 0 0 10px;
+}
+.legal-body strong {
+  color: #ffd166;
+  font-weight: 700;
+}
+
+.legal-body ul,
+.legal-body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.legal-body li {
+  margin-bottom: 6px;
+}
+
+.legal-body blockquote {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-left: 3px solid rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.07);
+  border-radius: 0 8px 8px 0;
+  color: #e8d9b0;
+}
+.legal-body blockquote p {
+  margin: 0 0 6px;
+}
+.legal-body blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.legal-body hr {
+  margin: 22px 0;
+  border: 0;
+  border-top: 1px solid rgba(0, 240, 255, 0.16);
+}
+
+.legal-body pre {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #9fd8e6;
+  overflow-x: auto;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (max-width: 640px) {
+  .legal-overlay {
+    padding: 12px;
+  }
+  .legal-modal {
+    max-height: 88vh;
+  }
+  .legal-body {
+    padding: 14px 16px 22px;
+    font-size: 12.5px;
+  }
+}

@@ -10,6 +10,7 @@
 import './auth.css';
 import { register, login } from '../auth.js';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
+import { openLegalModal } from './legalModal.js';
 
 function $(sel) {
   return document.querySelector(sel);
@@ -85,6 +86,46 @@ function buildLayer() {
     })
   );
 
+  // 注册时的协议同意勾选（登录模式隐藏）。
+  // 提交前校验勾选状态，未勾选不允许注册——这是协议对用户的"明示同意"要件，
+  // 仅有静态文本链接而无勾选动作，发生争议时难以证明用户确实同意。
+  const agreeBox = el(
+    'label',
+    { class: 'auth-agree', 'data-role': 'agree-box' },
+    (() => {
+      const cb = el('input', { type: 'checkbox', 'data-role': 'agree' });
+      return cb;
+    })(),
+    el(
+      'span',
+      { class: 'auth-agree__text' },
+      '我已阅读并同意',
+      (() => {
+        const a = el('button', {
+          type: 'button',
+          class: 'auth-link',
+          onClick: (e) => {
+            e.preventDefault();
+            openLegalModal('agreement');
+          },
+        }, '《用户协议》');
+        return a;
+      })(),
+      '和',
+      (() => {
+        const a = el('button', {
+          type: 'button',
+          class: 'auth-link',
+          onClick: (e) => {
+            e.preventDefault();
+            openLegalModal('guidelines');
+          },
+        }, '《社区内容守则》');
+        return a;
+      })()
+    )
+  );
+
   const errorBox = el('p', { class: 'auth-error', style: 'display:none' });
   const submit = el('button', { class: 'auth-submit', type: 'submit' }, '登录');
   const switchText = el('p', { class: 'auth-switch' });
@@ -101,6 +142,7 @@ function buildLayer() {
     emailField,
     nameField,
     pwdField,
+    agreeBox,
     errorBox,
     submit,
     switchText
@@ -119,7 +161,7 @@ function buildLayer() {
 
   // 内部状态：mode = 'login' | 'register'
   layer._mode = 'login';
-  layer._refs = { heading, hint, emailField, nameField, pwdField, errorBox, submit, switchText };
+  layer._refs = { heading, hint, emailField, nameField, pwdField, agreeBox, errorBox, submit, switchText };
 
   setMode('login');
   return layer;
@@ -128,11 +170,16 @@ function buildLayer() {
 function setMode(mode) {
   const L = layer;
   L._mode = mode;
-  const { heading, hint, emailField, nameField, pwdField, errorBox, submit, switchText } = L._refs;
+  const { heading, hint, emailField, nameField, pwdField, agreeBox, errorBox, submit, switchText } =
+    L._refs;
   errorBox.style.display = 'none';
   const email = emailField.querySelector('input');
   const name = nameField.querySelector('input');
   const pwd = pwdField.querySelector('input');
+  const agree = agreeBox.querySelector('input');
+
+  // 协议勾选只在注册时要求（登录是既有用户，注册时已同意过）
+  agreeBox.style.display = mode === 'register' ? '' : 'none';
 
   if (mode === 'register') {
     heading.textContent = '注册账号';
@@ -174,15 +221,18 @@ function showError(msg) {
 }
 
 async function submitForm() {
-  const { emailField, nameField, pwdField, submit } = layer._refs;
+  const { emailField, nameField, pwdField, agreeBox, submit } = layer._refs;
   const email = emailField.querySelector('input').value.trim();
   const loginVal = nameField.querySelector('input').value.trim();
   const password = pwdField.querySelector('input').value;
+  const agreed = agreeBox.querySelector('input').checked;
   const mode = layer._mode;
 
   if (mode === 'register') {
     if (!loginVal) return showError('请填写用户名');
     if (!password) return showError('请填写密码');
+    // 注册必须显式勾选协议——这是证明用户"已阅读并同意"的关键证据
+    if (!agreed) return showError('请先阅读并勾选同意《用户协议》和《社区内容守则》');
   } else {
     if (!loginVal) return showError('请填写账号');
     if (!password) return showError('请填写密码');

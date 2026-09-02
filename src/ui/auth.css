@@ -181,3 +181,58 @@
 .auth-switch button:hover {
   text-decoration: underline;
 }
+
+/* ---------------- 注册时的协议同意勾选 ---------------- */
+
+.auth-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 4px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9fd8e6;
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.auth-agree:hover {
+  border-color: rgba(0, 240, 255, 0.34);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.auth-agree input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 1px 0 0;
+  cursor: pointer;
+  accent-color: var(--neon-cyan, #00f0ff);
+}
+
+.auth-agree__text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 协议链接：做成按钮样式但视觉上是内联链接，点击弹出协议弹窗 */
+.auth-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  color: var(--neon-cyan, #00f0ff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+.auth-link:hover {
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
