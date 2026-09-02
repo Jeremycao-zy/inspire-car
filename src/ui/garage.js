@@ -17,8 +17,7 @@ import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import './garage.css';
-import logoHexUrl from '../assets/logo-hex-neon.png';
-import logoWheelUrl from '../assets/logo-wheel-neon.png';
+import logoMarkUrl from '../assets/logo-mark-neon.png';
 
 /**
  * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
@@ -460,14 +459,7 @@ export function mountGarage({ onEnter, mount } = {}) {
     el(
       'div',
       { class: 'garage-brand' },
-      // 双层 logo：外框 hex 静态 + 内层 wheel 用 CSS 动画慢慢转
-      // （不是 3D 场景旋转；按用户要求「只要转动不要跳动」所以是 2D CSS）
-      el(
-        'div',
-        { class: 'garage-logo' },
-        el('img', { class: 'garage-logo__hex', src: logoHexUrl, alt: 'INSPIRE CAR' }),
-        el('img', { class: 'garage-logo__wheel', src: logoWheelUrl, alt: '' })
-      ),
+      el('img', { class: 'garage-logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
       el(
         'div',
         { class: 'garage-brand__text' },
