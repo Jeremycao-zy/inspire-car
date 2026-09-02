@@ -44,8 +44,16 @@ process.on('SIGTERM', () => shutdown(0));
 const nodeBin = process.execPath;
 const npm = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
-run('api', nodeBin, ['server/index.mjs'], '35');
-run('web', npm, ['vite', '--host', '127.0.0.1'], '36');
+// 前端端口用 WEB_PORT 覆盖（后端读的是 PORT，两者必须分开：
+// 之前用 PORT 同时喂给两边，结果后端抢先占了端口，Vite 再启动就冲突退出）。
+// 背景：5173 常被本机其它 Vite 项目（如 coal-workbench）长期占用，此时
+// Vite 会静默 fallback 到 5174，导致"以为开的是 5173、其实看的是别的端口"，
+// 排查起来非常浪费时间。显式指定端口可彻底避免这类歧义。
+const WEB_PORT = process.env.WEB_PORT || '5173';
+const API_PORT = process.env.PORT || '8787';
 
-console.log('\n  ▸ 前端  http://127.0.0.1:5173');
-console.log('  ▸ 接口  http://127.0.0.1:8787/api/health\n');
+run('api', nodeBin, ['server/index.mjs'], '35');
+run('web', npm, ['vite', '--host', '127.0.0.1', '--port', WEB_PORT, '--strictPort'], '36');
+
+console.log(`\n  ▸ 前端  http://127.0.0.1:${WEB_PORT}`);
+console.log(`  ▸ 接口  http://127.0.0.1:${API_PORT}/api/health\n`);
