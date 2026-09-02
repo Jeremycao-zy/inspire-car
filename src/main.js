@@ -67,6 +67,26 @@ export const AXLE_DEFAULTS_FRONT = {
 export const AXLE_DEFAULTS_REAR = {
   rimInch: 19, j: 9.5, et: 31, tireWidthMm: 285, aspect: 30, camber: -1.5,
 };
+
+/**
+ * 预设展示车模 —— 用户还没生成自己的车时用它占位。
+ *
+ * 为什么它是「纯展示」而不是「可改装 demo」：
+ *   这台车是第三方 shaded 单网格模型，轮子与车底是同一个 mesh。
+ *   要让轮毂可改装，必须先按轮位做几何切除把原车轮挖掉——但实测默认参数
+ *   会把车底一起切穿（车身破损），调保守后又切不干净。
+ *   与其在第三方模型上做侵入式切割，不如干脆不切：原样展示整车，
+ *   把用户引导去生成自己的车，改装流程从那一步才开始。
+ *
+ * 因此预设车走「只读」分支：不切轮、不装可改动轮毂（隐藏 rig）、
+ * 面板给出生成引导。用户生成/上传自己的车后自动切回完整改装模式。
+ */
+export const PRESET_CAR_URL = '/models/my-car.glb';
+
+/** 该 URL 是否是「预设展示车」（而非用户自己的车） */
+export function isPresetCarUrl(url) {
+  return !url || url === PRESET_CAR_URL;
+}
 /** @deprecated 前后轴已分开，保留仅为兼容旧引用 */
 export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
 
@@ -1105,7 +1125,12 @@ const app = {
       //   · widthPad:    0.02 轴向余量 2cm——6cm 太大，填满了轮位之间的车底空间
       //   · autoAlign:   false 关闭 refine——base_high_shaded.glb 是单网格 shaded，
       //                  refine 的"找高密度区"会落到车底平面上把车切穿
-      cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
+      //
+      // 预设展示车完全不切：它是第三方 shaded 单网格模型，怎么切都会要么
+      // 切穿车底、要么切不干净。原样展示整车，等用户生成自己的车再启用改装。
+      if (!isPresetCarUrl(url)) {
+        cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
+      }
 
       this.fitCamera();
       hideOverlay();
@@ -1319,7 +1344,7 @@ const app = {
    * @returns {Promise<{count:number, parts:Array}|null>}
    */
   async bangCurrentCar({ strength = 5, resolution = 'Basic', material = 'None' } = {}) {
-    const src = currentPlan?.carModelUrl || '/models/my-car.glb';
+    const src = currentPlan?.carModelUrl || PRESET_CAR_URL;
     showOverlay('正在提交 BANG 拆解…');
     try {
       clearBangParts();
@@ -1682,7 +1707,7 @@ const app = {
 /* -------------------- 生成管线：进度 / 失败分级 / 恢复动作 -------------------- */
 
 const KIND_META = {
-  car: { label: '整车', demoUrl: '/models/my-car.glb' },
+  car: { label: '整车', demoUrl: PRESET_CAR_URL },
   wheel: { label: '轮毂', demoUrl: '/models/wheel.glb' },
 };
 
@@ -2245,7 +2270,9 @@ async function restoreBangForPlan() {
 // 按当前方案载入「它自己的车模」：每个方案独立载车，互不污染。
 // 切换方案时若车模 URL 没变则跳过重复下载（个人奔驰车同理只载一次）。
 async function loadPlanCar() {
-  const src = currentPlan?.carModelUrl || '/models/my-car.glb';
+  const src = currentPlan?.carModelUrl || PRESET_CAR_URL;
+  const preset = isPresetCarUrl(src);
+
   if (src !== currentCarUrl) {
     await app.loadCarFromUrl(src);
     currentCarUrl = src;
@@ -2255,16 +2282,53 @@ async function loadPlanCar() {
     app.refitCar({ recapture: false });
     app.setBodyColor(app.params.bodyColor, app.params.bodySolid);
   }
-  // 方案保存了自定义轮毂 → 重新载入；失败只记日志，保留程序化兜底
-  if (currentPlan?.params?.customWheelUrl) {
-    await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {
-      console.warn('[plan] 恢复自定义轮毂失败：', e.message);
-    });
+
+  if (preset) {
+    // 预设展示车：整车原样展示，不装配可改动轮毂。
+    // 隐藏 rig.root（四轮）——原车的轮子已经长在车身上，再叠一套程序化轮毂
+    // 会重叠穿模。用户生成自己的车后（非预设 URL）自动恢复显示。
+    if (typeof rig !== 'undefined' && rig?.root) rig.root.visible = false;
+    showPresetGuide(true);
+  } else {
+    if (typeof rig !== 'undefined' && rig?.root) rig.root.visible = true;
+    showPresetGuide(false);
+    // 方案保存了自定义轮毂 → 重新载入；失败只记日志，保留程序化兜底
+    if (currentPlan?.params?.customWheelUrl) {
+      await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {
+        console.warn('[plan] 恢复自定义轮毂失败：', e.message);
+      });
+    }
+    // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
+    await restoreBangForPlan();
   }
-  // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
-  await restoreBangForPlan();
+
   app.fitCamera();
   app.setView('iso');
+}
+
+/**
+ * 预设展示车的引导条：告诉用户这台车只是示例，引导去生成自己的车。
+ * 生成后（非预设车）自动隐藏。
+ */
+let presetGuideEl = null;
+function showPresetGuide(show) {
+  if (!show) {
+    presetGuideEl?.remove();
+    presetGuideEl = null;
+    return;
+  }
+  if (presetGuideEl) return;
+
+  presetGuideEl = document.createElement('div');
+  presetGuideEl.className = 'preset-guide';
+  presetGuideEl.innerHTML = `
+    <div class="preset-guide__title">这是一台示例车</div>
+    <div class="preset-guide__text">
+      换轮毂、调姿态需要先有你自己的 3D 车模。<br>
+      在左下角「整车」里上传一张车的照片，生成后即可开始改装。
+    </div>
+  `;
+  (document.getElementById('stage') || document.body).appendChild(presetGuideEl);
 }
 
 // 进入第二层 TUNING STUDIO
@@ -2277,14 +2341,14 @@ async function enterTuner(plan) {
       desc: '',
       tags: [],
       params: structuredClone(DEFAULTS), // 深拷贝，避免与全局 DEFAULTS 共享引用
-      carModelUrl: '/models/my-car.glb', // 彩蛋：预设车模 = 个人上传的奔驰车
+      carModelUrl: PRESET_CAR_URL, // 预设展示车：等用户生成自己的车后替换
       bangParts: [],
     };
   } else {
     // 进入已有方案：深拷贝，避免与车库卡片列表共享同一对象导致方案之间互相污染
     plan = structuredClone(plan);
     if (!plan.params) plan.params = structuredClone(DEFAULTS);
-    if (!plan.carModelUrl) plan.carModelUrl = '/models/my-car.glb';
+    if (!plan.carModelUrl) plan.carModelUrl = PRESET_CAR_URL;
     if (!plan.bangParts) plan.bangParts = [];
   }
   currentPlan = plan;
