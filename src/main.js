@@ -1098,9 +1098,14 @@ const app = {
       this.refitCar({ recapture: true });
 
       // 原车单体往往把轮胎和车身做在同一个 mesh 里（如演示车），
-      // 加载后必须按当前轮位把原车轮切掉，否则新轮毂装上去会与其重叠，
-      // 尤其车型识别把车模放大到真实尺寸后，原轮胎会比新轮毂大一圈而露出来。
-      cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
+      // 加载后必须按当前轮位把原车轮切掉，否则新轮毂装上去会与其重叠。
+      //
+      // 参数说明（保守取值，避免把车底切穿）：
+      //   · radiusScale: 1.0  按实测胎外半径不放大——1.15 会把车身底面一起包进去
+      //   · widthPad:    0.02 轴向余量 2cm——6cm 太大，填满了轮位之间的车底空间
+      //   · autoAlign:   false 关闭 refine——base_high_shaded.glb 是单网格 shaded，
+      //                  refine 的"找高密度区"会落到车底平面上把车切穿
+      cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
 
       this.fitCamera();
       hideOverlay();
@@ -1453,8 +1458,9 @@ const app = {
 
     // 真实轮位必须已经通过 refitCar 注入 rig 后，再按轮位切除原车轮；
     // 否则 rig 仍用旧估算位置，切口会偏，导致轮胎残留在车身/装配体中。
-    // 这里同时切 carGroup（供切回 single 视图使用）和 bangAssembly 中残留的车轮几何。
-    const cutRes = cutOriginalWheels({ radiusScale: 1.15, widthPad: 0.06 });
+    // 保守参数：rScale 1.0（不放大）、widthPad 0.02（轴向 2cm 余量）、autoAlign:false
+    // （关闭 refine 避免 shaded 单网格模型下把车底平面误识别为高密度区）。
+    const cutRes = cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
     if (cutRes.removed) console.log('[bang] 已同步切除原车轮：', cutRes);
     this.setBangExplode(this.params.bangExplode ?? 0);
     bangMountedSig = parts.map((p) => p?.url).join('|');
