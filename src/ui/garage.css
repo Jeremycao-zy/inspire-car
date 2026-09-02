@@ -161,7 +161,7 @@
 
 /* 品牌图已去背（透明底 + 霓虹青线条），这里不再套白色卡片 / 圆角 / 描边阴影。
    高度与右侧两行文字（26 + 10 + 间距 ≈ 46px）等高，
-   多层 drop-shadow 叠加形成赛博荧光外晕（cyan bloom）。 */
+   仅两层轻晕勾勒轮廓，避免多层叠加把线条糊成光团。 */
 .garage-logo {
   height: 46px;
   width: auto;
@@ -169,12 +169,8 @@
   display: block;
   flex: 0 0 auto;
   object-fit: contain;
-  filter:
-    drop-shadow(0 0 1px #00f0ff)
-    drop-shadow(0 0 3px #00f0ff)
-    drop-shadow(0 0 6px rgba(0, 240, 255, 0.7))
-    drop-shadow(0 0 14px rgba(0, 240, 255, 0.45))
-    drop-shadow(0 0 28px rgba(0, 240, 255, 0.25));
+  filter: drop-shadow(0 0 2px rgba(0, 240, 255, 0.5))
+    drop-shadow(0 0 5px rgba(0, 240, 255, 0.22));
 }
 
 .garage-brand__text {
