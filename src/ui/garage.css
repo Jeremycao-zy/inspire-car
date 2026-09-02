@@ -162,42 +162,15 @@
 /* 品牌图已去背（透明底 + 霓虹青线条），这里不再套白色卡片 / 圆角 / 描边阴影。
    高度与右侧两行文字（26 + 10 + 间距 ≈ 46px）等高，
    仅两层轻晕勾勒轮廓，避免多层叠加把线条糊成光团。 */
-/* 双层 logo：外框 hex 静态 + 内层 wheel 慢慢转
-   （不是 3D 场景旋转，是 2D CSS animation，按用户要求「只要转动不要跳动」） */
 .garage-logo {
-  position: relative;
   height: 46px;
-  width: calc(46px * 353 / 324); /* 保持原图 353:324 宽高比 */
+  width: auto;
+  aspect-ratio: 353 / 324;
+  display: block;
   flex: 0 0 auto;
+  object-fit: contain;
   filter: drop-shadow(0 0 2px rgba(0, 240, 255, 0.5))
     drop-shadow(0 0 5px rgba(0, 240, 255, 0.22));
-}
-
-.garage-logo__hex,
-.garage-logo__wheel {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-}
-
-.garage-logo__wheel {
-  /* 14 秒一圈，慢速持续旋转；linear 保证不顿挫 */
-  animation: garage-logo-spin 14s linear infinite;
-}
-
-/* 用户系统设了「减少动效」时停转——给前庭敏感者一个退出路径 */
-@media (prefers-reduced-motion: reduce) {
-  .garage-logo__wheel {
-    animation: none;
-  }
-}
-
-@keyframes garage-logo-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
 }
 
 .garage-brand__text {
