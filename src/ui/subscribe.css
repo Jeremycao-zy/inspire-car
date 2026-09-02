@@ -305,10 +305,11 @@
   transform: translateY(-1px);
   box-shadow: 0 0 26px rgba(255, 46, 151, 0.55);
 }
-.garage-subscribe-btn svg {
-  width: 38px;
+.garage-subscribe-btn .garage-subscribe-icon {
   height: 15px;
+  width: auto;
   flex: 0 0 auto;
+  display: block;
 }
 
 /* 窄屏适配 */

@@ -406,39 +406,12 @@ export function mountGarage({ onEnter, mount } = {}) {
       title: '查看订阅方案',
       onClick: () => openPricingModal(),
     },
-    el(
-      'span',
-      {
-        class: 'garage-subscribe-icon',
-        'aria-hidden': 'true',
-        html:
-          '<svg viewBox="0 8 24 8" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round">' +
-          '<path d="M0.3 14 L0.2 13.3 C0.2 12.1 1.6 11.4 4.2 11 L7.8 10.7 L9.2 9.9 L10.6 8.9 L14.2 9 C16 9.1 17.8 9.6 19.2 10.4 L22.2 10.9 C23.4 11.2 23.9 12.1 23.9 13 L23.7 14"/>' +
-          '<path d="M0.3 14 L3.3 14 A2.2 2.2 0 0 0 7.7 14 L14.3 14 A2.2 2.2 0 0 0 18.7 14 L23.7 14"/>' +
-          '<path d="M0.8 12.8 Q1.8 12.4 2.8 12.7"/>' +
-          '<path d="M7.8 12.4 L9.3 12.4 M7.8 12.7 L9.3 12.7 M7.8 13.0 L9.3 13.0"/>' +
-          '<ellipse cx="10.2" cy="9.5" rx="0.6" ry="0.25"/>' +
-          '<path d="M13.5 11.3 L14.8 11.3"/>' +
-          '<path d="M7.2 12.2 L20.5 12.2"/>' +
-          '<path d="M7.0 13.5 L21.5 13.5"/>' +
-          '<path d="M23.3 12.5 L23.8 12.5 M23.35 12.2 L23.75 12.2"/>' +
-          '<circle cx="5.5" cy="14" r="2.2"/>' +
-          '<circle cx="18.5" cy="14" r="2.2"/>' +
-          '<circle cx="5.5" cy="14" r="0.5"/>' +
-          '<circle cx="18.5" cy="14" r="0.5"/>' +
-          '<line x1="5.5" y1="14" x2="5.5" y2="11.8"/>' +
-          '<line x1="5.5" y1="14" x2="3.98" y2="14.49"/>' +
-          '<line x1="5.5" y1="14" x2="4.56" y2="12.71"/>' +
-          '<line x1="5.5" y1="14" x2="6.44" y2="12.71"/>' +
-          '<line x1="5.5" y1="14" x2="7.02" y2="14.49"/>' +
-          '<line x1="18.5" y1="14" x2="18.5" y2="11.8"/>' +
-          '<line x1="18.5" y1="14" x2="16.98" y2="14.49"/>' +
-          '<line x1="18.5" y1="14" x2="17.56" y2="12.71"/>' +
-          '<line x1="18.5" y1="14" x2="19.44" y2="12.71"/>' +
-          '<line x1="18.5" y1="14" x2="20.02" y2="14.49"/>' +
-          '</svg>',
-      }
-    ),
+    el('img', {
+      class: 'garage-subscribe-icon',
+      src: '/icons/subscribe-car.png',
+      alt: '',
+      'aria-hidden': 'true',
+    }),
     '订阅方案'
   );
 
