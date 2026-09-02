@@ -371,11 +371,30 @@ export function createViewer(container, opts = {}) {
 
   /* ---------- 主循环 ---------- */
   const updaters = new Set();
-  renderer.setAnimationLoop((t) => {
+  // 渲染循环可暂停：返回灵感车库 / 进入拍照引导时，studio 画布是隐藏的，
+  // 若继续 60fps 空渲染，iOS Safari 会因持续的 GPU 负载 + 内存压力把整个
+  // WebContent 进程杀掉（用户看到的就是"此网页重复出现问题，因此已重新载入"）。
+  let renderPaused = false;
+  const tick = (t) => {
     controls.update();
     for (const fn of updaters) fn(t);
     renderer.render(scene, camera);
-  });
+  };
+  renderer.setAnimationLoop(tick);
+
+  /** 暂停渲染循环（隐藏时调用，彻底停掉 GPU 工作，不只是空转） */
+  function pause() {
+    if (renderPaused) return;
+    renderPaused = true;
+    renderer.setAnimationLoop(null);
+  }
+
+  /** 恢复渲染循环 */
+  function resume() {
+    if (!renderPaused) return;
+    renderPaused = false;
+    renderer.setAnimationLoop(tick);
+  }
 
   /** 把相机对准某个包围盒 */
   function frameBox(box, pad = 1.35) {
@@ -401,6 +420,8 @@ export function createViewer(container, opts = {}) {
     controls,
     lightRig,
     frameBox,
+    pause,
+    resume,
     onUpdate(fn) {
       updaters.add(fn);
       return () => updaters.delete(fn);
@@ -436,6 +457,7 @@ export function createViewer(container, opts = {}) {
       shadowCatcher.geometry.dispose();
       shadowCatcher.material.dispose();
       renderer.dispose();
+      renderer.forceContextLoss?.();
     },
   };
 }

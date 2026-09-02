@@ -134,23 +134,8 @@ class PreviewEngine {
     this.ok = false;
     this.raf = 0;
 
-    try {
-      this.renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: true,
-        preserveDrawingBuffer: true,
-        powerPreference: 'low-power',
-      });
-      this.renderer.setPixelRatio(1);
-      this.renderer.setSize(TILE_W, TILE_H, false);
-      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.05;
-      this.ok = true;
-    } catch {
-      this.ok = false;
-      return;
-    }
+    this._createRenderer();
+    if (!this.ok) return;
 
     // 视口可见性：滑入才渲染/构建，滑出暂停
     if ('IntersectionObserver' in window) {
@@ -161,23 +146,43 @@ class PreviewEngine {
             if (!inst) continue;
             inst.visible = e.isIntersecting;
             if (inst.visible && !inst.built && !inst.building) this._build(inst);
+            // 重新滑入视口 → 补一帧（卡片是静态侧视，一帧就够）
+            if (inst.visible && inst.built) this._markDirty(inst);
           }
         },
         { threshold: 0.05 }
       );
     }
 
-    const loop = () => {
-      this.raf = requestAnimationFrame(loop);
+    /* 卡片内车模是静态侧视摆放，不需要连续渲染。改为"脏标记 + 按需渲染"：
+     * 每张卡片只在构建完成 / 滑入视口 / 尺寸变化时渲染一帧，
+     * 没有待渲染卡片时 RAF 完全停止。
+     * 之前的 60fps 常驻循环在 iOS Safari 上是持续的 GPU 负载，
+     * 和 hero 预览、studio 三个渲染循环叠在一起，足以触发系统
+     * 把 WebContent 进程杀掉（页面表现为"重复出现问题"崩溃）。 */
+    this.raf = 0;
+    this._tick = () => {
+      this.raf = 0;
       if (!this.ok) return;
+      let pending = false;
       for (const inst of this.instances.values()) {
-        if (!inst.built || !inst.visible) continue;
-        // 卡片内车模不旋转，保持静态侧视摆放
+        if (!inst.built || !inst.visible || !inst.dirty) continue;
         this.renderer.render(inst.scene, inst.camera);
         inst.ctx.drawImage(this.renderer.domElement, 0, 0, inst.canvas.width, inst.canvas.height);
+        inst.dirty = false;
       }
+      for (const inst of this.instances.values()) {
+        if (inst.built && inst.visible && inst.dirty) pending = true;
+      }
+      // 还有未完成的（例如本轮刚构建完又标记脏）→ 继续下一帧，否则停转
+      if (pending) this.raf = requestAnimationFrame(this._tick);
     };
-    loop();
+  }
+
+  /** 标记一张卡片需要重绘，并确保渲染循环在跑 */
+  _markDirty(inst) {
+    inst.dirty = true;
+    if (!this.raf) this.raf = requestAnimationFrame(this._tick);
   }
 
   getEnvTexture(preset) {
@@ -211,7 +216,9 @@ class PreviewEngine {
 
   /* ---- 挂载一张卡片 ---- */
   mount(container, params, carModelUrl) {
-    if (!this.ok || !container) return null;
+    if (!container) return null;
+    if (!this.ok || !this.renderer) this._createRenderer();
+    if (!this.ok) return null;
     if (this.instances.has(container)) return this.instances.get(container);
 
     const canvas = document.createElement('canvas');
@@ -307,6 +314,61 @@ class PreviewEngine {
       /* ignore */
     }
     inst.built = false;
+  }
+
+  _createRenderer() {
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'low-power',
+      });
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(TILE_W, TILE_H, false);
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.05;
+      this.ok = true;
+    } catch {
+      this.ok = false;
+      this.renderer = null;
+    }
+  }
+
+  /** 释放卡片引擎独占的 WebGL 上下文与 GPU 贴图。
+   * 车库切到 studio / 拍照引导等需要 3D 大视口时，保留卡片上下文会白白占用
+   * iOS Safari 的 GPU 内存；销毁后再重建，可把同时活着的上下文压到最低。 */
+  disposeRenderer() {
+    if (!this.ok || !this.renderer) return;
+    this.clear();
+
+    for (const t of this.envCache.values()) t?.dispose?.();
+    this.envCache.clear();
+
+    for (const t of this.skyCache.values()) t?.dispose?.();
+    this.skyCache.clear();
+
+    for (const group of this.decorCache.values()) {
+      if (!group) continue;
+      group.traverse((o) => {
+        o.geometry?.dispose?.();
+        if (Array.isArray(o.material)) {
+          for (const m of o.material) m?.dispose?.();
+        } else if (o.material) {
+          o.material?.dispose?.();
+        }
+      });
+    }
+    this.decorCache.clear();
+
+    this.renderer.dispose();
+    this.renderer.forceContextLoss?.();
+    this.renderer = null;
+    this.ok = false;
+    if (this.raf) {
+      cancelAnimationFrame(this.raf);
+      this.raf = 0;
+    }
   }
 }
 
@@ -493,6 +555,10 @@ async function buildScene(engine, inst) {
   fitCardSideView(pivot, camera);
 
   inst.built = true;
+  // 构建完成（异步）后主动标记一帧：按需渲染模式下不会常驻 RAF，
+  // 若不在这里补 _markDirty，卡片会停在空白画布上（IntersectionObserver
+  // 不会因同一次可见再触发，导致首帧永不绘制）。
+  engine._markDirty(inst);
 }
 
 /* 单例：全车库共用 */
