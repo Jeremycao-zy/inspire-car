@@ -407,17 +407,31 @@ export function mountGarage({ onEnter, mount } = {}) {
       onClick: () => openPricingModal(),
     },
     el(
-      'svg',
+      'span',
       {
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        'stroke-width': '2.2',
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
+        class: 'garage-subscribe-icon',
         'aria-hidden': 'true',
-      },
-      el('path', { d: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z' })
+        html:
+          '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M3 15.6 C2.7 14.5 3.1 13.4 4.4 13 L8.8 11.8 C9.5 11.5 9.9 11 10.3 10.3 L11.6 8.5 C12.3 8.2 13.6 8.2 14.6 8.4 C16.2 8.7 17 9.5 18 10.2 C19.4 11 20.3 11.3 20.9 12.5 C21.5 13.8 21.2 14.8 20.6 15.6"/>' +
+          '<path d="M20.6 15.6 L19.9 15.6 A2.4 2.4 0 0 0 15.1 15.6 L8.9 15.6 A2.4 2.4 0 0 0 4.1 15.6 L3 15.6"/>' +
+          '<path d="M9.2 12.1 L17.8 12"/>' +
+          '<circle cx="6.5" cy="15.6" r="1.7"/>' +
+          '<circle cx="17.5" cy="15.6" r="1.7"/>' +
+          '<circle cx="6.5" cy="15.6" r="0.45"/>' +
+          '<circle cx="17.5" cy="15.6" r="0.45"/>' +
+          '<line x1="6.5" y1="15.6" x2="6.5" y2="14"/>' +
+          '<line x1="6.5" y1="15.6" x2="4.98" y2="16.09"/>' +
+          '<line x1="6.5" y1="15.6" x2="5.56" y2="14.31"/>' +
+          '<line x1="6.5" y1="15.6" x2="7.44" y2="14.31"/>' +
+          '<line x1="6.5" y1="15.6" x2="8.02" y2="16.09"/>' +
+          '<line x1="17.5" y1="15.6" x2="17.5" y2="14"/>' +
+          '<line x1="17.5" y1="15.6" x2="15.98" y2="16.09"/>' +
+          '<line x1="17.5" y1="15.6" x2="16.56" y2="14.31"/>' +
+          '<line x1="17.5" y1="15.6" x2="18.44" y2="14.31"/>' +
+          '<line x1="17.5" y1="15.6" x2="19.02" y2="16.09"/>' +
+          '</svg>',
+      }
     ),
     '订阅方案'
   );
