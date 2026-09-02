@@ -174,7 +174,7 @@ export function detectCarAxes(size) {
     if (!(L > 0 && W > 0 && H > 0)) continue;
     const score =
       rangePenalty(L / W, 1.6, 3.8) +
-      rangePenalty(L / H, 2.5, 4.5) +
+      rangePenalty(L / H, 2.5, 5.5) +
       rangePenalty(W / H, 1.0, 2.0);
     if (!best || score < best.score) best = { ...c, score, Lv: L, Wv: W, Hv: H };
   }
