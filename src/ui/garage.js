@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
-import { PRESET_CAR_URL } from '../core/presetCar.js';
+import { PRESET_CAR_URL, HERO_CAR_URL } from '../core/presetCar.js';
 import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
@@ -235,7 +235,7 @@ function startPreview(container) {
   });
   ro.observe(container);
 
-  loadGLB(PRESET_CAR_URL, { progress: false })
+  loadGLB(HERO_CAR_URL, { progress: false })
     .then(({ group }) => {
       if (disposed) return;
       pivot = new THREE.Group();
