@@ -412,7 +412,7 @@ export function mountGarage({ onEnter, mount } = {}) {
         class: 'garage-subscribe-icon',
         'aria-hidden': 'true',
         html:
-          '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+          '<svg viewBox="2 7 20 11" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="0.45" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M3 15.6 C2.7 14.5 3.1 13.4 4.4 13 L8.8 11.8 C9.5 11.5 9.9 11 10.3 10.3 L11.6 8.5 C12.3 8.2 13.6 8.2 14.6 8.4 C16.2 8.7 17 9.5 18 10.2 C19.4 11 20.3 11.3 20.9 12.5 C21.5 13.8 21.2 14.8 20.6 15.6"/>' +
           '<path d="M20.6 15.6 L19.9 15.6 A2.4 2.4 0 0 0 15.1 15.6 L8.9 15.6 A2.4 2.4 0 0 0 4.1 15.6 L3 15.6"/>' +
           '<path d="M9.2 12.1 L17.8 12"/>' +
