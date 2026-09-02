@@ -35,6 +35,7 @@ import {
   PRECISION_TIERS,
 } from './api/generate.js';
 import { createPanel } from './ui/panel.js';
+import { createCopilotPanel } from './ui/copilotPanel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
@@ -2101,6 +2102,7 @@ function groundCar() {
 /* ---------------------------- 启动 ---------------------------- */
 
 let panel = null;
+let copilotPanel = null;
 let tunerStarted = false;
 let currentPlan = null; // 当前在第二层编辑的方案（含 id / title / params）
 let garage = null; // 第一层「灵感车库」实例
@@ -2110,7 +2112,17 @@ function startTuner() {
   if (tunerStarted) return;
   tunerStarted = true;
 
-  panel = createPanel(app, document.getElementById('sidebar'));
+  const sidebarEl = document.getElementById('sidebar');
+  panel = createPanel(app, sidebarEl);
+
+  // 「改装工程师」AI 助手：挂在参数面板上方，可对话 / 语音直接改车。
+  // 必须在 createPanel 之后——工具执行完要调 panel.syncAll() 让滑杆跟着变。
+  try {
+    copilotPanel = createCopilotPanel({ app, panel });
+    sidebarEl.prepend(copilotPanel.root);
+  } catch (e) {
+    console.warn('[copilot] 助手面板初始化失败，不影响主功能', e);
+  }
 
   // 车轮随动旋转
   viewer.onUpdate(() => {

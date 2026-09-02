@@ -28,6 +28,7 @@ import * as hy3d from './hunyuan3d.mjs';
 import * as hyper3d from './hyper3d.mjs';
 import * as fal from './fal3d.mjs';
 import * as vision from './vision.mjs';
+import * as copilot from './copilot.mjs';
 import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
@@ -1437,6 +1438,41 @@ async function handleRecognize(req, res) {
 }
 
 /**
+ * POST /api/copilot —— 「改装工程师」对话一轮
+ * 入参：{ messages: [{role, content}], specs?: object }
+ * 出参：{ available:true, content, toolCalls:[{id,name,arguments}], usage }
+ *       { available:false, reason:'no-key'|'auth'|'error', detail? }
+ *
+ * 注意：这里只返回工具调用"提议"，真正的数值钳制与写入在前端
+ * src/copilot/tools.js 完成——模型可能给出越界值，绝不能直接采信。
+ */
+async function handleCopilot(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  if (!messages.length) {
+    sendJson(res, 400, { error: '缺少对话内容' });
+    return;
+  }
+  // 只放行 user/assistant 两种角色，避免客户端注入 system 覆盖人设
+  const safe = messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }))
+    .slice(-20);
+  if (!safe.length) {
+    sendJson(res, 400, { error: '对话内容格式不正确' });
+    return;
+  }
+  const r = await copilot.chat({ messages: safe, specs: body.specs || null });
+  sendJson(res, 200, r);
+}
+
+/**
  * POST /api/specs
  * 入参：{ fullName, year? }   识别出的车型名
  * 出参：{ available:true, length, width, height, wheelbase, trackFront, trackRear, ... }
@@ -1656,6 +1692,15 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === '/api/recognize' && req.method === 'POST') {
     await handleRecognize(req, res);
+    return;
+  }
+
+  if (u.pathname === '/api/copilot' && req.method === 'POST') {
+    await handleCopilot(req, res);
+    return;
+  }
+  if (u.pathname === '/api/copilot/status' && req.method === 'GET') {
+    sendJson(res, 200, copilot.getCopilotStatus());
     return;
   }
 
