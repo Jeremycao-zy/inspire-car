@@ -142,6 +142,17 @@ const DEFAULTS = {
   showTire: true,
   spin: false,
   autoRotate: false,
+  /**
+   * 预设展示车绕 Y 轴自转。
+   *
+   * 与 autoRotate 的区别：autoRotate 是 OrbitControls 的**相机环绕**（车不动、
+   * 相机转）；这个是**车模自己转**。选自转是因为用户拖动视角时不会被打断。
+   *
+   * 默认 false，由 applyCarMode() 按车型设置：
+   *   预设展示车 → true（只是给用户看改装位置的示意，转起来更好看清整车姿态）
+   *   用户自己的车 → false（要调轮毂/悬挂参数，车转着没法改）
+   */
+  presetSpin: false,
   // 场景预设 id（来自 core/environments.js），灯光与曝光随场景切换
   envId: 'studio',
   // 底盘参数：null = 由 ShellMeasure 自动推导（derive()）
@@ -2157,10 +2168,30 @@ function startTuner() {
     console.warn('[copilot] 助手面板初始化失败，不影响主功能', e);
   }
 
-  // 车轮随动旋转
+  // 车轮随动旋转 + 预设展示车绕 Y 轴自转
+  //
+  // 自转只作用于 carOuter（用户调朝向的那个容器是 carOuter 本身，rotateCar() 也是
+  // 往 carOuter.rotation.y 上累加 90°），所以两者叠加不冲突：用户转完朝向后，
+  // 自转继续从新角度累加。
+  //
+  // 用 dt 秒累积而非每帧固定增量：固定增量会让转速随帧率漂移（120Hz 屏快一倍）。
+  // dt 做 0.1s 限幅，避免切后台回来时车瞬间转过一大截。
+  const PRESET_SPIN_SPEED = 0.22; // 弧度/秒，约 12.6°/s，一圈约 28 秒
+  let lastSpinT = 0;
+
   viewer.onUpdate(() => {
-    if (!app.params.spin) return;
-    for (const c of rig.corners) c.axle.rotation.z -= 0.012;
+    if (app.params.spin) {
+      for (const c of rig.corners) c.axle.rotation.z -= 0.012;
+    }
+
+    if (app.params.presetSpin && typeof carOuter !== 'undefined' && carOuter) {
+      const now = performance.now();
+      const dt = lastSpinT ? Math.min((now - lastSpinT) / 1000, 0.1) : 0;
+      lastSpinT = now;
+      carOuter.rotation.y += PRESET_SPIN_SPEED * dt;
+    } else {
+      lastSpinT = 0; // 停转时重置，恢复转动不会瞬移
+    }
   });
 
   (async function boot() {
@@ -2325,6 +2356,10 @@ async function loadPlanCar() {
 function applyCarMode(url) {
   const preset = isPresetCarUrl(url);
   const hasRig = typeof rig !== 'undefined' && rig?.root;
+
+  // 预设展示车绕 Y 轴自转，让用户看清整车姿态与改装位置；
+  // 用户自己的车不转——要调轮毂/悬挂参数，转着没法改。
+  app.params.presetSpin = preset;
 
   if (preset) {
     if (hasRig) rig.root.visible = false;
