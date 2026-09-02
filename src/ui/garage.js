@@ -16,7 +16,7 @@ import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import './garage.css';
-import logoMarkUrl from '../assets/logo-mark-nobg.png';
+import logoMarkUrl from '../assets/logo-mark-neon.png';
 
 /**
  * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
