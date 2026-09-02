@@ -20,6 +20,7 @@
 
 import * as THREE from 'three';
 import { loadGLB, normalizeCar, boxOf } from '../core/glb.js';
+import { PRESET_CAR_URL } from '../core/presetCar.js';
 import { WheelRig } from '../tuning/wheelRig.js';
 import { Chassis } from '../tuning/chassis.js';
 import { ShellCutter } from '../tuning/shellCutter.js';
@@ -62,10 +63,6 @@ export function previewParamsOf(plan) {
 /* ------------------------------------------------------------------ */
 
 const _carPromiseByUrl = new Map();
-// 与 main.js 的 PRESET_CAR_URL 保持一致（预设展示车）。
-// 文件名带内容标识而非通用的 my-car：静态模型走 /models/ 固定路径、不带 hash，
-// 浏览器会强缓存——换内容必须换 URL，否则用户端永远拿到旧文件。
-const DEFAULT_CAR_URL = '/models/base-high-shaded.glb';
 
 /**
  * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存）。
@@ -73,7 +70,7 @@ const DEFAULT_CAR_URL = '/models/base-high-shaded.glb';
  * 回退到系统默认 SL 350 演示车，绝不因车型缺失而白屏。
  */
 function loadCarSource(url) {
-  const key = url || DEFAULT_CAR_URL;
+  const key = url || PRESET_CAR_URL;
   if (_carPromiseByUrl.has(key)) return _carPromiseByUrl.get(key);
   const p = loadGLB(key, { progress: false })
     .then(({ group }) => group)

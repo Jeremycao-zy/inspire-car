@@ -81,25 +81,15 @@ export const AXLE_DEFAULTS_REAR = {
  * 因此预设车走「只读」分支：不切轮、不装可改动轮毂（隐藏 rig）、
  * 面板给出生成引导。用户生成/上传自己的车后自动切回完整改装模式。
  */
-/**
- * 注意：文件名带内容标识（base-high-shaded）而不是通用的 my-car，
- * 是为了让「换模型」必然伴随「换 URL」——静态模型走 /models/ 固定路径、
- * 不带 hash，浏览器会强缓存，改内容不改名字的话用户端永远拿到旧文件。
- */
-export const PRESET_CAR_URL = '/models/base-high-shaded.glb';
+// 预设车常量集中在 src/core/presetCar.js（单一事实来源）。
+// 这里 re-export 是为了让 main.js 内部及各处的既有 import 不受影响。
+//
+// 注意：文件名带内容标识（base-high-shaded）而不是通用的 my-car，
+// 是为了让「换模型」必然伴随「换 URL」——静态模型走 /models/ 固定路径、
+// 不带 hash，浏览器会强缓存，改内容不改名字的话用户端永远拿到旧文件。
+export { PRESET_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
+import { PRESET_CAR_URL, normalizeCarUrl, isPresetCarUrl } from './core/presetCar.js';
 
-/**
- * 历史遗留的预设车路径。
- * 用户 localStorage 里已保存的方案可能仍指向旧的 '/models/my-car.glb'，
- * 若不兼容，这些方案会被误判成「用户自己的车」→ 触发切轮（而这台 shaded
- * 单网格车一切就破）。所以旧路径同样视为预设车。
- */
-const LEGACY_PRESET_URLS = ['/models/my-car.glb'];
-
-/** 该 URL 是否是「预设展示车」（而非用户自己的车） */
-export function isPresetCarUrl(url) {
-  return !url || url === PRESET_CAR_URL || LEGACY_PRESET_URLS.includes(url);
-}
 /** @deprecated 前后轴已分开，保留仅为兼容旧引用 */
 export const AXLE_DEFAULTS = { ...AXLE_DEFAULTS_FRONT };
 
@@ -1120,6 +1110,8 @@ const app = {
 
   /* ---- 整车 ---- */
   async loadCarFromUrl(url) {
+    // 旧方案里存的可能是已删除的 my-car.glb，先改写成当前实际文件
+    url = normalizeCarUrl(url);
     showOverlay('正在载入整车模型…');
     try {
       const { group } = await loadGLB(url);
@@ -2455,6 +2447,9 @@ async function enterTuner(plan) {
     plan = structuredClone(plan);
     if (!plan.params) plan.params = structuredClone(DEFAULTS);
     if (!plan.carModelUrl) plan.carModelUrl = PRESET_CAR_URL;
+    // 旧方案存的可能是已删除的 my-car.glb，进入时就改写，
+    // 后面 loadPlanCar / restoreBangForPlan 读到的都是当前实际路径
+    plan.carModelUrl = normalizeCarUrl(plan.carModelUrl);
     if (!plan.bangParts) plan.bangParts = [];
   }
   currentPlan = plan;

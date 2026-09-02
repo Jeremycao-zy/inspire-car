@@ -2,7 +2,7 @@
  * garage.js — 「灵感车库」第一层入口页（白色科技车库风）
  *
  * · 顶部：Logo + 灵感车库 品牌
- * · Hero：标签语 + 实时 3D 车模预览（my-car.glb 自动旋转）+ CTA
+ * · Hero：标签语 + 实时 3D 车模预览（预设车自动旋转）+ CTA
  * · 我的改装方案：卡片网格，封面用保存时的 3D 快照
  *
  * 存储：localStorage key = `inspire-car-plans`
@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
+import { PRESET_CAR_URL } from '../core/presetCar.js';
 import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
@@ -234,7 +235,7 @@ function startPreview(container) {
   });
   ro.observe(container);
 
-  loadGLB('/models/my-car.glb', { progress: false })
+  loadGLB(PRESET_CAR_URL, { progress: false })
     .then(({ group }) => {
       if (disposed) return;
       pivot = new THREE.Group();
