@@ -15,6 +15,7 @@ import { loadGLB, boxOf } from '../core/glb.js';
 import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
+import { openLegalModal } from './legalModal.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 
@@ -507,6 +508,19 @@ export function mountGarage({ onEnter, mount } = {}) {
   root.appendChild(header);
   root.appendChild(hero);
   root.appendChild(body);
+
+  // 页脚：协议常驻入口。用户注册时勾选过，但仍需随时可回查——
+  // 只放在注册弹窗里、之后无法查看，发生争议时难以证明用户有合理机会阅读。
+  const legalFoot = el('div', { class: 'garage-legal' });
+  for (const [key, label] of [
+    ['agreement', '用户协议'],
+    ['guidelines', '社区内容守则'],
+  ]) {
+    legalFoot.appendChild(
+      el('button', { class: 'garage-legal__link', type: 'button', onClick: () => openLegalModal(key) }, label)
+    );
+  }
+  root.appendChild(legalFoot);
 
   function renderGrid() {
     // 重绘前先卸载所有预览，释放本实例专属资源（几何 / 场景）
