@@ -159,17 +159,22 @@
   gap: 14px;
 }
 
-/* 品牌图已去背（透明底 + 纯黑线），这里不再套白色卡片 / 圆角 / 描边阴影，
-   只剩图形本身。
-   高度取 21px（与 logo-mark-nobg.png 固有比例一致，加载前预留宽度避免抖动）。 */
+/* 品牌图已去背（透明底 + 霓虹青线条），这里不再套白色卡片 / 圆角 / 描边阴影。
+   高度与右侧两行文字（26 + 10 + 间距 ≈ 46px）等高，
+   多层 drop-shadow 叠加形成赛博荧光外晕（cyan bloom）。 */
 .garage-logo {
-  height: 21px;
+  height: 46px;
   width: auto;
   aspect-ratio: 353 / 324;
   display: block;
   flex: 0 0 auto;
   object-fit: contain;
-  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.5));
+  filter:
+    drop-shadow(0 0 1px #00f0ff)
+    drop-shadow(0 0 3px #00f0ff)
+    drop-shadow(0 0 6px rgba(0, 240, 255, 0.7))
+    drop-shadow(0 0 14px rgba(0, 240, 255, 0.45))
+    drop-shadow(0 0 28px rgba(0, 240, 255, 0.25));
 }
 
 .garage-brand__text {
@@ -864,10 +869,9 @@
   .garage-brand__title {
     font-size: 19px;
   }
-  /* 窄屏下 logo 继续跟随标题：19px 字号 -> 墨迹 15px -> height = 15 ÷ (320/324) ≈ 15.2，
-     取 16px（墨迹 15.8px，+0.8px）。与宽屏 21px 用同一套换算，保持一致。 */
+  /* 窄屏下 logo 跟随标题：19+10 两行 ≈ 32px，与宽屏 46/26 同等比例。 */
   .garage-logo {
-    height: 16px;
+    height: 32px;
   }
   .garage-body {
     padding: 10px 18px 36px;
