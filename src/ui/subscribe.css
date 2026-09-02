@@ -283,10 +283,10 @@
   appearance: none;
   border: 0;
   cursor: pointer;
-  height: 48px;
-  padding: 0 24px;
+  height: 40px;
+  padding: 0 20px;
   border-radius: 999px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   letter-spacing: 0.06em;
   font-family: 'YouSheBiaoTiHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont,
@@ -297,7 +297,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   transition: transform 0.12s ease, box-shadow 0.18s ease, filter 0.15s ease;
   white-space: nowrap;
 }
@@ -306,8 +306,8 @@
   box-shadow: 0 0 26px rgba(255, 46, 151, 0.55);
 }
 .garage-subscribe-btn svg {
-  width: 73px;
-  height: 40px;
+  width: 38px;
+  height: 15px;
   flex: 0 0 auto;
 }
 
