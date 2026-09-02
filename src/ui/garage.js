@@ -275,9 +275,12 @@ function startPreview(container) {
   let yaw = 0;
   let phase = 0;
   let lastT = 0;
+  let running = false;
 
   function loop(now) {
-    // dt 限幅：切后台再切回来时时间戳会跳很大，不限制会让车瞬间转过一大截
+    // 每帧先续约：pause() 会把 running 置 false 并在下一帧退出循环，
+    // 隐藏期间不再消耗任何 GPU / CPU（iOS 上持续空渲染会触发 jetsam 杀进程）。
+    if (!running) return;
     const dt = lastT ? Math.min((now - lastT) / 1000, 0.1) : 0;
     lastT = now;
 
@@ -291,20 +294,54 @@ function startPreview(container) {
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   }
-  raf = requestAnimationFrame(loop);
+
+  function startLoop() {
+    if (running || disposed) return;
+    running = true;
+    lastT = 0;
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stopLoop() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  startLoop();
 
   return {
     resume() {
       auto = true;
+      startLoop();
     },
     pause() {
       auto = false;
+      stopLoop();
     },
     dispose() {
       disposed = true;
-      if (raf) cancelAnimationFrame(raf);
+      stopLoop();
       ro?.disconnect();
+      // 释放车模 GPU 资源：renderer.dispose() 只释放渲染器内部对象，
+      // 几何 / 材质 / 贴图的显存要靠逐个 dispose，否则 12MB Draco 车模
+      // 解码后的显存会一直驻留（反复挂载几次就把 iOS 内存吃爆）。
+      scene?.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          for (const key of Object.keys(m || {})) {
+            const v = m[key];
+            if (v && v.isTexture) v.dispose();
+          }
+          m?.dispose?.();
+        }
+      });
+      scene?.clear?.();
       renderer?.dispose();
+      renderer?.forceContextLoss?.();
+      renderer?.domElement?.remove();
     },
   };
 }
@@ -412,9 +449,23 @@ function createEmptyState(onNew) {
 
 /* ---------------------------- 挂载 ---------------------------- */
 
+/* 当前挂载实例的清理函数：重复 mountGarage 前先销毁旧实例，
+ * 否则旧 hero 的 WebGLRenderer（含 12MB 车模显存）会永久泄漏——
+ * iOS Safari 的 WebGL 上下文数量和内存都有硬上限，泄漏几次就是
+ * "此网页重复出现问题" 崩溃。 */
+let _activeCleanup = null;
+
 export function mountGarage({ onEnter, mount } = {}) {
   const root = mount || $('#garage');
   if (!root) return null;
+  if (_activeCleanup) {
+    try {
+      _activeCleanup();
+    } catch (e) {
+      console.warn('[garage] 旧实例清理失败', e);
+    }
+    _activeCleanup = null;
+  }
   root.innerHTML = '';
   root.classList.remove('hidden');
 
@@ -548,9 +599,22 @@ export function mountGarage({ onEnter, mount } = {}) {
   renderGrid();
 
   // DOM 就绪后启动预览（需要拿到 clientWidth/Height）
+  let disposed = false;
   requestAnimationFrame(() => {
+    if (disposed) return;
     preview = startPreview(heroCanvas);
   });
+
+  function dispose() {
+    disposed = true;
+    preview?.dispose();
+    preview = null;
+    previewEngine.clear();
+    previewEngine.disposeRenderer();
+    root.innerHTML = '';
+    if (_activeCleanup === dispose) _activeCleanup = null;
+  }
+  _activeCleanup = dispose;
 
   return {
     root,
@@ -570,5 +634,6 @@ export function mountGarage({ onEnter, mount } = {}) {
       upsertPlan(plan);
       renderGrid();
     },
+    dispose,
   };
 }
