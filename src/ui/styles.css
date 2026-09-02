@@ -1580,3 +1580,47 @@ input[type='range'] {
   border-color: var(--neon-cyan);
   box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.15);
 }
+
+/* ---------------- 预设展示车引导条 ---------------- */
+
+/* 用户还没生成自己的车时，工作台里摆的是第三方示例车。
+   它不可改装（原车轮长在车身上，强行切除会切坏车身），
+   所以用这条提示引导用户去上传照片生成自己的车模。 */
+.preset-guide {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: 380px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  text-align: center;
+  pointer-events: none;
+  background: rgba(10, 10, 20, 0.88);
+  border: 1px solid rgba(0, 240, 255, 0.32);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 22px rgba(0, 240, 255, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.preset-guide__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #eafcff;
+  margin-bottom: 5px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+.preset-guide__text {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #9fd8e6;
+}
+
+@media (max-width: 860px) {
+  .preset-guide {
+    bottom: 14px;
+    max-width: calc(100% - 32px);
+  }
+}
