@@ -9,8 +9,14 @@
  * ES 模块虽然能处理环，但常量在环上求值时可能是 undefined。
  */
 
-/** 预设展示车模型路径 */
-export const PRESET_CAR_URL = '/models/base-high-shaded.glb';
+/**
+ * 预设展示车模型路径。
+ * 2026-09-02 起由 base_high_shaded.glb（单网格 shaded）换成 base_high_pbr.glb
+ * （PBR：baseColor + normal + metallicRoughness）。两者都是「原样展示、不切轮」
+ * 的第三方整车模型，仅作改装位置示意。PBR 版经选择性压缩（Draco 几何 +
+ * 仅 baseColor 转 JPEG92，normal/metalRough 保持 PNG 无损），体积 55.6MB→18MB。
+ */
+export const PRESET_CAR_URL = '/models/base-high-pbr.glb';
 
 /**
  * 历史遗留的预设车路径。
