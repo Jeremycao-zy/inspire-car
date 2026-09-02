@@ -197,9 +197,10 @@ function startPreview(container) {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
   // 原为 (4.4, 1.7, 5.4)（视距 ≈ 7.15，车仅占画布宽约 35%）。
-  // 沿同一视线方向把相机拉近到视距 ≈ 3.97，车模放大约 1.8×，占宽约 63%，
-  // 旋转到 45° 时投影最宽仍留有边距，不会溢出画布。
-  camera.position.set(2.44, 0.99, 3.0);
+  // 沿同一视线方向把相机拉近到视距 ≈ 3.57（正好为一半），车模放大正好 2×。
+  // Hero 画布实测约 572×260（aspect ≈ 2.2）：车旋转到最宽投影 3.31 时约占宽 58%、
+  // 占高 43%，仍有余量不溢出；窄屏单列（aspect ≈ 1.5）时约占宽 83%，仍在框内。
+  camera.position.set(2.2, 0.9, 2.7);
   camera.lookAt(0, 0.1, 0);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xc2ccd6, 1.05));
