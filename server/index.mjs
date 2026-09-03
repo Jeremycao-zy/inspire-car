@@ -47,6 +47,27 @@ const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
 const MAX_BODY = Number(process.env.MAX_BODY_MB || 80) * 1024 * 1024;
 
+/**
+ * 把生成/拆解失败的真实报错落盘，便于排查线上"各种报错"而不必进容器看 stdout。
+ * 每行一条 JSON：{ t, engine, stage, message, code, status, detail, meta }。
+ * 写失败静默忽略，绝不干扰主流程。
+ */
+function logGenError(engine, stage, e, meta = {}) {
+  const entry = {
+    t: new Date().toISOString(),
+    engine,
+    stage,
+    message: e?.message || String(e),
+    code: e?.code || '',
+    status: e?.statusCode ?? '',
+    detail: String(e?.stack || e?.detail || '').slice(0, 800),
+    ...meta,
+  };
+  const line = JSON.stringify(entry) + '\n';
+  console.error('[generate-error]', line.trim());
+  fsp.appendFile(path.join(CACHE_DIR, 'errors.log'), line).catch(() => {});
+}
+
 /* 预置演示模型的候选目录（按顺序取第一个存在的）。
  * 本地开发读 public/models；Docker 运行时只拷了 dist/，所以 dist/models 必须能兜住。 */
 const DEMO_MODEL_DIRS = [path.join(ROOT, 'public', 'models'), path.join(DIST_DIR, 'models')];
@@ -357,7 +378,7 @@ async function handleGenerate(req, res) {
     }
 
     // 轮询（混元 3D 单张通常 2~5 分钟）
-    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 15 * 60 * 1000);
     const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
     let tick = 0;
     let result = null;
@@ -583,6 +604,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
         });
         return;
       }
+      logGenError('hyper3d', 'submit', e, { tier });
       fail(`提交失败：${e.message}`, e.stack);
       return;
     }
@@ -592,8 +614,8 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
       message: `任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
     });
 
-    // 轮询（Gen-2.5 通常 1~4 分钟）
-    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    // 轮询（Gen-2.5 通常 1~4 分钟，大车/高精档可能更久，上限默认 15 分钟）
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 15 * 60 * 1000);
     const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
     let tick = 0;
     let done = false;
@@ -610,6 +632,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
           return;
         }
         fail(`查询失败：${e.message}`, e.stack);
+        logGenError('hyper3d', 'query', e);
         return;
       }
       tick += 1;
@@ -632,7 +655,9 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     }
 
     if (!done) {
+      logGenError('hyper3d', 'timeout', new Error('生成轮询超时'), { taskUuid });
       emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: taskUuid });
+      if (!closed) res.end();
       return;
     }
 
@@ -645,6 +670,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
         authError(e);
       } else {
         fail(`下载失败：${e.message}`, e.stack);
+        logGenError('hyper3d', 'download', e, { taskUuid });
       }
       return;
     }
@@ -698,8 +724,9 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
           range: [0.93, 0.99], // 接在生成进度之后，进度条不跳变
         });
         if (parts) bumpUsage();
-      } catch (e) {
-        console.warn('[bang] 自动拆解失败，仅交付整车：', e.message);
+    } catch (e) {
+      console.warn('[bang] 自动拆解失败，仅交付整车：', e.message);
+      logGenError('hyper3d', 'bang', e, { taskUuid });
         emit({
           stage: 'polling',
           progress: 0.97,
@@ -730,6 +757,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     });
   } catch (e) {
     // 兜底：LIVE 失败一律 error，绝不降级到 DEMO 演示模型（红线）
+    logGenError('hyper3d', 'unexpected', e, { taskTitle });
     fail(e.message || '生成失败', e.stack);
   }
 }
@@ -837,7 +865,7 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
     emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 ${String(sub.requestId).slice(0, 12)}…` });
 
     // 轮询
-    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 12 * 60 * 1000);
+    const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 15 * 60 * 1000);
     const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
     let tick = 0;
     let done = false;
