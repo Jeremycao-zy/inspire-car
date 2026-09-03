@@ -681,7 +681,9 @@ function wheelShapeOf(size) {
   const roundness = d1 > 0 ? d2 / d1 : 0;
   const thin = d1 > 0 ? d3 / d1 : 1;
   return {
-    ok: roundness > 0.75 && thin >= 0.1 && thin <= 0.55,
+    // 上限放宽到 0.70：图生 3D 的轮毂产物常把轮胎一起重建进来，
+    // 形成「厚盘」而非纯轮辋；roundness 仍把整车（thin>0.8）挡在外面。
+    ok: roundness > 0.75 && thin >= 0.1 && thin <= 0.70,
     roundness,
     thin,
     d1,
@@ -1783,7 +1785,7 @@ async function applyResult(kind, url, parts) {
         '请改上传**只有轮毂**的特写：正面 + 侧面 + 斜 45°，画面里不要出现车身、翼子板、地面以外的环境。',
         '轮毂已固定走 Hyper3D Rodin；换图重传即可，不需要改任何设置。',
       ]);
-      return;
+      return m;
     }
     u.setStatus(
       m
@@ -1791,7 +1793,7 @@ async function applyResult(kind, url, parts) {
         : '生成完成，但模型载入异常，已用程序化轮毂兜底',
       m ? 'ok' : 'err'
     );
-    return;
+    return m;
   }
   await app.loadCarFromUrl(url);
   currentCarUrl = url; // 标记当前已载入车型，进入工作室时 loadPlanCar 可跳过重复下载大体积整车 GLB
@@ -1981,15 +1983,18 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       u.setDetail('配置凭证后重新上传，才会真实生成你的车。');
     } else {
       // res.parts：后端生成后自动 BANG 拆解的结果（没有则为 null）
-      await applyResult(kind, res.url, res.parts);
+      const applied = await applyResult(kind, res.url, res.parts);
       // 真实生成成功 ⇒ 说明额度未耗尽（或已恢复），解除去重拦截
       if (kind === 'wheel' && res.mode === 'live') {
         app._wheelQuotaExceeded = false;
         app._wheelLastSig = '';
-        // 记录到「我的轮毂」库，清空上传区，方便继续生成下一只
-        app.params.customWheelUrl = res.url;
-        app.params.rimPreset = 'custom';
-        await recordGeneratedWheel({ url: res.url, files, name: title || '我的轮毂' });
+        // 形状校验通过才记录为「我的轮毂」并写入方案；被 reject 时保持旧轮毂，
+        // 避免把失败的生成 URL 覆盖到方案里导致下次进来还是坏的。
+        if (!applied?.rejected) {
+          app.params.customWheelUrl = res.url;
+          app.params.rimPreset = 'custom';
+          await recordGeneratedWheel({ url: res.url, files, name: title || '我的轮毂' });
+        }
         u.reset?.();
         panel?.syncMyWheels?.();
       }
