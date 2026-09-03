@@ -1324,6 +1324,33 @@ export function createPanel(app, mount) {
     syncMyWheels,
     carUpload,
     wheelUpload,
+
+    /* ---- 车身旁空间锚点联动 ---- */
+    // 点某车轮 → 切到轮毂 Tab，作用域落到该轮所属轴（前/后），并滚到轮毂参数
+    selectWheel(cornerId) {
+      setTab('wheels');
+      const axle = cornerId && cornerId.startsWith('F') ? 'front' : 'rear';
+      app.params.axleTarget = axle;
+      syncSeg();
+      syncAll();
+      if (paramBox && paramBox.scrollIntoView) paramBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    // 点某角悬挂锚 → 切到整车 Tab，设悬挂目标为该角，并滚到悬挂区高亮
+    focusSuspension(cornerId) {
+      setTab('body');
+      app.params.suspensionTarget = cornerId;
+      syncSuspTarget();
+      renderSuspension();
+      if (suspensionBox && suspensionBox.scrollIntoView) suspensionBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    // 点爆炸锚 → 切换 拆解装配 / 整车单体，并滚到拆解区
+    toggleBang() {
+      const cur = app.params.bangView || 'assembled';
+      const next = cur === 'single' ? 'assembled' : 'single';
+      app.setBangView(next);
+      syncBang();
+      if (bangBox && bangBox.scrollIntoView) bangBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
   };
 
   /**

@@ -789,6 +789,98 @@ input[type='range']::-moz-range-thumb {
   max-width: 460px;
 }
 
+/* ---- 车身旁空间锚点（方案 B：3D 空间锚点） ---- */
+.car-anchors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+.car-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  background: rgba(12, 10, 22, 0.62);
+  color: var(--neon-cyan);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+  transform: translate(-50%, -50%) translate(var(--ax, 0px), var(--ay, 0px));
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  z-index: 5;
+}
+.car-anchor:hover {
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.55);
+  transform: translate(-50%, -50%) translate(var(--ax, 0px), var(--ay, 0px)) scale(1.16);
+}
+.car-anchor.orient {
+  border-color: rgba(177, 74, 237, 0.6);
+  color: var(--neon-purple);
+  box-shadow: 0 0 12px rgba(177, 74, 237, 0.3);
+}
+.car-anchor.orient:hover {
+  box-shadow: 0 0 22px rgba(177, 74, 237, 0.6);
+}
+.car-anchor.bang {
+  border-color: rgba(255, 46, 151, 0.6);
+  color: var(--neon-pink);
+  box-shadow: 0 0 12px rgba(255, 46, 151, 0.3);
+}
+.car-anchor.bang:hover {
+  box-shadow: 0 0 22px rgba(255, 46, 151, 0.6);
+}
+.car-anchor.wheel {
+  width: 26px;
+  height: 26px;
+  border-style: dashed;
+  border-color: rgba(0, 240, 255, 0.55);
+  font-size: 0;
+}
+.car-anchor.wheel::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+}
+.car-anchor.wheel:hover::after {
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.95);
+}
+.car-anchor.susp {
+  width: 20px;
+  height: 20px;
+  border-color: rgba(250, 199, 117, 0.8);
+  color: #fac775;
+  box-shadow: 0 0 10px rgba(250, 199, 117, 0.35);
+  font-size: 0;
+}
+.car-anchor.susp::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fac775;
+  box-shadow: 0 0 8px rgba(250, 199, 117, 0.7);
+}
+.car-anchor.susp:hover {
+  box-shadow: 0 0 18px rgba(250, 199, 117, 0.65);
+}
+.car-anchor.reset {
+  border-color: rgba(0, 240, 255, 0.5);
+}
+
 /* ---- 车身数据摘要卡片（融合进「车身」tab，跟随 sidebar 滚动，不再浮在 #stage 上） ---- */
 .body-info {
   padding: 10px 12px;

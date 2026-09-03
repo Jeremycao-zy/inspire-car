@@ -34,6 +34,7 @@ import {
   PRECISION_TIERS,
 } from './api/generate.js';
 import { createPanel } from './ui/panel.js';
+import { createCarAnchors } from './ui/carAnchors.js';
 import { createCopilotPanel } from './ui/copilotPanel.js';
 import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
@@ -2185,6 +2186,7 @@ let currentPlan = null; // 当前在第二层编辑的方案（含 id / title / 
 let garage = null; // 第一层「灵感车库」实例
 let photoGuide = null; // 拍照引导层实例
 let currentCarUrl = null; // 当前已载入的车模 URL，用于判断切换方案时是否需要重新载车
+let carAnchors = null; // 车身旁空间锚点系统（工作室内常驻，tunerStarted 守卫下只建一次）
 
 function startTuner() {
   if (tunerStarted) return;
@@ -2200,6 +2202,15 @@ function startTuner() {
     sidebarEl.prepend(copilotPanel.root);
   } catch (e) {
     console.warn('[copilot] 助手面板初始化失败，不影响主功能', e);
+  }
+
+  // 车身旁空间锚点（方案 B）：在 3D 视口上叠加可点击锚点，随车投影定位。
+  // 复用 panel/app 既有方法，与侧栏完全同构；失败也不影响主功能。
+  try {
+    const stageEl = document.getElementById('stage');
+    carAnchors = createCarAnchors({ stage: stageEl, viewer, rig, carInner, app, panel });
+  } catch (e) {
+    console.warn('[anchors] 空间锚点初始化失败，不影响主功能', e);
   }
 
   // 车轮随动旋转 + 预设展示车绕 Y 轴自转
