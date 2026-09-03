@@ -57,8 +57,6 @@
   flex-direction: column;
   align-items: center;
   gap: 24px;
-  opacity: 0;
-  animation: innerReveal 0.9s ease-out 0.15s forwards;
 }
 
 .brand-loading__logo {
@@ -66,9 +64,8 @@
   height: 84px;
   object-fit: contain;
   filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.5));
-  /* 直接显示，跟随 INSPIRE CAR 做同款霓虹辉光脉冲（不缩放、不回弹） */
+  /* 直接显示，跟随 INSPIRE CAR 做同款霓虹辉光脉冲（无延迟、无淡入，第一帧即在） */
   animation: logoPulse 2.2s ease-in-out infinite;
-  animation-delay: 0.15s;
   will-change: opacity, filter;
 }
 
@@ -94,11 +91,6 @@
   display: inline-block;
   width: 0.55em;
   animation: none !important;
-}
-
-@keyframes innerReveal {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes logoPulse {
@@ -148,7 +140,6 @@
 @media (max-width: 768px) {
   .brand-loading__logo {
     animation: logoPulseLite 2.2s ease-in-out infinite;
-    animation-delay: 0.15s;
     will-change: opacity;
   }
   .brand-loading__text span {
