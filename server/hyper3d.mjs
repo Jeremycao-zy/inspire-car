@@ -114,8 +114,28 @@ export function guessImageMeta(b64) {
 
 /* ------------------------- HTTP ------------------------- */
 
-/** 发一个请求并解析 JSON；HTTP >= 400 或返回体非 JSON 均抛错（带 statusCode 供分类） */
-function requestJson(pathname, { method = 'POST', headers = {}, body = null, timeout = 120000 } = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 瞬断判定：这些错误重试大概率能恢复，不该直接判死一次生成任务 */
+function isTransient(e) {
+  const code = e?.code || '';
+  if (
+    /^(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|ECONNABORTED|ESOCKETTIMEDOUT|ETIME|EPROTO|HPE_)$/.test(
+      code
+    )
+  ) {
+    return true;
+  }
+  if (/timeout|request gateway|socket hang up|network|econnreset|bad gateway|gateway/i.test(e?.message || '')) {
+    return true;
+  }
+  const status = e?.statusCode;
+  if (status === 429 || (status >= 500 && status < 600)) return true;
+  return false;
+}
+
+/** 单次请求（不重试），返回解析后的 JSON */
+function attemptRequest(pathname, { method = 'POST', headers = {}, body = null, timeout = 120000 } = {}) {
   const u = new URL(ENDPOINT + pathname);
   const mod = u.protocol === 'http:' ? http : https;
 
@@ -166,6 +186,35 @@ function requestJson(pathname, { method = 'POST', headers = {}, body = null, tim
     if (body) req.write(body);
     req.end();
   });
+}
+
+/**
+ * 发请求并解析 JSON，带指数退避重试。
+ * 覆盖提交 / 状态轮询 / 下载地址获取三条链路——它们都走这里，
+ * 任何单次瞬断（云网关抖动、429、5xx、连接被重置）都能自动恢复，
+ * 不再把整条生成任务判死（这正是成功率低的主因）。
+ *
+ * 不可重试的错误（auth/quota/4xx 业务错误）会立即抛出，由上层 classifyError 引导换票/充值。
+ */
+async function requestJson(pathname, opts = {}) {
+  const maxAttempts = Math.max(1, Number(process.env.H3D_MAX_RETRIES ?? 4));
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await attemptRequest(pathname, opts);
+    } catch (e) {
+      lastErr = e;
+      const retryable = isTransient(e);
+      if (!retryable || attempt === maxAttempts - 1) {
+        if (retryable) console.warn(`[hyper3d] ${pathname} 重试 ${maxAttempts} 次仍失败：${e.message}`);
+        break;
+      }
+      const delay = Math.min(8000, 800 * Math.pow(2, attempt)) + Math.floor(Math.random() * 300);
+      console.warn(`[hyper3d] ${pathname} 第 ${attempt + 1} 次瞬断，重试（${delay}ms）：${e.message}`);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
 }
 
 function postMultipart(pathname, { fields, files, token, timeout }) {
@@ -348,8 +397,8 @@ export async function queryStatus(subscriptionKey, token) {
 export const allDone = (jobs) => jobs.length > 0 && jobs.every((j) => STATUS.DONE.includes(j.status));
 export const anyFailed = (jobs) => jobs.some((j) => STATUS.FAIL.includes(j.status));
 
-/** 把 URL 拉成本地 Buffer（跟随 3xx 重定向） */
-export function downloadBuffer(url, timeoutMs = 300000) {
+/** 把 URL 拉成本地 Buffer（跟随 3xx 重定向），单次尝试 */
+function attemptDownload(url, timeoutMs = 300000) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const mod = u.protocol === 'http:' ? http : https;
@@ -359,7 +408,9 @@ export function downloadBuffer(url, timeoutMs = 300000) {
         return;
       }
       if (res.statusCode >= 400) {
-        reject(new Error(`下载失败 HTTP ${res.statusCode}`));
+        const e = new Error(`下载失败 HTTP ${res.statusCode}`);
+        e.statusCode = res.statusCode;
+        reject(e);
         return;
       }
       const chunks = [];
@@ -369,6 +420,31 @@ export function downloadBuffer(url, timeoutMs = 300000) {
     req.on('timeout', () => req.destroy(new Error('下载超时')));
     req.on('error', reject);
   });
+}
+
+/**
+ * 把 URL 拉成本地 Buffer（跟随 3xx 重定向），带指数退避重试。
+ * GLB 常 20–40MB，生产环境大文件下载极易被瞬断掐断——重试避免"下载失败"把已生成的整车废掉。
+ */
+export async function downloadBuffer(url, timeoutMs = 300000) {
+  const maxAttempts = Math.max(1, Number(process.env.H3D_MAX_RETRIES ?? 4));
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await attemptDownload(url, timeoutMs);
+    } catch (e) {
+      lastErr = e;
+      const retryable = isTransient(e);
+      if (!retryable || attempt === maxAttempts - 1) {
+        if (retryable) console.warn(`[hyper3d] 下载 ${url.slice(0, 60)}… 重试 ${maxAttempts} 次仍失败：${e.message}`);
+        break;
+      }
+      const delay = Math.min(8000, 800 * Math.pow(2, attempt)) + Math.floor(Math.random() * 300);
+      console.warn(`[hyper3d] 下载瞬断，重试（${delay}ms）：${e.message}`);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
 }
 
 /**
