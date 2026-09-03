@@ -264,8 +264,11 @@ function clearBangParts() {
   if (carGroup) carGroup.visible = true;
   // 还原应用 BANG 时切除的原车车轮，让「清除拆解物」真正回到未拆解前的整车状态
   restoreOriginalWheels();
-  // 拆解产物带来的轮位校准一并作废，轮毂也回到程序化款，避免残留异常模型
-  resetWheelToProcedural();
+  // 注意：这里【不】调用 resetWheelToProcedural()。
+  // 换车时的轮毂复位已由 loadCarFromUrl / applyPlanToApp 显式处理；
+  // 若在清拆解物时顺手把轮毂打回程序化，会导致「方案自带自定义轮毂」在
+  // restoreBangForPlan → applyBangParts → clearBangParts 链路里被擦掉，
+  // 表现为「保存了自定义轮毂、重进方案却变回初始轮毂」。
 }
 
 /**
@@ -2285,6 +2288,10 @@ window.__garage = {
   get currentCarUrl() {
     return currentCarUrl;
   },
+  // 第一层车库实例（调试与自动化验证用；未登录时为 null）
+  get garage() {
+    return garage;
+  },
 };
 
 // 把当前 3D 视图截成方案封面（dataURL）
@@ -2374,7 +2381,11 @@ async function loadPlanCar() {
   }
 
   if (!preset) {
-    // 方案保存了自定义轮毂 → 重新载入；失败只记日志，保留程序化兜底
+    // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
+    // 必须先于「自定义轮毂还原」执行：applyBangParts 内部会清掉旧拆解物，
+    // 若先还原轮毂再装配，清拆解物这一步会把刚还原的自定义轮毂一起打回程序化。
+    await restoreBangForPlan();
+    // 方案保存了自定义轮毂 → 最后再载入，确保它是一锤定音的最终状态
     if (currentPlan?.params?.customWheelUrl) {
       await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {
         console.warn('[plan] 恢复自定义轮毂失败：', e.message);
