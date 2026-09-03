@@ -403,7 +403,7 @@ export function createPanel(app, mount) {
   /* ---- 步骤 1 / 2 ---- */
   const carUpload = makeUploader({
     title: '① 上传整车照片',
-    hint: '建议 3–5 张：正前 45°、侧面、正后 45°、正前、正尾',
+    hint: '建议 3–5 张：正面、侧前、正侧、正后、侧后',
     onFiles: (files) => app.generateCar(files),
   });
   const wheelUpload = makeUploader({

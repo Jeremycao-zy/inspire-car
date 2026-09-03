@@ -31,36 +31,36 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-/** 5 个拍摄角度定义 */
+/** 5 个拍摄角度定义：正面 → 侧前 → 正侧 → 正后 → 侧后 */
 const ANGLES = [
   {
     id: 'front',
-    title: '正前方',
-    desc: '站在车头正前方，保持车身左右对称，能完整看到前脸和大灯。',
+    title: '正面',
+    desc: '站在车头正前方，保持车身左右对称，完整拍摄前脸、大灯与进气格栅。',
     img: '/guides/front.png',
   },
   {
-    id: 'rear',
-    title: '正后方',
-    desc: '站在车尾正后方，水平拍摄尾灯、后保险杠和整体车尾轮廓。',
-    img: '/guides/rear.png',
-  },
-  {
-    id: 'side',
-    title: '正侧方',
-    desc: '在车身侧面水平拍摄，完整展示腰线、车门和侧裙。',
-    img: '/guides/side.png',
-  },
-  {
     id: 'frontRight',
-    title: '车头右前方',
-    desc: '从右前方 45° 拍摄，同时露出车头和右侧车身，展现立体感。',
+    title: '侧前',
+    desc: '从车头右前方 45° 拍摄，同时露出车头与右侧车身，展现立体感。',
     img: '/guides/front-right.png',
   },
   {
+    id: 'side',
+    title: '正侧',
+    desc: '在车身侧面水平拍摄，完整展示腰线、车门与侧裙。',
+    img: '/guides/side.png',
+  },
+  {
+    id: 'rear',
+    title: '正后',
+    desc: '站在车尾正后方，水平拍摄尾灯、后保险杠与整体车尾轮廓。',
+    img: '/guides/rear.png',
+  },
+  {
     id: 'rearLeft',
-    title: '车尾左后方',
-    desc: '从左后方 45° 拍摄，同时露出车尾和左侧车身。',
+    title: '侧后',
+    desc: '从车尾左后方 45° 拍摄，同时露出车尾与左侧车身。',
     img: '/guides/rear-left.png',
   },
 ];
