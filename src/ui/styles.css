@@ -948,6 +948,9 @@ input[type='range']::-moz-range-thumb {
   position: absolute;
   left: 0;
   top: 0;
+  /* 父层 .car-anchors 是 pointer-events:none（让空白区不挡画布），
+     这里必须重新打开，否则按钮继承 none、点击穿透到画布，无法操作。 */
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
