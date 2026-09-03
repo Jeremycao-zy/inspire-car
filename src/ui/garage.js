@@ -155,7 +155,8 @@ function migrateLegacyRedPaint(plans) {
 function writePlans(plans) {
   try {
     localStorage.setItem(storageKey(), JSON.stringify(plans));
-  } catch {
+  } catch (e) {
+    console.error('保存方案失败(不可序列化?):', e && e.message);
     /* ignore */
   }
 }
