@@ -1535,11 +1535,14 @@ const app = {
       this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
     }
 
-    // BANG 拆出的车身本身就是无车轮的实心封闭体（自带干净轮拱/车底），
-    // 再做任何"切除原车轮"都会在车身上挖出破洞，正是用户看到的"破损/要补洞"。
-    // 只有 BANG 完全没拆出车身、仍显示原车单体时，才走老路径切除原车轮。
-    if (!body.length && carGroup && !app.hasCutOriginalWheels()) {
-      cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
+    // ⚠️ 关键纠正：此前误以为 BANG 拆出的是「无车轮的干净车身」，实测 4 台不同车型
+    // （含轮整车 + 4 个拆出轮毂部件）全部相反——root.0 是**含轮整车单体**，原车轮
+    // 根本没被切掉。不切的话车身里还是原厂轮（"没拆出轮毂"），程序化/生成轮毂再叠上去
+    // 就会双层重叠露出破边（"破损"）。所以这里必须切。
+    // 判据：拆出了 ≥3 个轮毂部件 ⇒ 是「含轮整车 + 拆出件」结构，对车身执行切除。
+    // 用 refine 自对齐到真实车轮几何（不依赖估算轮位），切口干净、不伤车身。
+    if (carGroup && wheel.length >= 3 && !app.hasCutOriginalWheels()) {
+      cutOriginalWheels({ radiusScale: 1.12, widthPad: 0.03, autoAlign: true });
     }
     this.setBangExplode(this.params.bangExplode ?? 0);
     bangMountedSig = parts.map((p) => p?.url).join('|');
