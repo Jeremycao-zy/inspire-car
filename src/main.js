@@ -1439,26 +1439,67 @@ const app = {
     carOuter.updateMatrixWorld(true);
 
     // 分类：车轮 vs 车身部件
-    const carLen = carLengthRef();
+    // BANG 产物与整车归一尺度可能不一致，用车长做 rel 判据会系统性偏小，
+    // 导致真实车轮/轮拱碎片被误判为车身。这里先用形状（圆度+厚径比）初选。
     const body = [];
     const wheel = [];
     for (const m of [...bangAssembly.children]) {
-      const info = classifyPart(m, carLen);
-      (info.kind === 'wheel' ? wheel : body).push(m);
+      const info = classifyPart(m, 0); // 跳过 rel，避免 BANG 尺度差异导致漏判
+      (info.kind === 'wheel' ? wheel : body).push({ mesh: m, info });
     }
 
-    /* 用拆出来的四个车轮反推**真实轮位**（轴距 / 轮距 / 轮心高）。
-     * 这一步是"轮毂摆到车轮对应位置"的关键：rig 默认按车身包围盒比例估算轮位，
-     * 实测与模型真实车轮差 170mm 量级，轮毂会偏离轮拱甚至插进车身。
-     * 这里直接拿 BANG 分离出的车轮质心当真值，轮毂就落在原车轮的位置上。 */
-    const geom = deriveWheelGeometry(
-      wheel.map((m) => boxOf(m).getCenter(new THREE.Vector3()))
+    // 用已识别车轮反推真实轮位；3 轮时按左右对称补第 4 个
+    let geom = deriveWheelGeometry(
+      wheel.map(({ mesh }) => boxOf(mesh).getCenter(new THREE.Vector3()))
     );
 
+    // 二次清理：把落在轮位圆柱内的轮拱/内衬/刹车盘碎片也清掉，
+    // 避免车身边上残留"破环"（用户核心诉求：只放无车轮的实心车身）。
+    if (geom && wheel.length) {
+      const avgR =
+        wheel.reduce((sum, { mesh }) => {
+          const s = boxOf(mesh).getSize(new THREE.Vector3());
+          const dims = [s.x, s.y, s.z].sort((a, b) => b - a);
+          return sum + (dims[0] + dims[1]) / 4;
+        }, 0) / wheel.length;
+      const avgW =
+        wheel.reduce((sum, { mesh }) => {
+          const s = boxOf(mesh).getSize(new THREE.Vector3());
+          const dims = [s.x, s.y, s.z].sort((a, b) => b - a);
+          return sum + dims[2] / 2;
+        }, 0) / wheel.length;
+      const rScale = 1.35;
+      const widthPad = 0.04;
+      const makeCyl = (x, y, halfTrack) => ({
+        center: new THREE.Vector3(x, y, halfTrack),
+        axis: new THREE.Vector3(0, 0, 1),
+        R: avgR * rScale,
+        halfW: avgW + widthPad,
+      });
+      const cyls = [
+        makeCyl(geom.xFront, geom.hubYFront ?? geom.hubY, geom.trackFront / 2),
+        makeCyl(geom.xFront, geom.hubYFront ?? geom.hubY, -geom.trackFront / 2),
+        makeCyl(geom.xRear, geom.hubYRear ?? geom.hubY, geom.trackRear / 2),
+        makeCyl(geom.xRear, geom.hubYRear ?? geom.hubY, -geom.trackRear / 2),
+      ];
+      const kept = [];
+      for (const { mesh, info } of body) {
+        const c = boxOf(mesh).getCenter(new THREE.Vector3());
+        if (cyls.some((cy) => inCylinder(c, cy))) {
+          console.log('[bang] 按轮位清理碎片:', mesh.name, 'round=', info.roundness.toFixed(2), 'thin=', info.thin.toFixed(2));
+          bangAssembly.remove(mesh);
+          disposeBangPart(mesh);
+        } else {
+          kept.push(mesh);
+        }
+      }
+      body.splice(0, body.length, ...kept);
+    }
+
     // 只要拆开的车身：车轮部件不入场景，位置信息交给 rig 后即释放
-    for (const m of wheel) {
-      bangAssembly.remove(m);
-      disposeBangPart(m);
+    for (const { mesh } of wheel) {
+      bangAssembly.remove(mesh);
+      disposeBangPart(mesh);
     }
 
     // 爆炸方向：装配体局部空间中，从整体中心指向部件中心
@@ -1492,12 +1533,12 @@ const app = {
       this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
     }
 
-    // 真实轮位必须已经通过 refitCar 注入 rig 后，再按轮位切除原车轮；
-    // 否则 rig 仍用旧估算位置，切口会偏，导致轮胎残留在车身/装配体中。
-    // 保守参数：rScale 1.0（不放大）、widthPad 0.02（轴向 2cm 余量）、autoAlign:false
-    // （关闭 refine 避免 shaded 单网格模型下把车底平面误识别为高密度区）。
-    const cutRes = cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
-    if (cutRes.removed) console.log('[bang] 已同步切除原车轮：', cutRes);
+    // BANG 拆出的车身本身就是无车轮的实心封闭体（自带干净轮拱/车底），
+    // 再做任何"切除原车轮"都会在车身上挖出破洞，正是用户看到的"破损/要补洞"。
+    // 只有 BANG 完全没拆出车身、仍显示原车单体时，才走老路径切除原车轮。
+    if (!body.length && carGroup && !app.hasCutOriginalWheels()) {
+      cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
+    }
     this.setBangExplode(this.params.bangExplode ?? 0);
     bangMountedSig = parts.map((p) => p?.url).join('|');
     return { total: loaded.length, body: body.length, wheel: wheel.length, geom };
