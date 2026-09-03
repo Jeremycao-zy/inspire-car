@@ -748,7 +748,11 @@ function showOverlay(text) {
   overlayText.textContent = text;
   overlay.classList.add('show');
 }
+// 进入工作室时的「整车装载」上锁计数：>0 时 hideOverlay 不真正揭开遮罩，
+// 避免 loadCarFromUrl 内部在车还没摆好时就提前把遮罩关掉、露出空白车身。
+let overlayLock = 0;
 function hideOverlay() {
+  if (overlayLock > 0) return;
   overlay.classList.remove('show');
 }
 document.addEventListener('glb:progress', (e) => {
@@ -1748,6 +1752,7 @@ async function applyResult(kind, url, parts) {
     return;
   }
   await app.loadCarFromUrl(url);
+  currentCarUrl = url; // 标记当前已载入车型，进入工作室时 loadPlanCar 可跳过重复下载大体积整车 GLB
   // 写回当前方案：这张整车模型就是用户提交的车型，预览卡片要显示它而非默认 SL 350
   if (currentPlan) {
     currentPlan.carModelUrl = url;
@@ -2466,6 +2471,14 @@ async function enterTuner(plan, opts = {}) {
 
   const garageEl = document.getElementById('garage');
   if (garageEl) garageEl.classList.add('hidden');
+
+  // 整车下载 / BANG 拆解 / 轮位校准全部完成前，先盖住工作台，避免用户看到
+  // 「只有 4 个轮子 / 空白车身」的中间态（applyPlanToApp 会清掉上一方案的拆解产物、
+  // startTuner 的 boot 会先亮出程序化轮毂，此时车还没摆好）。上锁让 loadCarFromUrl
+  // 内部的 hideOverlay 不会提前揭开遮罩。
+  overlayLock++;
+  showOverlay('正在装载你的车…');
+
   startTuner(); // 首次进入做一次性初始化（载车已下放到 loadPlanCar）
   applyPlanToApp(currentPlan); // 注入参数、清空上一方案残留的拆解/轮毂、同步 UI
 
@@ -2481,7 +2494,15 @@ async function enterTuner(plan, opts = {}) {
     }
   }
 
-  await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
+  try {
+    await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
+    // 车已摆好：强制回到「拆解装配」视图（水封实体车身 + 程序化轮毂），
+    // 杜绝遗留「未拆解整车 + 原车轮」的混乱态——用户进工作室第一眼就是完整车。
+    app.setBangView('assembled');
+  } finally {
+    overlayLock = Math.max(0, overlayLock - 1);
+    if (overlayLock === 0) hideOverlay();
+  }
   // 进入即确保车型数据落盘（覆盖老方案重进、未走识别但参数已存在的情况）
   persistRealSpecsToPlan();
 }
