@@ -69,6 +69,7 @@
   /* 直接显示，跟随 INSPIRE CAR 做同款霓虹辉光脉冲（不缩放、不回弹） */
   animation: logoPulse 1.2s ease-in-out 2 both;
   animation-delay: 0.15s;
+  will-change: opacity, filter;
 }
 
 .brand-loading__text {
@@ -140,6 +141,36 @@
       0 0 48px rgba(0, 240, 255, 0.22);
     transform: translateY(-2px);
   }
+}
+
+/* 移动端：只动 opacity（合成层、不逐帧重绘），保留静态霓虹辉光，闪动感不变但不再卡顿。
+   桌面端仍走上面的 logoPulse / letterPulse（逐帧改 filter/text-shadow，桌面 GPU 扛得住）。 */
+@media (max-width: 768px) {
+  .brand-loading__logo {
+    animation: logoPulseLite 1.2s ease-in-out 2 both;
+    animation-delay: 0.15s;
+    will-change: opacity;
+  }
+  .brand-loading__text span {
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(0, 240, 255, 0.6),
+      0 0 22px rgba(0, 240, 255, 0.3);
+    animation: letterPulseLite 1.2s ease-in-out 2;
+    animation-fill-mode: forwards;
+    animation-delay: calc(var(--i) * 0.08s);
+    will-change: opacity, transform;
+  }
+}
+
+@keyframes logoPulseLite {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes letterPulseLite {
+  0%, 100% { opacity: 0.4; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
 }
 
 @media (max-width: 480px) {
