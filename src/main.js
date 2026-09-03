@@ -57,6 +57,12 @@ function todayYMD() {
 }
 
 /**
+ * 参数可信度阈值（与保形门控配套）：LLM 来源的车身参数达到此值才允许非等比宽高校正；
+ * 官方库（official-db）不受此限。须与 server/specs.js 的判定阈值保持一致（增量设计 §5）。
+ */
+const CONF_HIGH = 0.85; // 须与 server/specs.js 一致
+
+/**
  * R230 SL 演示车开箱默认值（PRD §4.8 / R2.3）—— 前后配，不再是单一套参数。
  *   前 255/35R19 on 8.5J ET30，-1.0°
  *   后 285/30R19 on 9.5J ET31，-1.5°
@@ -896,7 +902,7 @@ const app = {
    * @param {Object|null} s /api/specs 的返回（available 为真才生效）
    * @returns {boolean} 是否应用成功
    */
-  applyRealSpecs(s) {
+  applyRealSpecs(s, opts = {}) {
     if (!s?.available || !s.length) return false;
     this.params.realSpecs = {
       length: s.length,
@@ -912,7 +918,8 @@ const app = {
       tireWidth: s.tireWidth ?? null,
       aspect: s.aspect ?? null,
       source: s.source || '',
-      confidence: s.confidence ?? 0,
+      confidence: s.confidence ?? 0, // 参数可信度（区别于车名识别把握）
+      nameConfidence: opts?.nameConfidence ?? null, // 车名识别把握（来自视觉 rec.confidence）
     };
     // 车长（毫米 → 米）作为归一锚点
     this.params.carLength = s.length / 1000;
@@ -960,12 +967,21 @@ const app = {
     carInner.position.set(0, 0, 0);
     carInner.quaternion.identity();
     carInner.scale.set(1, 1, 1);
-    // 有真车数据时按真实长宽高归一（否则只锁车长，保持纯等比）
+    // 有真车数据时按真实长宽高归一；否则只锁车长，保持纯等比（保形）。
+    // 保形门控：仅当参数来源可信（官方库）或高置信度 LLM 且非 fallback 时，
+    // 才允许按真实宽高校正另外两轴；不可信时传 null → normalizeCar 保持纯等比。
+    const rs = this.params.realSpecs;
+    const allowStretch =
+      !!rs &&
+      (rs.source === 'official-db' ||
+        (rs.confidence >= CONF_HIGH && rs.source !== 'model-llm-fallback'));
+    const useWH = allowStretch && rs.width && rs.height;
     normalizeCar(carInner, {
       targetLength: this.params.carLength,
-      targetWidth: this.params.carWidth,
-      targetHeight: this.params.carHeight,
+      targetWidth: useWH ? this.params.carWidth : null,
+      targetHeight: useWH ? this.params.carHeight : null,
       groundY: 0,
+      fit: 'auto',
     });
     carOuter.updateMatrixWorld(true);
     // 记下归一化后的挂载基准高度，shellLift 只能在这个基础上叠加
@@ -1811,7 +1827,7 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       if (kind === 'car') {
         u.setRecog(`已识别：${rec.fullName}（把握 ${pct}%）· 正在查真车参数…`, 'ok');
         const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
-        if (sp?.available && app.applyRealSpecs(sp)) {
+        if (sp?.available && app.applyRealSpecs(sp, { nameConfidence: rec.confidence })) {
           const rs = app.params.realSpecs;
           // 把识别到的车型名带进 realSpecs，供右上角车身数据面板展示
           rs.fullName = rec.fullName || rs.query || '';
@@ -2413,26 +2429,8 @@ async function enterTuner(plan, opts = {}) {
   applyPlanToApp(currentPlan); // 注入参数、清空上一方案残留的拆解/轮毂、同步 UI
   await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
 
-  // 若从拍照引导带入了原始照片，在这里做一次车型识别 + 真车参数应用，
-  // 让轮位/悬挂从真实尺寸起步，不再重复生成扣额度。
-  const sourceFiles = opts?.sourceFiles;
-  if (sourceFiles?.length && !isPresetCarUrl(currentPlan.carModelUrl)) {
-    try {
-      const rec = await recognize(sourceFiles).catch(() => null);
-      if (rec?.available) {
-        const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
-        if (sp?.available && app.applyRealSpecs(sp)) {
-          const rs = app.params.realSpecs;
-          rs.fullName = rec.fullName || rs.query || '';
-          rs.query = rec.fullName || rs.query || '';
-          panel?.syncAll();
-          console.log('[photoGuide→studio] 应用真车参数', rs);
-        }
-      }
-    } catch (e) {
-      console.warn('[photoGuide→studio] 识别失败，不影响建模结果', e);
-    }
-  }
+  // 车型识别已在上传阶段完成并写入 app.params.realSpecs（含官方库/LLM 真车参数），
+  // 进入工作室直接复用，不再二次 /api/recognize，避免重复扣额度（增量设计 §2.d）。
 }
 
 // 返回第一层：保存当前方案 → 刷新卡片 → 显示车库

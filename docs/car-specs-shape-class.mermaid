@@ -1,0 +1,86 @@
+classDiagram
+  %% 数据层
+  class CarSpecsDB {
+    <<data: server/carSpecs.db.json>>
+    +version: number
+    +cars: CarEntry[]
+  }
+  class CarEntry {
+    +key: string
+    +brand: string
+    +model: string
+    +yearRange: string
+    +aliases: string[]
+    +specs: Specs
+    +source: "official-db"
+    +note: string
+  }
+  class Specs {
+    +length: number
+    +width: number
+    +height: number
+    +wheelbase: number
+    +trackFront: number
+    +trackRear: number
+    +groundClearance: number
+    +approachAngle: number
+    +departureAngle: number
+    +rimInch: number
+    +tireWidth: number
+    +aspect: number
+  }
+
+  %% 后端服务
+  class SpecsService {
+    <<server/specs.js>>
+    +carSpecs(fullName, opts) Promise~SpecResult~
+    -lookupOfficialDb(q) CarEntry
+    -normalizeName(s) string
+    -querySpecsFromLLM(fullName) SpecResult
+  }
+
+  %% 前端识别
+  class RecognizeClient {
+    <<src/api/generate.js>>
+    +recognize(files, opts) Promise~RecogResult~
+    -pickRecognitionImage(files) File
+    +fetchCarSpecs(fullName, year) Promise~SpecResult~
+  }
+
+  %% 应用核心
+  class App {
+    <<src/main.js>>
+    +params.realSpecs: RealSpecs
+    +applyRealSpecs(s, opts) bool
+    +refitCar() void
+  }
+  class RealSpecs {
+    +length/width/height/wheelbase...
+    +source: "official-db"|"model-llm"
+    +confidence: number   %% 参数可信度
+    +nameConfidence: number   %% 车名识别把握
+    +fullName: string
+  }
+  class NormalizeCar {
+    <<src/core/glb.js>>
+    +normalizeCar(g, opts) Result
+    -fit: "auto"|"lengthOnly"|"stretch"
+  }
+
+  %% UI
+  class Panel {
+    <<src/ui/panel.js>>
+    +renderBodyData() void
+    +syncAll() void
+  }
+
+  %% 关系
+  CarSpecsDB "1" *-- "many" CarEntry
+  CarEntry "1" *-- "1" Specs
+  SpecsService ..> CarSpecsDB : 查询(merge user)
+  SpecsService ..> Specs : 返回
+  RecognizeClient ..> SpecsService : POST /api/specs
+  App ..> RecognizeClient : recognize / fetchCarSpecs
+  App "1" *-- "1" RealSpecs
+  App ..> NormalizeCar : fit 门控(useWH)
+  Panel ..> App : 读 realSpecs
