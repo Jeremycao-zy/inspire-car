@@ -195,6 +195,8 @@ function startPreview(container) {
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   renderer.domElement.style.display = 'block';
+  renderer.domElement.style.cursor = 'grab';
+  renderer.domElement.style.touchAction = 'none';
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
@@ -272,6 +274,11 @@ function startPreview(container) {
   };
 
   let auto = true;
+  let dragging = false;
+  let dragPointerId = -1;
+  let startX = 0;
+  let startYaw = 0;
+  const YAW_DRAG_SENS = 0.008; // 水平拖动灵敏度：弧度/像素
   let yaw = 0;
   let phase = 0;
   let lastT = 0;
@@ -284,8 +291,11 @@ function startPreview(container) {
     const dt = lastT ? Math.min((now - lastT) / 1000, 0.1) : 0;
     lastT = now;
 
-    if (pivot && auto) {
-      yaw += SPIN.yawSpeed * dt;
+    if (pivot) {
+      // 自动旋转：拖动时暂停 Yaw 自转，但 Pitch/Roll 摆动继续，保持姿态生动
+      if (auto && !dragging) {
+        yaw += SPIN.yawSpeed * dt;
+      }
       phase += dt;
       pivot.rotation.y = yaw;
       pivot.rotation.x = Math.sin(phase * SPIN.pitchHz * Math.PI * 2) * SPIN.pitchAmp;
@@ -307,6 +317,38 @@ function startPreview(container) {
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
   }
+
+  /* ---- 交互：拖拽旋转 + 松开恢复自动 ---- */
+  const canvas = renderer.domElement;
+
+  function onPointerDown(e) {
+    // 只响应左键或触摸/笔；右键不触发
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragging = true;
+    dragPointerId = e.pointerId;
+    startX = e.clientX;
+    startYaw = yaw;
+    auto = false; // 拖动期间暂停 Yaw 自动增量
+    canvas.style.cursor = 'grabbing';
+  }
+
+  function onPointerMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    const dx = e.clientX - startX;
+    yaw = startYaw + dx * YAW_DRAG_SENS;
+  }
+
+  function onPointerUp(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    dragging = false;
+    dragPointerId = -1;
+    auto = true; // 松开后恢复自动旋转，从当前 yaw 继续
+    canvas.style.cursor = 'grab';
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
 
   startLoop();
 
@@ -339,6 +381,9 @@ function startPreview(container) {
         }
       });
       scene?.clear?.();
+      canvas?.removeEventListener('pointerdown', onPointerDown);
+      window?.removeEventListener('pointermove', onPointerMove);
+      window?.removeEventListener('pointerup', onPointerUp);
       renderer?.dispose();
       renderer?.forceContextLoss?.();
       renderer?.domElement?.remove();
