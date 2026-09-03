@@ -65,10 +65,10 @@
   width: 84px;
   height: 84px;
   object-fit: contain;
-  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
-  opacity: 0;
-  transform: scale(2.4);
-  animation: logoReveal 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.5));
+  /* 直接显示，跟随 INSPIRE CAR 做同款霓虹辉光脉冲（不缩放、不回弹） */
+  animation: logoPulse 1.2s ease-in-out 2 both;
+  animation-delay: 0.15s;
 }
 
 .brand-loading__text {
@@ -100,10 +100,19 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes logoReveal {
-  0%   { opacity: 0; transform: scale(2.4); filter: brightness(0) invert(1) drop-shadow(0 0 32px rgba(0, 240, 255, 0.75)); }
-  55%  { opacity: 1; transform: scale(0.92); filter: brightness(0) invert(1) drop-shadow(0 0 16px rgba(0, 240, 255, 0.6)); }
-  100% { opacity: 1; transform: scale(1); filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.55)); }
+@keyframes logoPulse {
+  0%, 100% {
+    opacity: 0.5;
+    filter: brightness(0) invert(1) drop-shadow(0 0 8px rgba(0, 240, 255, 0.4));
+  }
+  35%, 65% {
+    opacity: 1;
+    filter: brightness(0) invert(1) drop-shadow(0 0 22px rgba(0, 240, 255, 0.85));
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1));
+  }
 }
 
 @keyframes letterPulse {
