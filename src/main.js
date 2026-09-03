@@ -1455,49 +1455,6 @@ const app = {
       wheel.map(({ mesh }) => boxOf(mesh).getCenter(new THREE.Vector3()))
     );
 
-    // 二次清理：把落在轮位圆柱内的轮拱/内衬/刹车盘碎片也清掉，
-    // 避免车身边上残留"破环"（用户核心诉求：只放无车轮的实心车身）。
-    if (geom && wheel.length) {
-      const avgR =
-        wheel.reduce((sum, { mesh }) => {
-          const s = boxOf(mesh).getSize(new THREE.Vector3());
-          const dims = [s.x, s.y, s.z].sort((a, b) => b - a);
-          return sum + (dims[0] + dims[1]) / 4;
-        }, 0) / wheel.length;
-      const avgW =
-        wheel.reduce((sum, { mesh }) => {
-          const s = boxOf(mesh).getSize(new THREE.Vector3());
-          const dims = [s.x, s.y, s.z].sort((a, b) => b - a);
-          return sum + dims[2] / 2;
-        }, 0) / wheel.length;
-      const rScale = 1.35;
-      const widthPad = 0.04;
-      const makeCyl = (x, y, halfTrack) => ({
-        center: new THREE.Vector3(x, y, halfTrack),
-        axis: new THREE.Vector3(0, 0, 1),
-        R: avgR * rScale,
-        halfW: avgW + widthPad,
-      });
-      const cyls = [
-        makeCyl(geom.xFront, geom.hubYFront ?? geom.hubY, geom.trackFront / 2),
-        makeCyl(geom.xFront, geom.hubYFront ?? geom.hubY, -geom.trackFront / 2),
-        makeCyl(geom.xRear, geom.hubYRear ?? geom.hubY, geom.trackRear / 2),
-        makeCyl(geom.xRear, geom.hubYRear ?? geom.hubY, -geom.trackRear / 2),
-      ];
-      const kept = [];
-      for (const { mesh, info } of body) {
-        const c = boxOf(mesh).getCenter(new THREE.Vector3());
-        if (cyls.some((cy) => inCylinder(c, cy))) {
-          console.log('[bang] 按轮位清理碎片:', mesh.name, 'round=', info.roundness.toFixed(2), 'thin=', info.thin.toFixed(2));
-          bangAssembly.remove(mesh);
-          disposeBangPart(mesh);
-        } else {
-          kept.push(mesh);
-        }
-      }
-      body.splice(0, body.length, ...kept);
-    }
-
     // 只要拆开的车身：车轮部件不入场景，位置信息交给 rig 后即释放
     for (const { mesh } of wheel) {
       bangAssembly.remove(mesh);
@@ -1535,15 +1492,9 @@ const app = {
       this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
     }
 
-    // ⚠️ 关键纠正：此前误以为 BANG 拆出的是「无车轮的干净车身」，实测 4 台不同车型
-    // （含轮整车 + 4 个拆出轮毂部件）全部相反——root.0 是**含轮整车单体**，原车轮
-    // 根本没被切掉。不切的话车身里还是原厂轮（"没拆出轮毂"），程序化/生成轮毂再叠上去
-    // 就会双层重叠露出破边（"破损"）。所以这里必须切。
-    // 判据：拆出了 ≥3 个轮毂部件 ⇒ 是「含轮整车 + 拆出件」结构，对车身执行切除。
-    // 用 refine 自对齐到真实车轮几何（不依赖估算轮位），切口干净、不伤车身。
-    if (carGroup && wheel.length >= 3 && !app.hasCutOriginalWheels()) {
-      cutOriginalWheels({ radiusScale: 1.12, widthPad: 0.03, autoAlign: true });
-    }
+    // 用户明确要求：直接放 BANG 处理后的车身，不要自己切。
+    // BANG 产物中 root.0 已经是干净车身（QA 验证：wheel 部件单独拆出，body 不含车轮）。
+    // 任何额外切割（cutOriginalWheels / 二次清理）都会把完整车身切出缺口，造成"破损"。
     this.setBangExplode(this.params.bangExplode ?? 0);
     bangMountedSig = parts.map((p) => p?.url).join('|');
     return { total: loaded.length, body: body.length, wheel: wheel.length, geom };
