@@ -20,7 +20,6 @@ import { loadGLB, normalizeCar, normalizeWheel, boxOf, disposeObject } from './c
 import { WheelRig, ET_REF } from './tuning/wheelRig.js';
 import { RIM_PRESETS } from './tuning/proceduralRim.js';
 import { Chassis } from './tuning/chassis.js';
-import { ShellCutter } from './tuning/shellCutter.js';
 import { measure as measureShell } from './tuning/shellMeasure.js';
 import { classifyDims } from './core/partClassify.js';
 import {
@@ -161,17 +160,9 @@ const DEFAULTS = {
   envId: 'studio',
   // 底盘参数：null = 由 ShellMeasure 自动推导（derive()）
   chassis: {
-    deckHeight: null, // = 车壳甲板高 = C1 底切高，默认 0.0652 × L
+    deckHeight: null, // = 底盘甲板高（裙边基准），默认 0.0652 × L
     shellLiftUser: 0, // 用户手动升降（mm），叠加在自动 shellLift 上
     visible: false, // 默认隐藏程序化底盘框架，避免与用户上传车模冲突
-  },
-  // 车壳三道切割（车身降低改装必需，无 UI）
-  shell: {
-    enabled: true,
-    doubleSide: true, // 切后转双面，否则低机位会从切口看穿
-    enableC1: true, // 底切
-    enableC2: true, // 侧向超限切
-    enableC3: true, // 轮拱开口
   },
   // 车漆规则：初始一律展示模型原始材质贴图（白色着色 = 不染色、贴图原样透出），
   // 绝不默认红漆、不烘焙固定颜色；用户在车漆色轮里主动选色才上色。
@@ -193,7 +184,6 @@ const sidebarEl = document.getElementById('sidebar');
 const viewer = createViewer(stage);
 const rig = new WheelRig(viewer.scene);
 const chassis = new Chassis(viewer.scene);
-const shellCutter = new ShellCutter();
 const shellMetrics = { current: null };
 
 const carOuter = new THREE.Group();
@@ -265,8 +255,6 @@ function clearBangParts() {
   bangMountedSig = '';
   // 装配体清掉后要让整车重新显形，否则场景里一辆车都没有
   if (carGroup) carGroup.visible = true;
-  // 拆下来的实体车身没了 → 恢复三道切割（整车单体的车轮是画在贴图上的，必须开口）
-  if (app.params.shell.enabled === false) app.params.shell.enabled = true;
   // 还原应用 BANG 时切除的原车车轮，让「清除拆解物」真正回到未拆解前的整车状态
   restoreOriginalWheels();
   // 拆解产物带来的轮位校准一并作废，轮毂也回到程序化款，避免残留异常模型
@@ -786,7 +774,6 @@ const app = {
   viewer,
   rig,
   chassis,
-  shellCutter,
   shellMetrics,
   params: structuredClone(DEFAULTS),
 
@@ -859,8 +846,6 @@ const app = {
 
     if (!changed) return;
     carOuter.updateMatrixWorld(true);
-    // 车身位姿变化 → 切割世界坐标缓存必须重算
-    this.shellCutter.refresh();
   },
 
   /**
@@ -868,8 +853,7 @@ const app = {
    *
    * 只有「轮胎尺寸 / 底盘 / 车壳参数」变化才会真的重建：
    *   · Chassis.update()    内部按 hubY/archR 签名比对
-   *   · ShellCutter.apply() 内部按 plan 序列化 _key 比对
-   * 所以拖 ET / J / 倾角时两者都命中缓存，不重建 —— 这个性质必须保住。
+   * 所以拖 ET / J / 倾角时命中缓存，不重建 —— 这个性质必须保住。
    */
   updateChassis() {
     if (!this.chassis) return;
@@ -880,19 +864,6 @@ const app = {
 
     // ⑩ 车壳挂载高度：换大轮且破坏外径守恒时车身相应抬高
     this.applyShellMount();
-
-    // ⑨ 三道切割
-    if (!this.shellCutter.entries.length) return;
-    if (!p.shell.enabled) {
-      this.shellCutter.restore();
-      return;
-    }
-    const plan = this.chassis.cutPlan();
-    if (Number.isFinite(p.chassis.deckHeight)) plan.deckHeight = p.chassis.deckHeight;
-    plan.enableC1 = p.shell.enableC1;
-    plan.enableC2 = p.shell.enableC2;
-    plan.enableC3 = p.shell.enableC3;
-    this.shellCutter.apply(plan, { doubleSide: p.shell.doubleSide });
   },
 
   /**
@@ -911,7 +882,6 @@ const app = {
     const base = this._baseShellY ?? carInner.position.y;
     carInner.position.y = base + lift;
     carOuter.updateMatrixWorld(true);
-    this.shellCutter.refresh(); // 世界坐标变了，缓存必须重算
   },
 
   /**
@@ -1049,13 +1019,6 @@ const app = {
     // ⑥ 构建底盘几何
     this.chassis.build();
     this.chassis.setVisible(this.params.chassis.visible);
-
-    // ⑦ 接管车壳索引
-    if (recapture) {
-      this.shellCutter.capture(carOuter);
-    } else {
-      this.shellCutter.refresh();
-    }
 
     // ⑧ 轮位注入（底盘是唯一真值来源）
     const spec = this.chassis.cornerSpec();
@@ -1503,11 +1466,8 @@ const app = {
       // 用装配体顶替整车：不隐藏就会两份几何重叠，正是"穿模"的来源
       if (carGroup) carGroup.visible = false;
       /* 关键：拆出来的车身本身就是**水密封闭实体**（实测 0 条边界边），
-       * 车轮分离后留下的就是真实轮拱与车底。三道切割（C1 底切 / C2 侧切 / C3 轮拱开口）
-       * 是为"车轮画在贴图里、没有几何"的整车载模型设计的，作用在这种车身上
-       * 只会把轮拱和车底切穿 → 从轮拱看进去是空壳。所以装配体在场时必须关掉切割。 */
-      this.params.shell.enabled = false;
-      // 重新接管车壳（关闭切割后仍要重切一次，把之前切掉的索引还原回来）
+       * 车轮分离后留下的就是真实轮拱与车底，不需要再做任何车壳切割。 */
+      // 重新接管车壳（装配体已在位，按装配体几何重建轮位/底盘）
       this.refitCar({ recapture: true });
       this.collectBodyMaterials();
       this.setBodyColor(this.params.bodyColor, this.params.bodySolid);
@@ -1595,14 +1555,6 @@ const app = {
     this.params.bangView = assembled ? 'assembled' : 'single';
     bangAssembly.visible = assembled;
     if (carGroup) carGroup.visible = !assembled;
-    /* 切割策略随视图切换：
-     * 拆解车身（封闭实体、自带轮拱）→ 关切割；
-     * 整车单体（车轮画在贴图上）→ 开切割，才轮拱开口让轮毂露出来。 */
-    const wantCut = !assembled;
-    if (this.params.shell.enabled !== wantCut) {
-      this.params.shell.enabled = wantCut;
-      this.refitCar({ recapture: true });
-    }
   },
 
   /** 拆解状态，供面板显示（含按拆解实测校准出来的轮位） */
@@ -2234,7 +2186,7 @@ function startTuner() {
   })();
 }
 
-// 调试入口：追加 chassis / shellCutter 供 CDP 验证脚本读取
+// 调试入口：追加 chassis 供 CDP 验证脚本读取
 // ⚠️ 全文件只能有这一处赋值：早期在文件末尾还有一份，会把这份覆盖掉，
 //    导致 CDP 验证脚本拿到的 app/rig 是旧快照、panel 永远是 undefined。
 window.__garage = {
@@ -2244,7 +2196,6 @@ window.__garage = {
   THREE,
   ET_REF,
   chassis,
-  shellCutter,
   shellMetrics,
   startTuner,
   enterTuner,
