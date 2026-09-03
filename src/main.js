@@ -2422,7 +2422,7 @@ function applyCarMode(url) {
   }
 
   // 已切过就不再重复切：cutOriginalWheels 幂等，但没必要每帧重算索引
-  if (!hasCutOriginalWheels()) {
+  if (!app.hasCutOriginalWheels()) {
     cutOriginalWheels({ radiusScale: 1.0, widthPad: 0.02, autoAlign: false });
   }
   if (hasRig) rig.root.visible = true;
