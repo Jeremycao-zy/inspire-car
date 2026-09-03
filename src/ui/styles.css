@@ -67,8 +67,8 @@
   object-fit: contain;
   filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
   opacity: 0;
-  transform: scale(0.92);
-  animation: logoReveal 1s ease-out 0.2s forwards;
+  transform: scale(2.4);
+  animation: logoReveal 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
 }
 
 .brand-loading__text {
@@ -101,8 +101,9 @@
 }
 
 @keyframes logoReveal {
-  from { opacity: 0; transform: scale(0.92); filter: brightness(0) invert(1) drop-shadow(0 0 0 transparent); }
-  to { opacity: 1; transform: scale(1); filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.55)); }
+  0%   { opacity: 0; transform: scale(2.4); filter: brightness(0) invert(1) drop-shadow(0 0 32px rgba(0, 240, 255, 0.75)); }
+  55%  { opacity: 1; transform: scale(0.92); filter: brightness(0) invert(1) drop-shadow(0 0 16px rgba(0, 240, 255, 0.6)); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.55)); }
 }
 
 @keyframes letterPulse {
