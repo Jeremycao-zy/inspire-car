@@ -3,6 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- 首屏关键 CSS：在 JS 注入的样式表生效前，先把品牌启动页画成黑底居中、logo 定尺寸，
+         避免裸 HTML 闪现（白底 + 两个未样式化的大 logo）。appbar 被全屏 brand-loading 盖住，不闪。 -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; }
+      #brand-loading {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: #000;
+      }
+      .brand-loading__inner { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+      .brand-loading__logo {
+        width: 84px; height: 84px; object-fit: contain;
+        filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.5));
+      }
+      .brand-loading__text {
+        font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
+        font-size: 28px; letter-spacing: 0.32em; color: rgba(255, 255, 255, 0.35);
+        text-transform: uppercase; white-space: nowrap; user-select: none;
+      }
+      /* 首屏先藏顶部栏，等样式表接管后再由应用逻辑显示，避免未样式化大 logo 闪现 */
+      #appbar { display: none; }
+    </style>
     <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/logo-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/logo-180.png" />
 
