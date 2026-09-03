@@ -8,7 +8,7 @@
  *     → 无论有多少卡片，WebGL 上下文只有 1 个，不会撞浏览器的上下文上限。
  *
  *   · 每卡片一个独立 Scene，里面按 `plan.params` 完整重建一辆改装车：
- *     Chassis（底盘/轮距/轮心高）→ WheelRig（四轮 ET/J/倾角）→ ShellCutter（车壳三道切），
+ *     Chassis（底盘/轮距/轮心高）→ WheelRig（四轮 ET/J/倾角），
  *     所以预览里看到的姿态/轮距/轮毂和 TUNING STUDIO 里完全一致。
  *
  *   · 懒加载 + 视口可见才渲染：卡片滑入视口才构建并旋转，滑出即暂停（IntersectionObserver），
@@ -23,7 +23,6 @@ import { loadGLB, normalizeCar, boxOf } from '../core/glb.js';
 import { PRESET_CAR_URL, isPresetCarUrl } from '../core/presetCar.js';
 import { WheelRig } from '../tuning/wheelRig.js';
 import { Chassis } from '../tuning/chassis.js';
-import { ShellCutter } from '../tuning/shellCutter.js';
 import { measure } from '../tuning/shellMeasure.js';
 import { getPreset, buildEnvScene, disposeEnvScene } from '../core/environments.js';
 import { buildDecor, makeSkyTexture } from '../core/scenes.js';
@@ -49,7 +48,6 @@ export const DEFAULT_PREVIEW_PARAMS = {
   autoRotate: false,
   envId: 'studio',
   chassis: { deckHeight: null, shellLiftUser: 0, visible: false },
-  shell: { enabled: true, doubleSide: true, enableC1: true, enableC2: true, enableC3: true },
 };
 
 /** 取某方案用于预览的参数（缺省回退默认） */
@@ -83,7 +81,7 @@ function loadCarSource(url) {
   return p;
 }
 
-/** 深克隆车身：几何独立（供 ShellCutter 独立切割），材质与源共享 */
+/** 深克隆车身：几何独立，材质与源共享（卡片内独立显示，不污染源模型） */
 function deepCloneCar(src) {
   const g = src.clone(true);
   g.traverse((o) => {
@@ -507,7 +505,7 @@ async function buildScene(engine, inst) {
           : 0.3,
     });
 
-    // 底盘 + 车壳三道切 + 四轮
+    // 底盘 + 四轮
     const chassis = new Chassis(pivot);
     chassis.derive(metrics, { front: params.front, rear: params.rear });
     chassis.build();
@@ -515,16 +513,6 @@ async function buildScene(engine, inst) {
     // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
     chassis.setVisible(params.chassis?.visible === true);
     inst.chassis = chassis;
-
-    const cutter = new ShellCutter();
-    cutter.capture(carOuter);
-    const plan = chassis.cutPlan();
-    if (Number.isFinite(params.chassis?.deckHeight)) plan.deckHeight = params.chassis.deckHeight;
-    plan.enableC1 = params.shell?.enableC1 ?? true;
-    plan.enableC2 = params.shell?.enableC2 ?? true;
-    plan.enableC3 = params.shell?.enableC3 ?? true;
-    cutter.apply(plan, { doubleSide: params.shell?.doubleSide ?? true });
-    inst.cutter = cutter;
 
     const rig = new WheelRig(pivot);
     rig.useProceduralWheel();

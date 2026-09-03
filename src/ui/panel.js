@@ -879,7 +879,7 @@ export function createPanel(app, mount) {
     const info = app.bangInfo();
     if (!info.total) {
       bangStatus.textContent = app.params.carModelUrl
-        ? '这台车还没有拆解产物：点下方「重新拆解」拿实体车身（未拆解的整车是空壳，轮拱是画在贴图上的）'
+        ? '这台车还没有拆解产物：点下方「重新拆解」拿实体车身（车身自动带真实轮拱，不需要再切）'
         : '尚未拆解（生成整车时会自动拆解，不需要手动操作）';
       return;
     }
@@ -898,8 +898,7 @@ export function createPanel(app, mount) {
     el(
       'div',
       { class: 'btn-row' },
-      el('button', { class: 'btn small', onclick: () => { app.setBangView('assembled'); syncBang(); } }, '拆解装配视图'),
-      el('button', { class: 'btn small', onclick: () => { app.setBangView('single'); syncBang(); } }, '整车单体视图')
+      el('button', { class: 'btn small', onclick: () => { app.setBangView('assembled'); syncBang(); } }, '拆解装配视图')
     ),
     el(
       'div',

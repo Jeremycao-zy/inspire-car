@@ -10,7 +10,6 @@
  *   1) ChassisParams.derive()  —— 从车壳测量值推导底盘主参数（带 clamp 兜底）
  *   2) Chassis.build()         —— 纯 Three.js 内置图元拼出底盘（≤3000 面，零新增依赖）
  *   3) cornerSpec()            —— 输出四轮位置给 WheelRig
- *   4) cutPlan()               —— 输出三道切割参数给 ShellCutter
  *
  * 依赖方向严格单向：本模块**不 import wheelRig.js**，也不 import shellCutter.js。
  * 可在 Node 里独立单测（除 build() 需要 three，其余为纯数学）。
@@ -327,23 +326,6 @@ export class ChassisParams {
     };
   }
 
-  /**
-   * @returns {{deckHeight:number, clipZ:number, clipTopY:number, arches:Array<Object>}}
-   */
-  cutPlan() {
-    const arch = (x, y, r, innerZ) => ({ axleX: x, hubY: y, radius: r, innerZ });
-    return {
-      deckHeight: this.deckHeight,
-      clipZ: this.clipZ,
-      clipTopY: this.clipTopY,
-      arches: [
-        arch(this.axleX_F, this.hubY_F, this.archR_F, this.archInnerZ_F),
-        arch(this.axleX_F, this.hubY_F, this.archR_F, this.archInnerZ_F),
-        arch(this.axleX_R, this.hubY_R, this.archR_R, this.archInnerZ_R),
-        arch(this.axleX_R, this.hubY_R, this.archR_R, this.archInnerZ_R),
-      ],
-    };
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -641,10 +623,6 @@ export class Chassis {
 
   cornerSpec() {
     return this.p.cornerSpec();
-  }
-
-  cutPlan() {
-    return this.p.cutPlan();
   }
 
   /* ---------------- 悬挂（车身相对车轮下移 Δ） ---------------- */
