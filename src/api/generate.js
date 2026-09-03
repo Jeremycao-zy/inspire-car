@@ -271,10 +271,28 @@ export async function health() {
  * 返回 { available, brand, model, year, trim, fullName, confidence, raw } 或
  *       { available:false, reason:'no-key'|'auth'|'error', detail? }
  */
-export async function recognize(files) {
+/**
+ * 识别用最佳图选择：按角度优先级挑信息量最大的那张。
+ * 角度优先级（来自 photoGuide.js 的 ANGLES id）：
+ *   side(正侧方) > frontRight/rearLeft(45°) > front/rear(正前/正后) > 兜底 list[0]。
+ * 无 angleId 标签的普通 File（非引导上传）回退 list[0]，保持原行为。
+ * @param {FileList|File[]|null} files
+ * @returns {File|null}
+ */
+const ANGLE_PRIORITY = { side: 5, frontRight: 4, rearLeft: 4, front: 2, rear: 2 };
+export function pickRecognitionImage(files) {
   const list = Array.from(files || []);
-  if (!list.length) return { available: false, reason: 'error', detail: '缺少图片' };
-  const dataUrl = await shrinkImage(list[0]);
+  if (!list.length) return null;
+  const tagged = list
+    .filter((f) => f && f.angleId && ANGLE_PRIORITY[f.angleId] != null)
+    .sort((a, b) => ANGLE_PRIORITY[b.angleId] - ANGLE_PRIORITY[a.angleId]);
+  return tagged[0] || list[0]; // 有角度标签取最优；否则保持原 list[0] 行为
+}
+
+export async function recognize(files) {
+  const best = pickRecognitionImage(files);
+  if (!best) return { available: false, reason: 'error', detail: '缺少图片' };
+  const dataUrl = await shrinkImage(best);
   const r = await fetch('/api/recognize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

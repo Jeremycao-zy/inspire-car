@@ -841,6 +841,20 @@ export function createPanel(app, mount) {
     ...ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
   );
   engineSelect.value = app.params.engine;
+  /* ---- 车身数据摘要卡片：融合进「车身」tab 顶部（不再浮在 #stage 上遮挡车模） ---- */
+  const bodyInfoEl = el(
+    'div',
+    { id: 'body-info', class: 'body-info' },
+    el('div', { class: 'body-info__head' },
+      el('span', { class: 'body-info__name' }, '—'),
+      el('span', { class: 'body-info__conf' })
+    ),
+    el('div', { class: 'body-info__src' }),
+    el('div', { class: 'body-info__grid' })
+  );
+  // 始终注入到「车身」tab 最上方（在首个 appendChild 之前插队 firstChild）
+  tabBodies.body.insertBefore(section('车型数据摘要', bodyInfoEl), tabBodies.body.firstChild);
+
   tabBodies.body.appendChild(
     section(
       '生成引擎',
@@ -1124,21 +1138,38 @@ export function createPanel(app, mount) {
   syncExposure();
   rebuildLights();
 
-  /* ---- 右上角车身数据面板：展示识别出的车型真实尺寸 ---- */
-  const bodyDataEl = document.getElementById('body-data');
+  /* ---- 车身数据摘要卡片：渲染进 #body-info（融合进「车身」tab，不遮挡车模） ---- */
   function renderBodyData() {
     const rs = app.params.realSpecs;
-    if (!bodyDataEl) return;
+    if (!bodyInfoEl) return;
+    // 无数据：显示占位提示，不报错
     if (!rs || !rs.length) {
-      bodyDataEl.classList.add('hidden');
+      bodyInfoEl.classList.add('is-empty');
+      bodyInfoEl.querySelector('.body-info__name').textContent = '尚未识别到车型';
+      bodyInfoEl.querySelector('.body-info__conf').textContent = '';
+      bodyInfoEl.querySelector('.body-info__src').textContent = '上传整车照片后显示真实尺寸';
+      bodyInfoEl.querySelector('.body-info__grid').innerHTML = '';
       return;
     }
-    bodyDataEl.classList.remove('hidden');
+    bodyInfoEl.classList.remove('is-empty');
+
     const mm = (v) => (v ? `${v} mm` : '—');
     const deg = (v) => (v != null ? `${v}°` : '—');
-    bodyDataEl.querySelector('.body-data__name').textContent = rs.fullName || rs.query || '已识别车型';
-    bodyDataEl.querySelector('.body-data__conf').textContent =
-      rs.confidence ? `把握 ${Math.round(rs.confidence * 100)}%` : '';
+
+    // 车名识别把握度（来自视觉，独立字段）
+    bodyInfoEl.querySelector('.body-info__name').textContent = rs.fullName || rs.query || '已识别车型';
+    bodyInfoEl.querySelector('.body-info__conf').textContent =
+      rs.nameConfidence ? `车名把握 ${Math.round(rs.nameConfidence * 100)}%` : '';
+
+    // 参数来源 + 参数可信度（与车名把握分离）
+    const src = bodyInfoEl.querySelector('.body-info__src');
+    const isOfficial = rs.source === 'official-db';
+    src.className = 'body-info__src ' + (isOfficial ? 'is-official' : 'is-llm');
+    src.textContent = isOfficial
+      ? `来源：官方车型库 · 参数可信度 ${Math.round((rs.confidence ?? 0.95) * 100)}%`
+      : `来源：大模型估算 · 参数可信度 ${Math.round((rs.confidence ?? 0) * 100)}%`;
+
+    // 复用原 rows：车长/车宽/车高/轴距/前后轮距/离地/接近离去角
     const rows = [
       ['车长', mm(rs.length)],
       ['车宽', mm(rs.width)],
@@ -1148,10 +1179,9 @@ export function createPanel(app, mount) {
       ['离地间隙', mm(rs.groundClearance)],
       ['接近/离去角', `${deg(rs.approachAngle)} / ${deg(rs.departureAngle)}`],
     ];
-    bodyDataEl.querySelector('.body-data__grid').innerHTML = rows
+    bodyInfoEl.querySelector('.body-info__grid').innerHTML = rows
       .map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`)
       .join('');
-    bodyDataEl.querySelector('.body-data__src').textContent = `数据来源：${rs.source || '车型参数库'}`;
   }
 
   function syncAll() {

@@ -17,6 +17,7 @@
  */
 
 import { resolveChatConfig } from './vision.mjs';
+import { readFileSync } from 'node:fs';
 
 /** 真车参数的合理区间。长度单位毫米（角度单位度）。越界视为模型幻觉，直接丢弃该字段。 */
 const RANGE = {
@@ -60,6 +61,100 @@ function buildPrompt(fullName, year) {
 }
 
 /** 从模型输出里抠出 JSON（容忍 ```json 代码块与前后废话） */
+/* ================================================================== */
+/*  权威车型库（本地真实参数 JSON + 可选用户扩展库）                     */
+/* ================================================================== */
+
+/**
+ * 匹配阈值：归一化车型名与库条目相似度 ≥ 此值才算命中。
+ * 初值 0.85（见增量设计文档 §2.a.3），可调。
+ */
+const MATCH_THRESHOLD = 0.85;
+
+/**
+ * 品牌同义归一表：中英文品牌名统一映射到规范 token。
+ * 用于跨中英文做模糊匹配（奔驰↔mercedes、宝马↔bmw …）。
+ */
+const BRAND_NORMALIZERS = [
+  [/奔驰|mercedes[ -]?benz?/gi, 'mercedes'],
+  [/宝马|b[mn]w/gi, 'bmw'],
+  [/丰田|toyota/gi, 'toyota'],
+  [/本田|honda/gi, 'honda'],
+  [/保时捷|porsche/gi, 'porsche'],
+  [/福特|ford/gi, 'ford'],
+  [/特斯拉|tesla/gi, 'tesla'],
+  [/路虎|land[ -]?rover/gi, 'landrover'],
+  [/大众|vw|volkswagen/gi, 'vw'],
+  [/奥迪|audi/gi, 'audi'],
+];
+
+/**
+ * 归一车型名：小写 → 品牌同义归一 → 去空格与标点，只保留字母数字。
+ * 这样「奔驰SL350」与「奔驰 SL 350」「Mercedes SL350」都归一到同一串，便于模糊匹配。
+ * @param {string} s
+ * @returns {string}
+ */
+function normalizeName(s) {
+  if (!s) return '';
+  let t = String(s).toLowerCase();
+  for (const [re, token] of BRAND_NORMALIZERS) t = t.replace(re, token);
+  return t.replace(/[^a-z0-9]/g, '');
+}
+
+/** 读取并合并种子库 + 用户扩展库（用户库按 key 覆盖种子）。结果缓存复用。 */
+let _mergedCarDb = null;
+function loadOfficialDb() {
+  if (_mergedCarDb) return _mergedCarDb;
+  const read = (rel) => {
+    try {
+      return JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  const seed = read('./carSpecs.db.json');
+  const user = read('./carSpecs.user.db.json');
+  const byKey = new Map();
+  for (const c of seed?.cars || []) byKey.set(c.key, c);
+  for (const c of user?.cars || []) byKey.set(c.key, c); // user 优先覆盖
+  _mergedCarDb = { version: seed?.version ?? 1, cars: [...byKey.values()] };
+  return _mergedCarDb;
+}
+
+/**
+ * 在本地车型库里模糊匹配车型名。
+ * 命中规则（见增量设计文档 §2.a.3）：
+ *   - 归一后查询 == 某候选（key / 别名 / 品牌+车型）→ 精确命中，score 1.0
+ *   - 否则若「品牌+车型」归一串是查询的子串 → 核心车型命中，score 0.85
+ * 返回 { car, score } 或 null（未命中）。
+ * @param {string} query
+ * @returns {{car:Object, score:number}|null}
+ */
+function lookupOfficialDb(query) {
+  const q = normalizeName(query);
+  if (!q) return null;
+  const db = loadOfficialDb();
+  let best = null;
+  for (const car of db.cars) {
+    const candidates = [
+      normalizeName(car.key),
+      normalizeName(`${car.brand}${car.model}`),
+      ...(car.aliases || []).map(normalizeName),
+    ];
+    let score = 0;
+    if (candidates.some((c) => c && c === q)) {
+      score = 1.0; // 精确 / 别名命中
+    } else {
+      const brandModel = normalizeName(`${car.brand}${car.model}`);
+      if (brandModel && q.includes(brandModel)) score = MATCH_THRESHOLD; // 核心车型命中
+    }
+    if (score >= MATCH_THRESHOLD && (!best || score > best.score)) {
+      best = { car, score };
+    }
+  }
+  return best;
+}
+
 export function extractJson(text) {
   if (!text) return null;
   let s = String(text).trim();
@@ -146,6 +241,24 @@ export async function carSpecs(fullName, { year } = {}) {
   const name = String(fullName || '').trim();
   if (!name) return { available: false, reason: 'error', detail: '缺少车型名' };
 
+  // ① DB 优先：命中且核心尺寸（长/宽/高/轴距）齐全 → 直接返回验证过的官方库数据
+  //    （高可信、零额度，不消耗大模型调用）。
+  const hit = lookupOfficialDb(name);
+  const ESSENTIAL = ['length', 'width', 'height', 'wheelbase'];
+  if (hit && ESSENTIAL.every((k) => Number.isFinite(hit.car.specs?.[k]))) {
+    const sp = hit.car.specs;
+    return {
+      available: true,
+      ...sp,
+      // 验证过的参数 → 固定高可信度（区别于 LLM 的字段完整度）
+      source: 'official-db',
+      confidence: 0.95,
+      matchedKey: hit.car.key,
+      query: name,
+    };
+  }
+
+  // ② 退回现有 LLM（保留 postChat / extractJson / sanitizeSpecs / RANGE 校验）
   const cfg = resolveChatConfig();
   if (!cfg) return { available: false, reason: 'no-key' };
 
@@ -185,7 +298,8 @@ export async function carSpecs(fullName, { year } = {}) {
     return {
       available: true,
       ...specs,
-      source: `模型参数库（${cfg.name}）`,
+      // 来源标记为大模型估算（历史值『模型参数库（xxx）』视作同义）
+      source: 'model-llm',
       // 字段越全越可信
       confidence: Math.round(
         (Object.values(specs).filter((v) => v != null).length / Object.keys(RANGE).length) * 100

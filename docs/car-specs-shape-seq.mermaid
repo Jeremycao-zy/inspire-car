@@ -1,0 +1,63 @@
+%% ===== 时序1：上传阶段识别 → 取参 → 保形 =====
+sequenceDiagram
+  participant U as 用户
+  participant M as main.js(上传)
+  participant G as generate.js(recognize)
+  participant S as server/index.mjs
+  participant V as vision.mjs
+  participant SP as specs.js(carSpecs)
+  participant DB as carSpecs.db.json
+  participant A as app.applyRealSpecs
+  participant N as glb.normalizeCar
+
+  U->>M: 上传照片(files)
+  M->>G: recognize(files) [pickBestImage]
+  G->>G: pickRecognitionImage(files) 选侧方/45°
+  G->>S: POST /api/recognize {images:[best]}
+  S->>V: recognize({dataUrl})
+  V-->>S: {fullName, confidence(nameConf), ...}
+  S-->>G: {fullName, confidence, ...}
+  G-->>M: rec
+  M->>M: u.setRecog(rec.fullName, 车名把握)
+  M->>G: fetchCarSpecs(rec.fullName, rec.year)
+  G->>S: POST /api/specs
+  S->>SP: carSpecs(fullName)
+  SP->>DB: lookupOfficialDb(normalizeName)
+  alt 命中且核心字段齐全
+    DB-->>SP: specs (source=official-db, conf=0.95)
+  else 未命中
+    SP->>SP: querySpecsFromLLM() 退大模型
+    SP-->>S: specs (source=model-llm, conf=字段完整度)
+  end
+  S-->>G: sp
+  G-->>M: sp
+  M->>A: applyRealSpecs(sp, {nameConfidence: rec.confidence})
+  A->>A: 存 realSpecs{source,confidence,nameConfidence,...}
+  M->>N: refitCar() → normalizeCar(fit 门控)
+  N->>N: 等比锁车长; 仅当 source可信&偏差∈[0.85,1.18] 才校正宽高
+
+%% ===== 时序2：面板刷新（融合进车身 tab） =====
+sequenceDiagram
+  participant Sync as panel.syncAll()
+  participant RB as renderBodyData()
+  participant BI as #body-info(车身tab顶部)
+  participant RS as app.params.realSpecs
+
+  Sync->>RB: 调用
+  RB->>RS: 读取
+  alt 有数据
+    RB->>BI: 车型名 + 车名把握(nameConfidence)
+    RB->>BI: 来源徽章(official-db绿 / model-llm琥珀) + 参数可信度(confidence)
+    RB->>BI: 渲染 L/W/H/轴距/轮距/离地/角度 网格
+  else 无数据
+    RB->>BI: 显示占位提示
+  end
+
+%% ===== 时序3：进入工作室去重（复用 realSpecs） =====
+sequenceDiagram
+  participant EP as main.enterPlan()
+  participant RS as app.params.realSpecs
+
+  EP->>RS: 读取(上传阶段已写入)
+  Note over EP: 不再调用 recognize / fetchCarSpecs
+  EP->>EP: 直接用 RS 驱动轮位/悬挂(refitCar)

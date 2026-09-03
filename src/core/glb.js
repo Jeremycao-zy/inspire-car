@@ -223,9 +223,15 @@ export function applyCarOrientation(g, axes) {
   g.updateMatrixWorld(true);
 }
 
+/* 保形门控阈值：图生 3D 实测宽/高比相对目标比的允许区间。
+ * 超出则降级为纯等比（保形优先），避免把估计的宽高误差放大成畸变。
+ * 须与 main.js（CONF_HIGH）/ specs.js 的判定阈值保持一致（增量设计 §5）。 */
+const DEV_LO = 0.85; // 偏差下限
+const DEV_HI = 1.18; // 偏差上限
+
 export function normalizeCar(
   g,
-  { targetLength = 4.6, targetWidth = null, targetHeight = null, groundY = 0 } = {}
+  { targetLength = 4.6, targetWidth = null, targetHeight = null, groundY = 0, fit = 'auto' } = {}
 ) {
   g.updateMatrixWorld(true);
 
@@ -241,16 +247,26 @@ export function normalizeCar(
   }
   size = boxOf(g).getSize(new THREE.Vector3());
 
-  /* 2b) 按真车宽/高做非等比校正。
+  /* 2b) 条件非等比校正（保形门控）。
    * 等比缩放只锁得住车长——图生 3D 模型自身的长宽高比例并不等于真车。
-   * 想让整体比例贴近真车，必须按真实宽高校正另外两轴。
-   * 仅在调用方给出真车数据时启用，没给就保持纯等比（不引入畸变风险）。 */
+   * 想让整体比例贴近真车，必须按真实宽高校正另外两轴；
+   * 但只在「调用方给出真车宽/高」且「实测比偏差落在 [DEV_LO, DEV_HI] 内」
+   * （或调用方显式 fit==='stretch'）时才校正，否则保持纯等比（保形优先，不引入畸变）。
+   * 阈值 DEV_LO / DEV_HI 须与 main.js / specs.js 保持一致（增量设计 §5）。 */
   const corr = new THREE.Vector3(1, 1, 1);
-  if (targetWidth > 0.05 && size.z > 0.05) corr.z = targetWidth / size.z;
-  if (targetHeight > 0.05 && size.y > 0.05) corr.y = targetHeight / size.y;
-  if (corr.y !== 1 || corr.z !== 1) {
-    g.scale.multiply(corr);
-    g.updateMatrixWorld(true);
+  const canCorrect = targetWidth > 0.05 && targetHeight > 0.05 && fit !== 'lengthOnly';
+  if (canCorrect) {
+    const devW = targetWidth / size.z; // 目标宽 / 实测宽（Z 轴 = 宽）
+    const devH = targetHeight / size.y; // 目标高 / 实测高（Y 轴 = 高）
+    const inRange = (v) => v >= DEV_LO && v <= DEV_HI; // 默认 [0.85, 1.18]
+    const allow = fit === 'stretch' ? true : inRange(devW) && inRange(devH);
+    if (allow) {
+      corr.z = devW;
+      corr.y = devH;
+      g.scale.multiply(corr);
+      g.updateMatrixWorld(true);
+    }
+    // 否则：保持纯等比（保形），不引入畸变
   }
 
   // 3) 居中 + 贴地

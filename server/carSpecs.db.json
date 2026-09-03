@@ -1,0 +1,373 @@
+{
+  "version": 1,
+  "updated": "2026-08-27",
+  "cars": [
+    {
+      "key": "mercedes-sl350-r230",
+      "brand": "奔驰",
+      "model": "SL 350",
+      "yearRange": "2002-2011",
+      "aliases": [
+        "奔驰SL350",
+        "奔驰 SL 350",
+        "奔驰SL 350 R230",
+        "奔驰SL350R230",
+        "Mercedes SL350",
+        "Mercedes-Benz SL350 R230",
+        "SL350 R230",
+        "SL350",
+        "SL 350"
+      ],
+      "specs": {
+        "length": 4535,
+        "width": 1817,
+        "height": 1290,
+        "wheelbase": 2560,
+        "trackFront": 1535,
+        "trackRear": 1527,
+        "groundClearance": 120,
+        "approachAngle": 12,
+        "departureAngle": 14,
+        "rimInch": 18,
+        "tireWidth": 255,
+        "aspect": 45
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "toyota-gr-supra-a90",
+      "brand": "丰田",
+      "model": "GR Supra",
+      "yearRange": "2019-",
+      "aliases": [
+        "丰田GR Supra",
+        "丰田 GR Supra",
+        "Toyota GR Supra",
+        "Toyota Supra",
+        "GR Supra",
+        "丰田Supra",
+        "Supra"
+      ],
+      "specs": {
+        "length": 4380,
+        "width": 1865,
+        "height": 1295,
+        "wheelbase": 2470,
+        "trackFront": 1594,
+        "trackRear": 1589,
+        "groundClearance": 110,
+        "approachAngle": 11,
+        "departureAngle": 14,
+        "rimInch": 19,
+        "tireWidth": 255,
+        "aspect": 35
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "honda-nsx-nc1",
+      "brand": "本田",
+      "model": "NSX",
+      "yearRange": "2016-2022",
+      "aliases": [
+        "本田NSX",
+        "本田 NSX",
+        "本田NSX NC1",
+        "Honda NSX",
+        "NSX",
+        "讴歌NSX",
+        "Acura NSX"
+      ],
+      "specs": {
+        "length": 4470,
+        "width": 1940,
+        "height": 1215,
+        "wheelbase": 2630,
+        "trackFront": 1655,
+        "trackRear": 1625,
+        "groundClearance": 110,
+        "approachAngle": 10,
+        "departureAngle": 14,
+        "rimInch": 19,
+        "tireWidth": 245,
+        "aspect": 35
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "porsche-911-carrera-992",
+      "brand": "保时捷",
+      "model": "911 Carrera",
+      "yearRange": "2018-",
+      "aliases": [
+        "保时捷911",
+        "保时捷 911",
+        "保时捷911 Carrera",
+        "Porsche 911",
+        "Porsche 911 Carrera",
+        "911 Carrera",
+        "911"
+      ],
+      "specs": {
+        "length": 4519,
+        "width": 1852,
+        "height": 1300,
+        "wheelbase": 2450,
+        "trackFront": 1590,
+        "trackRear": 1555,
+        "groundClearance": 110,
+        "approachAngle": 10,
+        "departureAngle": 13,
+        "rimInch": 20,
+        "tireWidth": 245,
+        "aspect": 35
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "toyota-86-gr86",
+      "brand": "丰田",
+      "model": "86",
+      "yearRange": "2012-",
+      "aliases": [
+        "丰田86",
+        "丰田 86",
+        "丰田GR86",
+        "Toyota 86",
+        "Toyota GR86",
+        "GR86",
+        "86",
+        "斯巴鲁BRZ",
+        "Subaru BRZ"
+      ],
+      "specs": {
+        "length": 4265,
+        "width": 1775,
+        "height": 1310,
+        "wheelbase": 2575,
+        "trackFront": 1520,
+        "trackRear": 1520,
+        "groundClearance": 130,
+        "approachAngle": 13,
+        "departureAngle": 16,
+        "rimInch": 17,
+        "tireWidth": 215,
+        "aspect": 45
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "bmw-3series-g20-330i",
+      "brand": "宝马",
+      "model": "3 系 330i",
+      "yearRange": "2018-",
+      "aliases": [
+        "宝马3系",
+        "宝马 3系",
+        "宝马330i",
+        "宝马3系330i",
+        "BMW 3系",
+        "BMW 330i",
+        "3系",
+        "3 Series"
+      ],
+      "specs": {
+        "length": 4709,
+        "width": 1827,
+        "height": 1442,
+        "wheelbase": 2851,
+        "trackFront": 1581,
+        "trackRear": 1602,
+        "groundClearance": 140,
+        "approachAngle": 14,
+        "departureAngle": 16,
+        "rimInch": 18,
+        "tireWidth": 225,
+        "aspect": 45
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "honda-civic-typer-fk8",
+      "brand": "本田",
+      "model": "思域 Type R",
+      "yearRange": "2017-2021",
+      "aliases": [
+        "本田思域",
+        "本田 思域",
+        "本田思域TypeR",
+        "本田思域 Type R",
+        "Honda Civic Type R",
+        "Civic Type R",
+        "思域TypeR",
+        "思域"
+      ],
+      "specs": {
+        "length": 4560,
+        "width": 1878,
+        "height": 1434,
+        "wheelbase": 2700,
+        "trackFront": 1599,
+        "trackRear": 1585,
+        "groundClearance": 120,
+        "approachAngle": 12,
+        "departureAngle": 18,
+        "rimInch": 20,
+        "tireWidth": 245,
+        "aspect": 30
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "tesla-model3",
+      "brand": "特斯拉",
+      "model": "Model 3",
+      "yearRange": "2017-",
+      "aliases": [
+        "特斯拉Model 3",
+        "特斯拉 Model 3",
+        "特斯拉model3",
+        "Tesla Model 3",
+        "Model 3"
+      ],
+      "specs": {
+        "length": 4694,
+        "width": 1849,
+        "height": 1443,
+        "wheelbase": 2875,
+        "trackFront": 1584,
+        "trackRear": 1584,
+        "groundClearance": 140,
+        "approachAngle": 14,
+        "departureAngle": 17,
+        "rimInch": 18,
+        "tireWidth": 235,
+        "aspect": 45
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "toyota-rav4-xa50",
+      "brand": "丰田",
+      "model": "RAV4",
+      "yearRange": "2018-",
+      "aliases": [
+        "丰田RAV4",
+        "丰田 RAV4",
+        "Toyota RAV4",
+        "RAV4"
+      ],
+      "specs": {
+        "length": 4600,
+        "width": 1855,
+        "height": 1685,
+        "wheelbase": 2690,
+        "trackFront": 1600,
+        "trackRear": 1610,
+        "groundClearance": 195,
+        "approachAngle": 18,
+        "departureAngle": 22,
+        "rimInch": 17,
+        "tireWidth": 225,
+        "aspect": 65
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "honda-crv-rw",
+      "brand": "本田",
+      "model": "CR-V",
+      "yearRange": "2017-2022",
+      "aliases": [
+        "本田CR-V",
+        "本田 CR-V",
+        "本田crv",
+        "Honda CR-V",
+        "CR-V",
+        "CRV"
+      ],
+      "specs": {
+        "length": 4595,
+        "width": 1855,
+        "height": 1679,
+        "wheelbase": 2660,
+        "trackFront": 1600,
+        "trackRear": 1610,
+        "groundClearance": 208,
+        "approachAngle": 19,
+        "departureAngle": 23,
+        "rimInch": 18,
+        "tireWidth": 235,
+        "aspect": 60
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "bmw-x5-g05",
+      "brand": "宝马",
+      "model": "X5",
+      "yearRange": "2018-",
+      "aliases": [
+        "宝马X5",
+        "宝马 X5",
+        "BMW X5",
+        "X5"
+      ],
+      "specs": {
+        "length": 4922,
+        "width": 2004,
+        "height": 1745,
+        "wheelbase": 2975,
+        "trackFront": 1685,
+        "trackRear": 1690,
+        "groundClearance": 211,
+        "approachAngle": 22,
+        "departureAngle": 25,
+        "rimInch": 19,
+        "tireWidth": 275,
+        "aspect": 45
+      },
+      "source": "official-db",
+      "note": "厂商公开参数"
+    },
+    {
+      "key": "ford-f150",
+      "brand": "福特",
+      "model": "F-150",
+      "yearRange": "2015-",
+      "aliases": [
+        "福特F-150",
+        "福特 F-150",
+        "Ford F-150",
+        "F-150",
+        "F150"
+      ],
+      "specs": {
+        "length": 5907,
+        "width": 2029,
+        "height": 1961,
+        "wheelbase": 3696,
+        "trackFront": 1712,
+        "trackRear": 1715,
+        "groundClearance": 216,
+        "approachAngle": 24,
+        "departureAngle": 25,
+        "rimInch": 18,
+        "tireWidth": 275,
+        "aspect": 65
+      },
+      "source": "official-db",
+      "note": "厂商公开参数（SuperCrew 版）"
+    }
+  ]
+}

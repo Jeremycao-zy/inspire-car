@@ -327,7 +327,12 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
   async function handleStart() {
     if (generating) return;
-    const files = ANGLES.map((a) => filesById[a.id]).filter(Boolean);
+    // 组装 files 时给每个 File 打上角度标签，供识别阶段挑最佳图（侧方/45° 优先）
+    const files = ANGLES.map((a) => {
+      const f = filesById[a.id];
+      if (f) f.angleId = a.id;
+      return f;
+    }).filter(Boolean);
     if (files.length < 5) return;
 
     generating = true;
@@ -420,7 +425,12 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   }
 
   async function handleResume(jobId) {
-    const files = ANGLES.map((a) => filesById[a.id]).filter(Boolean);
+    // 复用已选照片时同样补角度标签（与 handleStart 一致）
+    const files = ANGLES.map((a) => {
+      const f = filesById[a.id];
+      if (f) f.angleId = a.id;
+      return f;
+    }).filter(Boolean);
     generating = true;
     updateCounter();
     showOverlay('prepare', 0.1, '正在续等云端任务…');

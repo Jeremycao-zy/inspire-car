@@ -789,65 +789,54 @@ input[type='range']::-moz-range-thumb {
   max-width: 460px;
 }
 
-/* ---- 右上角：识别车型真实车身数据面板 ---- */
-.body-data {
-  position: absolute;
-  top: 14px;
-  right: 16px;
-  z-index: 8;
-  min-width: 232px;
-  max-width: 280px;
-  padding: 12px 14px;
+/* ---- 车身数据摘要卡片（融合进「车身」tab，跟随 sidebar 滚动，不再浮在 #stage 上） ---- */
+.body-info {
+  padding: 10px 12px;
   border: 1px solid var(--line, #232a33);
   border-radius: 12px;
-  background: rgba(17, 20, 25, 0.78);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  background: rgba(17, 20, 25, 0.6);
   color: var(--text, #e7ebf0);
   font-size: 12px;
-  pointer-events: none;
-  user-select: none;
 }
-.body-data.hidden {
-  display: none;
-}
-.body-data__head {
+.body-info__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
-.body-data__name {
+.body-info__name {
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.2px;
   color: #fff;
 }
-.body-data__conf {
+.body-info__conf {
   font-size: 11px;
   color: var(--accent, #5cc8ff);
   white-space: nowrap;
 }
-.body-data__grid {
+.body-info__src {
+  font-size: 10.5px;
+  color: var(--text-faint, #5b6573);
+  margin-bottom: 8px;
+}
+.body-info__src.is-official {
+  color: #5fe39a;
+} /* 官方库命中：绿 */
+.body-info__src.is-llm {
+  color: #ffcf6b;
+} /* 大模型估算：琥珀 */
+.body-info__grid {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 3px 10px;
 }
-.body-data__grid .k {
+.body-info__grid .k {
   color: var(--text-dim, #9aa4b2);
 }
-.body-data__grid .v {
+.body-info__grid .v {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: #e7ebf0;
-}
-.body-data__src {
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 10.5px;
-  color: var(--text-faint, #5b6573);
 }
 
 @media (max-width: 900px) {
@@ -1538,22 +1527,7 @@ input[type='range'] {
   color: #5b6b8c;
 }
 
-/* 识别车型数据面板：深紫玻璃 + 霓虹描边 */
-.body-data {
-  border-color: rgba(0, 240, 255, 0.28);
-  background: rgba(18, 16, 31, 0.82);
-  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.5), 0 0 22px rgba(177, 74, 237, 0.18);
-}
-.body-data__name {
-  color: #fff;
-  text-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
-}
-.body-data__conf {
-  color: var(--neon-cyan);
-}
-.body-data__src {
-  border-top-color: rgba(0, 240, 255, 0.18);
-}
+/* 车身数据摘要卡片：.body-data 霓虹覆盖块已移除，融合进 .body-info（sidebar 内联卡片，变量接管） */
 
 /* 车漆色轮：霓虹描边与高亮统一 */
 .cw-orb {
