@@ -968,13 +968,11 @@ const app = {
     carInner.quaternion.identity();
     carInner.scale.set(1, 1, 1);
     // 有真车数据时按真实长宽高归一；否则只锁车长，保持纯等比（保形）。
-    // 保形门控：仅当参数来源可信（官方库）或高置信度 LLM 且非 fallback 时，
-    // 才允许按真实宽高校正另外两轴；不可信时传 null → normalizeCar 保持纯等比。
+    // 保形门控：仅官方车型库（official-db）允许按真实宽高校正另外两轴——
+    // 其尺寸是权威实测值，可信。LLM/specs 估出的尺寸不可信（specs.js 不会回传
+    // 'model-llm-fallback'），一律保持纯等比，避免把车拉变形（保形优先）。
     const rs = this.params.realSpecs;
-    const allowStretch =
-      !!rs &&
-      (rs.source === 'official-db' ||
-        (rs.confidence >= CONF_HIGH && rs.source !== 'model-llm-fallback'));
+    const allowStretch = !!rs && rs.source === 'official-db';
     const useWH = allowStretch && rs.width && rs.height;
     normalizeCar(carInner, {
       targetLength: this.params.carLength,
@@ -1779,9 +1777,50 @@ async function applyResult(kind, url, parts) {
       bangNote += `，轮位已按拆解实测校准（轴距 ${Math.round(r.geom.wheelbase * 1000)}mm / 前轮距 ${Math.round(r.geom.trackFront * 1000)}mm / 后轮距 ${Math.round(r.geom.trackRear * 1000)}mm）`;
     }
     // 扁平比被对齐过，滑杆要跟着刷新
-    panel?.syncAll?.();
+    try { panel?.syncAll?.(); } catch (e) { console.warn('[sync] 面板同步异常，已忽略：', e.message); }
   }
   u.setStatus('生成完成，已装载你的车' + bangNote, 'ok');
+}
+
+/**
+/**
+ * 识别车型 + 拉真实参数，写入 app.params.realSpecs（含官方库/LLM 真车参数）。
+ * 供「新建方案（拍照引导）」与「重新进入工作室」复用——识别只做一次，不重复扣额度。
+ * 注意：拍照引导走 generateModel 直连、不经过 runGenerate，所以识别必须在这里补上，
+ *       否则新车永远是默认 SL350 比例、车身数据面板为空（916bf83 把这个环节误删了）。
+ * @param {File[]|null} files
+ * @returns {Promise<Object|null>} 成功返回 realSpecs，否则 null
+ */
+async function applyRecognitionFromFiles(files) {
+  if (!files?.length) return null;
+  const rec = await recognize(files).catch(() => null);
+  if (!rec?.available) return null;
+  const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
+  if (!sp?.available) return null;
+  if (!app.applyRealSpecs(sp, { nameConfidence: rec.confidence })) return null;
+  const rs = app.params.realSpecs;
+  rs.fullName = rec.fullName || rs.query || '';
+  rs.query = rec.fullName || rs.query || '';
+  console.log('[specs] 应用真车参数', rs);
+  return rs;
+}
+
+/**
+ * 把当前已识别的车型参数（realSpecs + 派生车长/宽/高）写回当前方案并落盘，
+ * 保证「返回车库 → 重新进入工作室」时比例与车型数据不丢失：
+ * applyPlanToApp 会用 plan.params 整体覆盖 app.params，不持久化就会退回默认 SL350 比例。
+ */
+function persistRealSpecsToPlan() {
+  if (!currentPlan || !app.params.realSpecs) return;
+  currentPlan.params.realSpecs = structuredClone(app.params.realSpecs);
+  currentPlan.params.carLength = app.params.carLength;
+  currentPlan.params.carWidth = app.params.carWidth;
+  currentPlan.params.carHeight = app.params.carHeight;
+  try {
+    garage?.upsertPlan?.({ ...currentPlan, updatedAt: Date.now() });
+  } catch (e) {
+    console.warn('[specs] 持久化车型参数失败：', e.message);
+  }
 }
 
 /**
@@ -1845,7 +1884,9 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
           console.log('[specs] 应用真车参数', rs);
           // 真车 OEM 轮毂/轮胎已种入 params.front/rear，刷新滑杆让 UI 立刻反映真车数据，
           // 而不是停留在 SL 350 默认；后续所有调参都从真车原厂胎起步。
-          panel?.syncAll();
+          try { panel?.syncAll(); } catch (e) { console.warn('[sync] 面板同步异常，已忽略：', e.message); }
+          // 识别结果即时落盘，保证「返回车库 → 重新进入工作室」比例不丢
+          persistRealSpecsToPlan();
         } else {
           u.setRecog(
             `已识别：${rec.fullName}（把握 ${pct}%）· 未查到真车参数，按默认比例`,
@@ -2427,10 +2468,22 @@ async function enterTuner(plan, opts = {}) {
   if (garageEl) garageEl.classList.add('hidden');
   startTuner(); // 首次进入做一次性初始化（载车已下放到 loadPlanCar）
   applyPlanToApp(currentPlan); // 注入参数、清空上一方案残留的拆解/轮毂、同步 UI
-  await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
 
-  // 车型识别已在上传阶段完成并写入 app.params.realSpecs（含官方库/LLM 真车参数），
-  // 进入工作室直接复用，不再二次 /api/recognize，避免重复扣额度（增量设计 §2.d）。
+  // 车型识别：在载车之前完成，让 loadPlanCar→refitCar 按真实尺寸归一建模。
+  // 仅当 app.params 里还没有识别结果时才跑——拍照引导带进来的原始照片在这里识别一次，
+  // runGenerate 路径也已在上传阶段完成；复用不二次 /api/recognize，避免重复扣额度。
+  if (!app.params.realSpecs && opts?.sourceFiles?.length && !isPresetCarUrl(currentPlan.carModelUrl)) {
+    try {
+      await applyRecognitionFromFiles(opts.sourceFiles);
+      persistRealSpecsToPlan();
+    } catch (e) {
+      console.warn('[photoGuide→studio] 识别失败，不影响建模结果', e);
+    }
+  }
+
+  await loadPlanCar(); // 按本方案载车 + 还原车漆 + 装配拆解部件
+  // 进入即确保车型数据落盘（覆盖老方案重进、未走识别但参数已存在的情况）
+  persistRealSpecsToPlan();
 }
 
 // 返回第一层：保存当前方案 → 刷新卡片 → 显示车库
