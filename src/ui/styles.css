@@ -28,6 +28,121 @@
   box-sizing: border-box;
 }
 
+/* =========================================================
+   品牌启动页：进入首页前的全屏 loading（logo + 英文名闪动）
+   ========================================================= */
+.brand-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+  transition: opacity 0.7s ease, transform 0.7s ease, visibility 0.7s;
+  pointer-events: none;
+}
+.brand-loading.exiting {
+  opacity: 0;
+  transform: scale(1.04);
+  visibility: hidden;
+}
+.brand-loading.hidden {
+  display: none;
+}
+
+.brand-loading__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  opacity: 0;
+  animation: innerReveal 0.9s ease-out 0.15s forwards;
+}
+
+.brand-loading__logo {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  opacity: 0;
+  transform: scale(0.92);
+  animation: logoReveal 1s ease-out 0.2s forwards;
+}
+
+.brand-loading__text {
+  font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0.32em;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.brand-loading__text span {
+  display: inline-block;
+  animation: letterPulse 1.2s ease-in-out 2;
+  animation-fill-mode: forwards;
+  animation-delay: calc(var(--i) * 0.08s);
+}
+
+.brand-loading__space {
+  display: inline-block;
+  width: 0.55em;
+  animation: none !important;
+}
+
+@keyframes innerReveal {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logoReveal {
+  from { opacity: 0; transform: scale(0.92); filter: brightness(0) invert(1) drop-shadow(0 0 0 transparent); }
+  to { opacity: 1; transform: scale(1); filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.55)); }
+}
+
+@keyframes letterPulse {
+  0%, 100% {
+    opacity: 0.3;
+    color: rgba(255, 255, 255, 0.45);
+    text-shadow: none;
+    transform: translateY(0);
+  }
+  35%, 65% {
+    opacity: 1;
+    color: #fff;
+    text-shadow:
+      0 0 8px rgba(0, 240, 255, 0.65),
+      0 0 18px rgba(0, 240, 255, 0.35),
+      0 0 34px rgba(0, 240, 255, 0.18);
+    transform: translateY(-1px);
+  }
+  50% {
+    opacity: 1;
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(0, 240, 255, 0.8),
+      0 0 26px rgba(0, 240, 255, 0.45),
+      0 0 48px rgba(0, 240, 255, 0.22);
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-loading__logo {
+    width: 68px;
+    height: 68px;
+  }
+  .brand-loading__text {
+    font-size: 20px;
+    letter-spacing: 0.24em;
+  }
+}
+
 /* 顶部登录用户条（注销入口） */
 .auth-userbar {
   position: fixed;

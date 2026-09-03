@@ -2674,8 +2674,22 @@ window.addEventListener('auth:change', (e) => {
   }
 });
 
+/* 品牌启动页淡出：最少展示 2.4s，让 logo + 字母闪动动画完整播放 */
+const brandLoadingStart = Date.now();
+function hideBrandLoading() {
+  const el = document.getElementById('brand-loading');
+  if (!el) return;
+  const minMs = 2400;
+  const remain = Math.max(0, minMs - (Date.now() - brandLoadingStart));
+  setTimeout(() => {
+    if (el.classList.contains('exiting')) return;
+    el.classList.add('exiting');
+    setTimeout(() => el.classList.add('hidden'), 760);
+  }, remain);
+}
+
 // 启动门禁
-void bootGarage();
+void bootGarage().finally(hideBrandLoading);
 
 /* 调试入口统一在文件上方（window.__garage 只赋值一次），
  * 这里不再重复赋值——重复会把上面那份覆盖掉。 */
