@@ -17,12 +17,26 @@
       .brand-loading__logo {
         width: 84px; height: 84px; object-fit: contain;
         filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.5));
+        opacity: 0.6;
+        /* 启动页动画内联自包含：即便 styles.css（JS 注入）尚未加载也好看，彻底摆脱网络时序割裂 */
+        animation: blLogo 2.2s ease-in-out infinite;
       }
       .brand-loading__text {
         font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
         font-size: 28px; letter-spacing: 0.32em; color: rgba(255, 255, 255, 0.35);
         text-transform: uppercase; white-space: nowrap; user-select: none;
       }
+      .brand-loading__text span {
+        display: inline-block;
+        opacity: 0.5;
+        color: #fff;
+        text-shadow: 0 0 10px rgba(0,240,255,0.6), 0 0 22px rgba(0,240,255,0.3);
+        animation: blLetter 2.2s ease-in-out infinite;
+        animation-delay: calc(var(--i) * 0.12s);
+      }
+      .brand-loading__space { animation: none !important; }
+      @keyframes blLogo { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+      @keyframes blLetter { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
       /* 首屏先藏顶部栏，等样式表接管后再由应用逻辑显示，避免未样式化大 logo 闪现 */
       #appbar { display: none; }
     </style>
