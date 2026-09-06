@@ -17,6 +17,7 @@ import { previewEngine, previewParamsOf } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
+import { mountAiOrb } from './aiOrb.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 
@@ -516,6 +517,7 @@ export function mountGarage({ onEnter, mount } = {}) {
   root.classList.remove('hidden');
 
   let preview = null;
+  let aiOrb = null;
 
   /* 顶部品牌栏 */
   const u = currentUser();
@@ -620,6 +622,13 @@ export function mountGarage({ onEnter, mount } = {}) {
   }
   root.appendChild(legalFoot);
 
+  // 首页发光点阵球（AI 对话入口）：独立轻量 WebGL，挂在 body 上
+  try {
+    aiOrb = mountAiOrb();
+  } catch (e) {
+    console.warn('[garage] AI 点阵球初始化失败（不影响其余功能）:', e.message);
+  }
+
   function renderGrid() {
     // 重绘前先卸载所有预览，释放本实例专属资源（几何 / 场景）
     previewEngine.clear();
@@ -655,6 +664,8 @@ export function mountGarage({ onEnter, mount } = {}) {
     disposed = true;
     preview?.dispose();
     preview = null;
+    aiOrb?.dispose();
+    aiOrb = null;
     previewEngine.clear();
     previewEngine.disposeRenderer();
     root.innerHTML = '';
@@ -667,11 +678,13 @@ export function mountGarage({ onEnter, mount } = {}) {
     hide() {
       root.classList.add('hidden');
       preview?.pause();
+      aiOrb?.pause();
     },
     show() {
       root.classList.remove('hidden');
       renderGrid();
       preview?.resume();
+      aiOrb?.resume();
     },
     refresh() {
       renderGrid();
