@@ -33,6 +33,7 @@ import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
+import { handleChat } from './chat.mjs';
 import { createStaticServer } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1747,6 +1748,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (u.pathname === '/api/auth/me' && req.method === 'GET') {
     handleAuthMe(req, res);
+    return;
+  }
+
+  /* ---------- AI 对话 ---------- */
+  if (u.pathname === '/api/chat' && req.method === 'POST') {
+    await handleChat(req, res);
     return;
   }
 

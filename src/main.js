@@ -189,6 +189,11 @@ const overlay = document.getElementById('overlay');
 const sidebarEl = document.getElementById('sidebar');
 
 const viewer = createViewer(stage);
+// 车库（首屏）可见时工作台 #stage 处于隐藏态：立即停掉工作台查看器的常驻渲染循环，
+// 避免隐藏画布持续占用 GPU。移动端 Safari 上，隐藏画布 + 反复切方案的显存分配会
+// 叠加成内存/GPU 压力，触发系统杀掉 WebContent 进程（表现正是"闪回初始加载页又恢复"）。
+// 进入工作台时再 viewer.resume()。
+viewer.pause();
 const rig = new WheelRig(viewer.scene);
 const chassis = new Chassis(viewer.scene);
 const shellMetrics = { current: null };
@@ -2493,6 +2498,8 @@ async function enterTuner(plan, opts = {}) {
 
   const garageEl = document.getElementById('garage');
   if (garageEl) garageEl.classList.add('hidden');
+  // 工作台进入可见态：恢复查看器渲染循环（车库可见时已暂停，见下方 returnToGarage）。
+  viewer.resume();
 
   // 整车下载 / BANG 拆解 / 轮位校准全部完成前，先盖住工作台，避免用户看到
   // 「只有 4 个轮子 / 空白车身」的中间态（applyPlanToApp 会清掉上一方案的拆解产物、
@@ -2549,6 +2556,9 @@ function returnToGarage() {
   }
   const garageEl = document.getElementById('garage');
   if (garageEl) garageEl.classList.remove('hidden');
+  // 离开工作台回到车库：隐藏画布仍在后台渲染会持续占 GPU，移动端易触发页面重载。
+  // 停掉工作台查看器循环，车库侧预览按需渲染（previewEngine 脏标记机制）即可。
+  viewer.pause();
 
   // 按钮短暂反馈「已保存」
   const btn = document.getElementById('back-to-garage');
