@@ -64,12 +64,14 @@ export const PRECISION_TIERS = {
  * 关键约束：任何 reason 都不会自动降级到演示模型，是否改用演示模型由用户显式点击决定。
  */
 export class GenerateError extends Error {
-  constructor(message, { reason = 'fail', detail = '', jobId = '', tokenId = '', images = null } = {}) {
+  constructor(message, { reason = 'fail', detail = '', jobId = '', resumeKey = '', resumeUrl = '', tokenId = '', images = null } = {}) {
     super(message);
     this.name = 'GenerateError';
     this.reason = reason;
     this.detail = detail;
     this.jobId = jobId;
+    this.resumeKey = resumeKey; // 续等所需的查询键：hyper3d=subscriptionKey / fal=statusUrl
+    this.resumeUrl = resumeUrl; // fal 续等还需 responseUrl 取结果
     this.tokenId = tokenId; // 被云端拒掉的那张票的短哈希，用来判断用户有没有真的换票
     this.images = images; // 已压缩好的图，续等/重试时直接复用，不用再压一遍
   }
@@ -113,6 +115,8 @@ export async function generateModel({
   files,
   images: preset,
   resumeJobId,
+  resumeKey,
+  resumeUrl,
   title,
   precision,
   engine,
@@ -136,6 +140,8 @@ export async function generateModel({
       kind,
       images,
       resumeJobId: resumeJobId || undefined,
+      resumeKey: resumeKey || undefined,
+      resumeUrl: resumeUrl || undefined,
       title: title || undefined,
       precision: precision || undefined,
       engine: engine || undefined,
@@ -192,7 +198,9 @@ export async function generateModel({
         reader.cancel().catch(() => {});
         throw new GenerateError(payload.message || '生成超时（云端任务仍在继续）', {
           reason: 'timeout',
-          jobId: payload.detail || resumeJobId || '',
+          jobId: payload.jobId || payload.detail || resumeJobId || '',
+          resumeKey: payload.resumeKey || '',
+          resumeUrl: payload.resumeUrl || '',
           images,
         });
       }

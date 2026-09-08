@@ -1842,9 +1842,15 @@ function persistRealSpecsToPlan() {
  *
  * @param {{kind:'car'|'wheel', files?:File[], images?:Array, resumeJobId?:string}} args
  */
-async function runGenerate({ kind, files, images, resumeJobId }) {
+async function runGenerate({ kind, files, images, resumeJobId, resumeKey, resumeUrl }) {
   const u = uploaderOf(kind);
   const meta = KIND_META[kind];
+  // 实际使用的生成引擎（轮毂固定走 Hyper3D，与整车分离）；用于落盘在途指纹与透传给后端。
+  const engine = kind === 'wheel' ? app.params.wheelEngine || 'hyper3d' : app.params.engine;
+
+  // 生成是分钟级长任务：暂停工作室 60fps 渲染循环，降低移动端 GPU 负载，
+  // 减少页面被系统回收（jetsam）触发「闪退」。结束/失败再恢复（仅当仍在工作台）。
+  viewer.pause();
 
   /* 全新上传：整车先做视觉识别（车型 + 真车参数），轮毂**不做**。
    * 轮毂照片识别不出车型，跑一次视觉接口纯属浪费时间与额度，
@@ -1923,10 +1929,12 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
       files,
       images,
       resumeJobId,
+      resumeKey,
+      resumeUrl,
       title,
       precision: app.params.precision,
       // 轮毂固定走 Hyper3D Rodin：与整车同一家，轮辋/辐条几何与螺栓孔位更准。
-      engine: kind === 'wheel' ? app.params.wheelEngine || 'hyper3d' : app.params.engine,
+      engine,
       falHighPack: app.params.falHighPack,
       onProgress: (s) => {
         u.setProgress(s.progress);
@@ -1935,6 +1943,27 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
         if (s.stage === 'prompt' && s.prompt) {
           u.setDetail?.([s.taskNote || '', `Hyper3D prompt：${s.prompt}`]);
         }
+        // 云端受理即把任务指纹落盘：移动端页面被系统回收（jetsam）重载后，
+        // 凭 jobId/resumeKey 能挂回云端仍在跑的任务，不丢生成、不重复扣额度。
+        if (s.stage === 'accepted' && s.jobId) {
+          try {
+            localStorage.setItem(
+              'inspire-car-pending-generate',
+              JSON.stringify({
+                kind,
+                engine: engine || app.params.engine || 'hyper3d',
+                jobId: s.jobId,
+                resumeKey: s.resumeKey || '',
+                resumeUrl: s.resumeUrl || '',
+                planId: currentPlan?.id || '',
+                ts: Date.now(),
+              })
+            );
+          } catch {
+            /* localStorage 不可用时忽略，不影响本次生成 */
+          }
+        }
+        if (s.stage === 'done') clearPendingGenerate();
       },
     });
 
@@ -1968,7 +1997,83 @@ async function runGenerate({ kind, files, images, resumeJobId }) {
     handleGenerateError(kind, e);
   } finally {
     u.setProgress(0);
+    // 仅在仍处工作台时恢复渲染；若用户已返回车库（returnToGarage 已暂停），
+    // 不应在此强行 resume 一个隐藏画布，避免无谓的 GPU 占用。
+    const studioVisible = !document.getElementById('garage')?.classList.contains('hidden');
+    if (studioVisible) viewer.resume();
   }
+}
+
+/** 清除「在途生成」本地指纹（生成成功或确认作废时调用） */
+function clearPendingGenerate() {
+  try {
+    localStorage.removeItem('inspire-car-pending-generate');
+  } catch {
+    /* ignore */
+  }
+}
+
+const PENDING_GEN_TTL = 20 * 60 * 1000; // 20 分钟内视为可续等，超过则当作废清除
+
+/** 读取「在途生成」指纹（若存在且未过期） */
+function readPendingGenerate() {
+  try {
+    const raw = localStorage.getItem('inspire-car-pending-generate');
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p?.jobId) return null;
+    if (Date.now() - (p.ts || 0) > PENDING_GEN_TTL) {
+      clearPendingGenerate();
+      return null;
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+/** 启动后若有未完成的生成任务，弹横幅引导用户续等（页面被回收重载后尤其有用） */
+function checkPendingGenerateOnBoot() {
+  const pending = readPendingGenerate();
+  if (!pending) return;
+  const banner = document.createElement('div');
+  banner.id = 'pending-gen-banner';
+  banner.style.cssText =
+    'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:80;' +
+    'max-width:92vw;display:flex;gap:10px;align-items:center;padding:10px 14px;' +
+    'background:rgba(10,14,20,.94);border:1px solid #00e5ff;border-radius:12px;' +
+    'box-shadow:0 0 18px rgba(0,229,255,.35);color:#e8f6ff;font:600 13px/1.4 system-ui,sans-serif;';
+  banner.innerHTML =
+    `<span style="flex:1">上次生成仍在云端跑，要不要继续等它完成？</span>` +
+    `<button id="pg-resume" style="border:0;background:#00e5ff;color:#04121a;border-radius:8px;padding:7px 12px;font:700 13px system-ui;cursor:pointer">继续等待</button>` +
+    `<button id="pg-dismiss" style="border:1px solid #2a3a48;background:transparent;color:#9fb3c8;border-radius:8px;padding:7px 10px;font:600 12px system-ui;cursor:pointer">忽略</button>`;
+  document.body.appendChild(banner);
+  banner.querySelector('#pg-resume').addEventListener('click', () => {
+    banner.remove();
+    resumePendingGenerate(pending);
+  });
+  banner.querySelector('#pg-dismiss').addEventListener('click', () => {
+    banner.remove();
+    clearPendingGenerate();
+  });
+}
+
+/** 续等：重新进入对应方案的工作台，挂回云端已有任务（不重新提交、不重复扣额度） */
+async function resumePendingGenerate(pending) {
+  const plan = pending.planId ? garage?.getPlanById?.(pending.planId) : null;
+  if (!plan) {
+    clearPendingGenerate();
+    alert('上次生成任务已无法恢复，请重新上传照片生成。');
+    return;
+  }
+  // 进入工作台（载车/识别会在其中完成），随后用 jobId 续等云端任务
+  await enterTuner(plan);
+  runGenerate({
+    kind: pending.kind,
+    resumeJobId: pending.jobId,
+    resumeKey: pending.resumeKey || '',
+    resumeUrl: pending.resumeUrl || '',
+  });
 }
 
 /** 失败分级 UI：凭证失效 / 本地超时 / 普通失败，各走各的恢复路径 */
@@ -2030,7 +2135,14 @@ function handleGenerateError(kind, e) {
       {
         label: '继续等待这个任务',
         tone: 'primary',
-        onClick: () => runGenerate({ kind, images, resumeJobId: e.jobId }),
+        onClick: () =>
+          runGenerate({
+            kind,
+            images,
+            resumeJobId: e.jobId,
+            resumeKey: e.resumeKey || '',
+            resumeUrl: e.resumeUrl || '',
+          }),
       },
       demoAction,
     ]);
@@ -2627,6 +2739,8 @@ function mountGarageEntry() {
       enterTuner(plan);
     },
   });
+  // 挂载后检查是否有被页面回收中断的在途生成，给出续等入口
+  checkPendingGenerateOnBoot();
 }
 
 // 第二层顶部「返回灵感车库 · 保存」按钮

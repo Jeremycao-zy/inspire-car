@@ -253,21 +253,33 @@ async function handleGenerate(req, res) {
 
   const engine = body.engine || 'hyper3d';
 
+  // 兜底：任意引擎路径如果意外抛出未捕获异常，绝不能让 API 子进程退出
+  // （dev.mjs 会在子进程退出时连前端一起杀掉，表现为整页「闪退」）。
+  // 这里捕获后回一个错误阶段并正常结束 SSE。
+  const safeRun = async (fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error('[generate] 未捕获异常，已兜底为错误阶段：', e);
+      fail(`生成服务异常：${e?.message || e}`, String(e?.stack || '').slice(0, 500));
+    }
+  };
+
   /* ---------- 多引擎路由：HiGen3D（独立 key，与混元通道无关） ---------- */
   if (engine === 'higen3d') {
-    await runHigen3D({ kind, images, body, taskTitle, emit, fail, closed });
+    await safeRun(() => runHigen3D({ kind, images, body, taskTitle, emit, fail, closed }));
     return;
   }
 
   /* ---------- 多引擎路由：Hyper3D Rodin Gen-2.5 ---------- */
   if (engine === 'hyper3d') {
-    await runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed: () => closed });
+    await safeRun(() => runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed: () => closed }));
     return;
   }
 
   /* ---------- 多引擎路由：fal.ai 上的 Rodin（按次计费，精度更高，无每日上限） ---------- */
   if (engine === 'fal') {
-    await runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed: () => closed });
+    await safeRun(() => runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed: () => closed }));
     return;
   }
 
@@ -373,9 +385,9 @@ async function handleGenerate(req, res) {
         fail(`提交失败：${e.message}`, e.stack);
         return;
       }
-      emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 JobId=${jobId.slice(0, 12)}…` });
+      emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 JobId=${jobId.slice(0, 12)}…`, jobId });
     } else {
-      emit({ stage: 'accepted', progress: 0.12, message: `继续等待任务 ${jobId.slice(0, 12)}…` });
+      emit({ stage: 'accepted', progress: 0.12, message: `继续等待任务 ${jobId.slice(0, 12)}…`, jobId });
     }
 
     // 轮询（混元 3D 单张通常 2~5 分钟）
@@ -415,7 +427,7 @@ async function handleGenerate(req, res) {
 
     if (!result) {
       // 超时：保留 JobId，前端可点「继续等待 8 分钟」续等（不判死）
-      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: jobId });
+      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: jobId, jobId });
       if (!closed) res.end();
       return;
     }
@@ -574,6 +586,23 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     };
     const tier = TIER[body.precision] || 'Gen-2.5-High';
 
+    const resumeJobId = body.resumeJobId || null;
+    let taskUuid;
+    let subscriptionKey;
+
+    if (resumeJobId) {
+      // 续等：跳过重新提交，直接挂回云端已有任务（不重复消耗额度）。
+      // 客户端因页面重载/断网丢失了 SSE，但云端任务仍在跑，用 resumeJobId 重新轮询即可。
+      taskUuid = resumeJobId;
+      subscriptionKey = body.resumeKey || '';
+      emit({
+        stage: 'accepted',
+        progress: 0.12,
+        message: `继续等待任务 ${String(taskUuid).slice(0, 12)}…`,
+        jobId: taskUuid,
+        resumeKey: subscriptionKey,
+      });
+    } else {
     emit({
       stage: 'submit',
       progress: 0.05,
@@ -609,24 +638,28 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
       fail(`提交失败：${e.message}`, e.stack);
       return;
     }
-    emit({
-      stage: 'accepted',
-      progress: 0.12,
-      message: `任务已受理 ${String(sub.taskUuid).slice(0, 12)}…`,
-    });
+      taskUuid = sub.taskUuid;
+      subscriptionKey = sub.subscriptionKey;
+      emit({
+        stage: 'accepted',
+        progress: 0.12,
+        message: `任务已受理 ${String(taskUuid).slice(0, 12)}…`,
+        jobId: taskUuid,
+        resumeKey: subscriptionKey,
+      });
+    }
 
     // 轮询（Gen-2.5 通常 1~4 分钟，大车/高精档可能更久，上限默认 15 分钟）
     const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 15 * 60 * 1000);
     const interval = Number(process.env.POLL_INTERVAL_MS || 5000);
     let tick = 0;
     let done = false;
-    const taskUuid = sub.taskUuid;
     while (Date.now() < deadline) {
       if (closed) return;
       await sleep(interval);
       let jobs;
       try {
-        jobs = await hyper3d.queryStatus(sub.subscriptionKey);
+        jobs = await hyper3d.queryStatus(subscriptionKey);
       } catch (e) {
         if (hyper3d.classifyError(e) === 'auth') {
           authError(e);
@@ -637,6 +670,11 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
         return;
       }
       tick += 1;
+      if (!jobs || !Array.isArray(jobs)) {
+        fail('查询任务状态失败，请重试', JSON.stringify(jobs).slice(0, 200));
+        logGenError('hyper3d', 'query-empty', new Error('jobs not array'), { subscriptionKey });
+        return;
+      }
       const anyFail = jobs.some((j) => hyper3d.STATUS.FAIL.includes(j.status));
       const allDone = jobs.length > 0 && jobs.every((j) => hyper3d.STATUS.DONE.includes(j.status));
       if (anyFail) {
@@ -657,7 +695,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
 
     if (!done) {
       logGenError('hyper3d', 'timeout', new Error('生成轮询超时'), { taskUuid });
-      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: taskUuid });
+      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: taskUuid, jobId: taskUuid, resumeKey: subscriptionKey });
       if (!closed) res.end();
       return;
     }
@@ -827,6 +865,23 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
     // HighPack：4K 贴图 + 高模，画质更好但按 3 倍计费，默认不开
     const addons = body.falHighPack ? ['HighPack'] : [];
 
+    const resumeJobId = body.resumeJobId || null;
+    let statusUrl;
+    let responseUrl;
+
+    if (resumeJobId) {
+      // 续等：跳过重新提交，直接挂回云端已有任务（不重复计费）
+      statusUrl = body.resumeKey || '';
+      responseUrl = body.resumeUrl || '';
+      emit({
+        stage: 'accepted',
+        progress: 0.12,
+        message: `继续等待任务 ${String(resumeJobId).slice(0, 12)}…`,
+        jobId: resumeJobId,
+        resumeKey: statusUrl,
+        resumeUrl: responseUrl,
+      });
+    } else {
     emit({
       stage: 'submit',
       progress: 0.05,
@@ -863,7 +918,10 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
       fail(`提交失败：${e.message}`, e.stack);
       return;
     }
-    emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 ${String(sub.requestId).slice(0, 12)}…` });
+      statusUrl = sub.statusUrl;
+      responseUrl = sub.responseUrl;
+      emit({ stage: 'accepted', progress: 0.12, message: `任务已受理 ${String(sub.requestId).slice(0, 12)}…`, jobId: sub.requestId, resumeKey: statusUrl, resumeUrl: responseUrl });
+    }
 
     // 轮询
     const deadline = Date.now() + Number(process.env.MAX_POLL_MS || 15 * 60 * 1000);
@@ -875,7 +933,7 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
       await sleep(interval);
       let st;
       try {
-        st = await fal.queryStatus(sub.statusUrl, f.token);
+        st = await fal.queryStatus(statusUrl, f.token);
       } catch (e) {
         if (fal.classifyError(e) === 'auth') {
           emit({ stage: 'auth_error', progress: 1, message: 'fal.ai Key 无效或已失效，请换一个 Key' });
@@ -901,14 +959,14 @@ async function runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed })
     }
 
     if (!done) {
-      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: sub.requestId });
+      emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: sub?.requestId || resumeJobId, jobId: resumeJobId, resumeKey: statusUrl, resumeUrl: responseUrl });
       return;
     }
 
     emit({ stage: 'downloading', progress: 0.93, message: '下载模型…' });
     let buf = null;
     try {
-      const result = await fal.getResult(sub.responseUrl, f.token);
+      const result = await fal.getResult(responseUrl, f.token);
       buf = await fal.downloadBuffer(result.meshUrl);
     } catch (e) {
       if (fal.classifyError(e) === 'auth') {
