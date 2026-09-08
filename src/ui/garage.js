@@ -693,6 +693,10 @@ export function mountGarage({ onEnter, mount } = {}) {
       upsertPlan(plan);
       renderGrid();
     },
+    getPlanById(id) {
+      const plans = readPlans() || [];
+      return plans.find((p) => p.id === id) || null;
+    },
     dispose,
   };
 }
