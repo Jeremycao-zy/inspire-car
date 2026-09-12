@@ -6,6 +6,9 @@
       "key": "mercedes-sl350-r230",
       "brand": "奔驰",
       "model": "SL 350",
+      "series": [
+        "SL"
+      ],
       "yearRange": "2002-2011",
       "aliases": [
         "奔驰SL350",
@@ -39,6 +42,10 @@
       "key": "toyota-gr-supra-a90",
       "brand": "丰田",
       "model": "GR Supra",
+      "series": [
+        "Supra",
+        "GR Supra"
+      ],
       "yearRange": "2019-",
       "aliases": [
         "丰田GR Supra",
@@ -70,6 +77,9 @@
       "key": "honda-nsx-nc1",
       "brand": "本田",
       "model": "NSX",
+      "series": [
+        "NSX"
+      ],
       "yearRange": "2016-2022",
       "aliases": [
         "本田NSX",
@@ -101,6 +111,9 @@
       "key": "porsche-911-carrera-992",
       "brand": "保时捷",
       "model": "911 Carrera",
+      "series": [
+        "911"
+      ],
       "yearRange": "2018-",
       "aliases": [
         "保时捷911",
@@ -132,6 +145,10 @@
       "key": "toyota-86-gr86",
       "brand": "丰田",
       "model": "86",
+      "series": [
+        "86",
+        "GR86"
+      ],
       "yearRange": "2012-",
       "aliases": [
         "丰田86",
@@ -165,6 +182,11 @@
       "key": "bmw-3series-g20-330i",
       "brand": "宝马",
       "model": "3 系 330i",
+      "series": [
+        "3系",
+        "3 Series",
+        "3系"
+      ],
       "yearRange": "2018-",
       "aliases": [
         "宝马3系",
@@ -197,6 +219,10 @@
       "key": "honda-civic-typer-fk8",
       "brand": "本田",
       "model": "思域 Type R",
+      "series": [
+        "思域",
+        "Civic"
+      ],
       "yearRange": "2017-2021",
       "aliases": [
         "本田思域",
@@ -229,6 +255,10 @@
       "key": "tesla-model3",
       "brand": "特斯拉",
       "model": "Model 3",
+      "series": [
+        "Model 3",
+        "Model3"
+      ],
       "yearRange": "2017-",
       "aliases": [
         "特斯拉Model 3",
@@ -258,6 +288,10 @@
       "key": "toyota-rav4-xa50",
       "brand": "丰田",
       "model": "RAV4",
+      "series": [
+        "RAV4",
+        "Rav4"
+      ],
       "yearRange": "2018-",
       "aliases": [
         "丰田RAV4",
@@ -286,6 +320,10 @@
       "key": "honda-crv-rw",
       "brand": "本田",
       "model": "CR-V",
+      "series": [
+        "CR-V",
+        "CRV"
+      ],
       "yearRange": "2017-2022",
       "aliases": [
         "本田CR-V",
@@ -316,6 +354,9 @@
       "key": "bmw-x5-g05",
       "brand": "宝马",
       "model": "X5",
+      "series": [
+        "X5"
+      ],
       "yearRange": "2018-",
       "aliases": [
         "宝马X5",
@@ -344,6 +385,10 @@
       "key": "ford-f150",
       "brand": "福特",
       "model": "F-150",
+      "series": [
+        "F-150",
+        "F150"
+      ],
       "yearRange": "2015-",
       "aliases": [
         "福特F-150",
