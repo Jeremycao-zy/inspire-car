@@ -93,6 +93,40 @@ function clearDraft() {
 }
 
 /**
+ * 生成缩略图 Blob（只用于预览）。
+ *
+ * ⚠️ 这是"拍照环节一切横屏就崩"的根因：
+ * 手机相机原图动辄 1000~1200 万像素，浏览器解码一张要 ~48MB 内存，5 张就是 200MB+。
+ * 原先直接 `thumb.src = URL.createObjectURL(file)` 拿原图当缩略图，
+ * 而**横竖屏切换会让浏览器重新解码所有可见图片**，内存瞬间冲到峰值把标签页顶崩。
+ *
+ * 这里统一压到 maxSide 以内再显示，单张降到几十 KB，重解码的代价可以忽略。
+ * 注意：只影响预览；上传建模仍然用原始 file，生成质量不受影响。
+ */
+async function makeThumbBlob(file, maxSide = 420) {
+  try {
+    if (!file || !file.type.startsWith('image/')) return null;
+    const bmp = await createImageBitmap(file).catch(() => null);
+    if (!bmp) return null;
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close?.(); // 立刻释放位图，不等 GC
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+    c.width = 0; // 释放画布后备存储
+    c.height = 0;
+    return blob;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {Object} opts
  * @param {(result: {url:string, mode:string, files:File[]}) => void} opts.onModeled
  * @param {() => void} [opts.onCancel]
@@ -300,11 +334,23 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     if (file && file.type.startsWith('image/')) {
       filesById[id] = file;
       if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);
-      thumb.src = URL.createObjectURL(file);
+      // 先清空，别让上一张的解码位图继续占内存
+      thumb.src = '';
       thumb.classList.remove('hidden');
       uploadZone.classList.add('hidden');
       retake.classList.remove('hidden');
       card.classList.add('photo-guide__card--done');
+      // 用压缩后的缩略图显示（原图解码会吃掉几十 MB，横竖屏切换重解码时直接崩）
+      makeThumbBlob(file)
+        .then((blob) => {
+          if (filesById[id] !== file) return; // 期间又换图/清空了，丢弃这次结果
+          if (!blob) {
+            thumb.src = URL.createObjectURL(file); // 极端情况兜底
+            return;
+          }
+          thumb.src = URL.createObjectURL(blob);
+        })
+        .catch(() => {});
     } else {
       filesById[id] = null;
       if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);

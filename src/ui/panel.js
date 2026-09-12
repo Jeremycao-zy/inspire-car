@@ -26,6 +26,35 @@ import {
   DELTA_OK_MM as DELTA_OK,
 } from '../tuning/suspension.js';
 
+/**
+ * 生成缩略图 Blob（只用于预览）。
+ * 相机/相册原图动辄 1000~1200 万像素，浏览器解码一张要 ~48MB；原先直接拿原图
+ * `URL.createObjectURL` 当缩略图，多张并存 + 横竖屏切换时浏览器重新解码可见图片，
+ * 内存瞬间冲到峰值把页面顶崩。这里统一压到小尺寸再显示，生成质量不受影响
+ * （建模上传仍用原始 file）。
+ */
+async function makeThumbBlob(file, maxSide = 420) {
+  try {
+    if (!file || !file.type.startsWith('image/')) return null;
+    const bmp = await createImageBitmap(file).catch(() => null);
+    if (!bmp) return null;
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    bmp.close?.(); // 立刻释放位图，不等 GC
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+    c.width = 0;
+    c.height = 0;
+    return blob;
+  } catch {
+    return null;
+  }
+}
+
 /* ---------------------------- DOM 小工具 ---------------------------- */
 
 function el(tag, props = {}, ...children) {
@@ -204,10 +233,22 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
       bar.firstChild.style.width = `${Math.round(p * 100)}%`;
     },
     setThumbs(files) {
+      // 回收上一轮的 blob URL（原实现只管创建、从不 revoke，会越积越多）
+      const prev = thumbs._blobUrls || [];
+      for (const u of prev) URL.revokeObjectURL(u);
+      thumbs._blobUrls = [];
       thumbs.innerHTML = '';
       for (const f of files) {
-        const url = URL.createObjectURL(f);
-        thumbs.appendChild(el('img', { src: url, class: 'thumb', title: f.name }));
+        const img = el('img', { src: '', class: 'thumb', title: f.name });
+        thumbs.appendChild(img);
+        // 用压缩缩略图显示，避免原图解码吃掉几十 MB（横竖屏切换会重新解码）
+        makeThumbBlob(f)
+          .then((blob) => {
+            const url = URL.createObjectURL(blob || f);
+            thumbs._blobUrls.push(url);
+            img.src = url;
+          })
+          .catch(() => {});
       }
     },
     /** 取当前任务名称（trim 后） */
