@@ -262,9 +262,12 @@ function mountAiOrb() {
   /* 服务端音色（百炼 qwen-tts）：系统默认中文音色机械感重、各平台还不一致，
      优先用服务端合成；失败或无 key 时自动退回浏览器 speechSynthesis。 */
   let audioEl = null;
+  // 1px 静音 WAV：用于在用户手势内预热「真正的播放元素」本身。
+  // iOS Safari 要求被异步播放的元素本身就在手势里被 play 过，临时元素无法解锁。
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
   // 音频解锁：部分浏览器（尤其 iOS Safari）要求媒体播放由用户手势直接触发。
-  // 在首次点击时预热，使异步拿到 TTS 音频后仍能顺利播放，避免被自动播放策略拦截后
-  // 静默退回系统语音。
+  // 关键：预热「真正的播放元素 audioEl 本身」而非临时元素——否则异步拿到 TTS
+  // 音频后再 play 会被自动播放策略拦截，静默退回系统语音。
   let audioUnlocked = false;
   function unlockAudio() {
     if (audioUnlocked) return;
@@ -274,10 +277,12 @@ function mountAiOrb() {
       if (Ctx) { const c = new Ctx(); c.resume?.(); }
     } catch { /* ignore */ }
     try {
-      const a = new Audio();
-      a.muted = true;
-      a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-      a.play().then(() => a.pause()).catch(() => {});
+      if (!audioEl) audioEl = new Audio();
+      audioEl.muted = true;
+      audioEl.src = SILENT_WAV;
+      audioEl.play()
+        .then(() => { try { audioEl.pause(); audioEl.currentTime = 0; } catch {} })
+        .catch(() => {});
     } catch { /* ignore */ }
   }
   function stopAudio() {
@@ -325,19 +330,34 @@ function mountAiOrb() {
           if (!audioEl) audioEl = new Audio();
           const url = URL.createObjectURL(blob);
           stopAudio();
+          audioEl.muted = false;
           audioEl.src = url;
-          audioEl.onended = () => {
-            wrap.classList.remove('is-speaking');
-            URL.revokeObjectURL(url);
-          };
-          audioEl.onerror = () => {
-            wrap.classList.remove('is-speaking');
-            URL.revokeObjectURL(url);
-          };
-          await audioEl.play().catch(() => {
-            throw new Error('play blocked');
-          });
-          return;
+          // 先尝试播放；若被自动播放策略拦截，稍后重试一次
+          // （用户此前已交互过，多数浏览器此时已解锁）
+          let played = false;
+          try {
+            await audioEl.play();
+            played = true;
+          } catch {
+            try {
+              await new Promise((r) => setTimeout(r, 60));
+              await audioEl.play();
+              played = true;
+            } catch {
+              /* 仍被拦截 */
+            }
+          }
+          if (played) {
+            audioEl.onended = () => {
+              wrap.classList.remove('is-speaking');
+              URL.revokeObjectURL(url);
+            };
+            audioEl.onerror = () => {
+              wrap.classList.remove('is-speaking');
+              URL.revokeObjectURL(url);
+            };
+            return;
+          }
         }
       }
       throw new Error('tts unavailable');
@@ -468,9 +488,9 @@ function mountAiOrb() {
     }
   });
   closeBtn.addEventListener('click', closePanel);
-  sendBtn.addEventListener('click', () => { const v = ta.value.trim(); if (v) send(v); });
+  sendBtn.addEventListener('click', () => { unlockAudio(); const v = ta.value.trim(); if (v) send(v); });
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = ta.value.trim(); if (v) send(v); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockAudio(); const v = ta.value.trim(); if (v) send(v); }
   });
 
   /* ---------- 生命周期 ---------- */
