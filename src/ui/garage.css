@@ -284,7 +284,9 @@
 
 .garage-hero__preview {
   position: relative;
-  height: 260px;
+  /* 260 → 300：给车模更多竖向空间。原先 260px 时车容易被下边缘硬切；
+     现在相机已按容器比例自适应取景（见 garage.js fitCamera），这里再补一点余量让车更舒展。 */
+  height: 300px;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
