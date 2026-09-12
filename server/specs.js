@@ -130,11 +130,25 @@ function loadOfficialDb() {
  * @param {string} query
  * @returns {{car:Object, score:number}|null}
  */
-function lookupOfficialDb(query) {
+/** 判断年份是否落在 "2002-2011" / "2019-" / "2016-2022" 这类区间内 */
+function yearInRange(year, range) {
+  const y = Number(year);
+  if (!Number.isFinite(y)) return false; // 没给年份 → 不参与车系级判定
+  const m = String(range || '').match(/(\d{4})\s*-\s*(\d{4})?/);
+  if (!m) return false;
+  const lo = Number(m[1]);
+  const hi = m[2] ? Number(m[2]) : Infinity;
+  return y >= lo && y <= hi;
+}
+
+function lookupOfficialDb(query, year) {
   const q = normalizeName(query);
   if (!q) return null;
   const db = loadOfficialDb();
-  let best = null;
+
+  let exact = null; // 精确 / 别名 / 品牌+车型子串命中
+  const seriesHits = []; // 车系级命中（识别常只给到车系，如「奔驰 SL」）
+
   for (const car of db.cars) {
     const candidates = [
       normalizeName(car.key),
@@ -148,11 +162,28 @@ function lookupOfficialDb(query) {
       const brandModel = normalizeName(`${car.brand}${car.model}`);
       if (brandModel && q.includes(brandModel)) score = MATCH_THRESHOLD; // 核心车型命中
     }
-    if (score >= MATCH_THRESHOLD && (!best || score > best.score)) {
-      best = { car, score };
+    if (score >= MATCH_THRESHOLD && (!exact || score > exact.score)) {
+      exact = { car, score };
+      continue;
+    }
+    // 车系级：识别结果常常只有车系（"奔驰SL 2005"），不含具体型号（"SL 350"），
+    // 这时精确/核心规则都会落空，退化成 LLM 猜测 —— 而猜测值可能明显偏离原厂
+    // （实测：奔驰 SL 2005 会被猜成 17 寸/225 胎，官方库是 18 寸/255 胎）。
+    // 因此补一层：品牌+车系 命中 且 年份落在区间内 → 采信官方库。
+    for (const s of car.series || []) {
+      const bs = normalizeName(`${car.brand}${s}`);
+      if (bs && q.includes(bs) && yearInRange(year, car.yearRange)) {
+        seriesHits.push({ car, score: 0.9 });
+        break;
+      }
     }
   }
-  return best;
+
+  if (exact) return exact;
+  if (seriesHits.length === 1) return seriesHits[0];
+  // 多个车系候选（如 SL350 / SL55 同为 SL 车系）→ 无法判断是哪个具体型号，
+  // 宁可交回 LLM 也不要给错数据。
+  return null;
 }
 
 export function extractJson(text) {
@@ -243,7 +274,8 @@ export async function carSpecs(fullName, { year } = {}) {
 
   // ① DB 优先：命中且核心尺寸（长/宽/高/轴距）齐全 → 直接返回验证过的官方库数据
   //    （高可信、零额度，不消耗大模型调用）。
-  const hit = lookupOfficialDb(name);
+  // 传入 year：车系级匹配（如「奔驰 SL」）需要靠年份才能确定具体型号
+  const hit = lookupOfficialDb(name, year);
   const ESSENTIAL = ['length', 'width', 'height', 'wheelbase'];
   if (hit && ESSENTIAL.every((k) => Number.isFinite(hit.car.specs?.[k]))) {
     const sp = hit.car.specs;
