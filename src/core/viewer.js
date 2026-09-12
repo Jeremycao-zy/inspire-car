@@ -44,6 +44,7 @@ export function createViewer(container, opts = {}) {
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
+  renderer.domElement.id = 'main-viewer-canvas'; // 供全站音效识别「车身旋转」拖拽
 
   /* ---------- 场景 ---------- */
   const scene = new THREE.Scene();
