@@ -42,6 +42,7 @@ import { mountPhotoGuide } from './ui/photoGuide.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
 import { fetchMe } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
+import { installGlobalSfx } from './ui/sfx.js';
 import './ui/styles.css';
 
 /** 文件指纹：同一张照片反复选择时 name/size/lastModified 一致，用于额度用尽后的去重拦截 */
@@ -2758,6 +2759,7 @@ async function bootGarage() {
 
 function mountGarageEntry() {
   // 已登录：确保浮层隐藏，挂载/重挂车库
+  installGlobalSfx(); // 全站操作音效（滑块/卡片/车身旋转/按钮）；首个用户手势解锁音频上下文
   garage = mountGarage({
     onEnter(plan) {
       // 新方案 / 还没有真实车模的方案 → 先走拍照引导，建模完成后再进 studio
