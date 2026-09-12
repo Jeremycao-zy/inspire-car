@@ -1006,7 +1006,38 @@ export function createPanel(app, mount) {
     )
   );
 
-  tabBodies.body.appendChild(section('整车模型', carUpload.zone));
+  /* 整车模型：车模统一由上游「拍照引导」生成（photoGuide 直调生成接口，不经此处），
+     原先这里还摆一个"上传整车照片"的大框，是并行的冗余入口 —— 用户进了工作室
+     再看到它就属于多余信息，默认收起。
+     ⚠️ 不能把 carUpload.zone 从 DOM 摘掉：生成进度、失败恢复按钮、
+     「继续等待上次生成」横幅、以及任务名称读取都仍然写进/读自它，摘掉会静默失效。 */
+  const carZoneWrap = el('div', { class: 'regen-zone is-collapsed' }, carUpload.zone);
+  tabBodies.body.appendChild(
+    section(
+      '整车模型',
+      el(
+        'div',
+        { class: 'fine' },
+        el(
+          'div',
+          { class: 'regen-bar' },
+          el('span', { class: 'ctl-hint' }, '整车模型由「新建方案 → 拍照引导」自动生成'),
+          el(
+            'button',
+            {
+              class: 'btn small',
+              onclick: (e) => {
+                const collapsed = carZoneWrap.classList.toggle('is-collapsed');
+                e.target.textContent = collapsed ? '↻ 重新生成整车模型' : '收起';
+              },
+            },
+            '↻ 重新生成整车模型'
+          )
+        ),
+        carZoneWrap
+      )
+    )
+  );
   tabBodies.body.appendChild(section('车身朝向', orientBox));
   tabBodies.body.appendChild(section('拆解部件（Hyper3D BANG）', bangBox));
   tabBodies.body.appendChild(section('车型数据', vehicleBox));
