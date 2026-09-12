@@ -42,14 +42,14 @@ function mountAiOrb() {
   label.textContent = 'AI';
   const hint = document.createElement('div');
   hint.className = 'ai-orb__hint';
-  hint.textContent = '点我对话';
+  hint.textContent = '点我说话';
   wrap.append(canvas, label, hint);
   document.body.appendChild(wrap);
 
   /* ---------- Three.js 点阵球 ---------- */
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-  const SIZE = 112;
+  const SIZE = 132;
   renderer.setSize(SIZE, SIZE, false);
 
   const scene = new THREE.Scene();
@@ -213,7 +213,122 @@ function mountAiOrb() {
     panel.classList.remove('open');
   }
 
-  wrap.addEventListener('click', openPanel);
+  /* ---------- 语音交互：点一下球体直接开始听，不弹面板 ---------- */
+  const caption = document.createElement('div');
+  caption.className = 'ai-orb__caption';
+  document.body.appendChild(caption);
+  let captionTimer = 0;
+  function showCaption(text, autoHideMs = 4000) {
+    caption.textContent = text;
+    caption.classList.add('show');
+    clearTimeout(captionTimer);
+    if (autoHideMs) {
+      captionTimer = setTimeout(() => caption.classList.remove('show'), autoHideMs);
+    }
+  }
+
+  /** 向 /api/chat 取一次回复（语音链路用，不依赖面板） */
+  async function ask(text) {
+    history.push({ role: 'user', content: text });
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: history.slice(-12), stream: false }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    const reply = (data && data.reply) || '抱歉，我这边没接上，能再说一次吗？';
+    history.push({ role: 'assistant', content: reply });
+    return reply;
+  }
+
+  /** 朗读回复 */
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      u.rate = 1.02;
+      const clear = () => wrap.classList.remove('is-speaking');
+      u.onend = clear;
+      u.onerror = clear;
+      wrap.classList.add('is-speaking');
+      window.speechSynthesis.speak(u);
+    } catch {
+      wrap.classList.remove('is-speaking');
+    }
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recog = null;
+  let listening = false;
+
+  function stopListening() {
+    listening = false;
+    wrap.classList.remove('is-listening');
+    try {
+      recog?.stop();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (SR) {
+    recog = new SR();
+    recog.lang = 'zh-CN';
+    recog.interimResults = true;
+    recog.continuous = false;
+    recog.onstart = () => {
+      listening = true;
+      wrap.classList.add('is-listening');
+      showCaption('正在聆听…', 0);
+    };
+    recog.onresult = async (ev) => {
+      const text = Array.from(ev.results)
+        .map((r) => r[0].transcript)
+        .join('')
+        .trim();
+      if (!ev.results[0].isFinal) {
+        if (text) showCaption(text, 0); // 实时字幕
+        return;
+      }
+      stopListening();
+      if (!text) return;
+      showCaption(`你说：${text}\n思考中…`, 0);
+      try {
+        const reply = await ask(text);
+        showCaption(reply, 7000);
+        speak(reply);
+      } catch {
+        showCaption('网络好像不太稳，稍后再试一次。', 4000);
+      }
+    };
+    recog.onerror = () => {
+      stopListening();
+      showCaption('没听清，再点一次试试。', 3000);
+    };
+    recog.onend = () => stopListening();
+  }
+
+  wrap.addEventListener('click', () => {
+    // 正在听 → 再点一次结束
+    if (listening) {
+      stopListening();
+      caption.classList.remove('show');
+      return;
+    }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    wrap.classList.remove('is-speaking');
+    if (!recog) {
+      openPanel(); // 浏览器不支持语音识别 → 退回文字面板
+      return;
+    }
+    try {
+      recog.start();
+    } catch {
+      /* 已在运行 */
+    }
+  });
   closeBtn.addEventListener('click', closePanel);
   sendBtn.addEventListener('click', () => { const v = ta.value.trim(); if (v) send(v); });
   ta.addEventListener('keydown', (e) => {
@@ -231,6 +346,20 @@ function mountAiOrb() {
   }
   function dispose() {
     pause();
+    try {
+      recog?.abort?.();
+    } catch {
+      /* ignore */
+    }
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        /* ignore */
+      }
+    }
+    clearTimeout(captionTimer);
+    caption.remove();
     renderer.dispose();
     geo.dispose();
     mat.dispose();

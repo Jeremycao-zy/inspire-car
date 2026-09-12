@@ -662,7 +662,10 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, isClosed 
     let tick = 0;
     let done = false;
     while (Date.now() < deadline) {
-      if (isClosed?.()) return;
+      // 关键：客户端断开**不退出轮询**，让任务在服务端继续跑完（后台生成）。
+      // 之前一断开就 return，云端任务仍在跑却没人接管，用户回来只能干等或重做，
+      // 等于"离开页面 = 这次生成作废"。emit() 对已关闭连接本身就会跳过写事件，
+      // 所以继续轮询是安全的；结果照样落盘，客户端之后带 resumeJobId 重连即可领取。
       await sleep(interval);
       let jobs;
       try {
