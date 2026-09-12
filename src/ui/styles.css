@@ -1105,6 +1105,22 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
+/* ---- 整车模型：重新生成入口（默认收起上传区，避免与上游拍照引导重复） ---- */
+.regen-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.regen-bar .ctl-hint {
+  margin: 0;
+  flex: 1;
+}
+/* 收起态：整块上传区隐藏，但节点仍在 DOM 中（生成进度/续等横幅/任务名读写依赖它） */
+.regen-zone.is-collapsed {
+  display: none;
+}
+
 /* ---- 任务名称（车型识别回填 / 手动修改） ---- */
 .task-name-wrap {
   display: flex;
