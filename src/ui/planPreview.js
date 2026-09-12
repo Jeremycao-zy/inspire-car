@@ -63,13 +63,69 @@ export function previewParamsOf(plan) {
 const _carPromiseByUrl = new Map();
 
 /**
- * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存）。
+ * 源车身缓存上限（份数）。
+ *
+ * ⚠️ 这里原先是**无上限**缓存，而每个方案的车型 URL 各不相同、单份 GLB 解析后
+ * 高达 30~48MB：用户每点开一个方案就永久占用一份，反复切换/新建几次就能堆到几百 MB，
+ * 正好命中以前踩过的 iOS Safari jetsam —— GPU/内存超限后系统直接杀掉 WebContent 进程，
+ * 页面表现就是「闪退 / 闪回初始页」。现在改成上限受控的 LRU。
+ */
+const CAR_SOURCE_CACHE_MAX = 2;
+
+/**
+ * 释放一份源车身占用的显存/内存。
+ * **只释放 Mesh 的几何**，两条边界：
+ * 1. 材质与贴图是和卡片实例共享的（见 deepCloneCar），在这里销毁会让正在显示的卡片失效；
+ * 2. deepCloneCar 只对 isMesh 做了 geometry.clone()，所以 Points/Line 的几何是**共享**的，
+ *    一起 dispose 会误伤还在显示的卡片 —— 这里必须与 deepCloneCar 的处理范围严格一致。
+ */
+function disposeCarSource(group) {
+  if (!group) return;
+  try {
+    group.traverse((o) => {
+      if (o.isMesh) o.geometry?.dispose?.();
+    });
+  } catch {
+    /* 源可能已被拆掉，忽略 */
+  }
+}
+
+/** 淘汰超出上限的缓存项（LRU：Map 的迭代顺序即插入顺序） */
+function evictCarSourceCache() {
+  while (_carPromiseByUrl.size > CAR_SOURCE_CACHE_MAX) {
+    const oldestKey = _carPromiseByUrl.keys().next().value;
+    const p = _carPromiseByUrl.get(oldestKey);
+    _carPromiseByUrl.delete(oldestKey);
+    Promise.resolve(p)
+      .then((g) => disposeCarSource(g))
+      .catch(() => {});
+  }
+}
+
+/** 车库卸载/离开时彻底清空解析缓存，别让整份车模常驻内存 */
+export function clearCarSourceCache() {
+  for (const p of _carPromiseByUrl.values()) {
+    Promise.resolve(p)
+      .then((g) => disposeCarSource(g))
+      .catch(() => {});
+  }
+  _carPromiseByUrl.clear();
+}
+
+/**
+ * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存，上限受控）。
  * 优先用方案里用户提交的车型（plan.carModelUrl）；地址缺失或加载失败时
  * 回退到系统默认 SL 350 演示车，绝不因车型缺失而白屏。
  */
 function loadCarSource(url) {
   const key = url || PRESET_CAR_URL;
-  if (_carPromiseByUrl.has(key)) return _carPromiseByUrl.get(key);
+  if (_carPromiseByUrl.has(key)) {
+    // 命中即"最近使用"：挪到队尾，避免被 LRU 淘汰掉正在用的那份
+    const cached = _carPromiseByUrl.get(key);
+    _carPromiseByUrl.delete(key);
+    _carPromiseByUrl.set(key, cached);
+    return cached;
+  }
   const p = loadGLB(key, { progress: false })
     .then(({ group }) => group)
     .catch((e) => {
@@ -78,6 +134,7 @@ function loadCarSource(url) {
       return loadCarSource(); // 回退到默认车（默认已缓存或正在加载）
     });
   _carPromiseByUrl.set(key, p);
+  evictCarSourceCache();
   return p;
 }
 
@@ -131,11 +188,16 @@ class PreviewEngine {
     this.decorCache = new Map(); // decorKey -> 模板 Group（共享几何/贴图）
     this.ok = false;
     this.raf = 0;
+    // 卡片滑出视口后，延迟多久释放它的克隆几何（毫秒）。
+    // 每张已构建的卡片都持有一份 30~48MB 的车模克隆（deepCloneCar 会 clone 全部几何），
+    // 滚过的方案越多、显存堆积越多 —— 这正是移动端反复进出方案后被系统杀进程的原因之一。
+    // 延迟是为了避免快速来回滚动时反复构建/销毁。
+    this.releaseOffscreenMs = 4000;
 
     this._createRenderer();
     if (!this.ok) return;
 
-    // 视口可见性：滑入才渲染/构建，滑出暂停
+    // 视口可见性：滑入才渲染/构建，滑出先暂停、再释放
     if ('IntersectionObserver' in window) {
       this.io = new IntersectionObserver(
         (entries) => {
@@ -143,9 +205,25 @@ class PreviewEngine {
             const inst = this.instances.get(e.target);
             if (!inst) continue;
             inst.visible = e.isIntersecting;
-            if (inst.visible && !inst.built && !inst.building) this._build(inst);
-            // 重新滑入视口 → 补一帧（卡片是静态侧视，一帧就够）
-            if (inst.visible && inst.built) this._markDirty(inst);
+
+            if (inst.visible) {
+              // 重新进入视口：取消待执行的释放，必要时重建，再补一帧
+              if (inst.offscreenTimer) {
+                clearTimeout(inst.offscreenTimer);
+                inst.offscreenTimer = 0;
+              }
+              if (!inst.built && !inst.building) this._build(inst);
+              else if (inst.built) this._markDirty(inst); // 卡片是静态侧视，一帧就够
+            } else if (inst.built && this.releaseOffscreenMs > 0) {
+              // 离开视口：到期释放本实例的克隆几何（画布保留最后一帧，不闪白）
+              if (inst.offscreenTimer) clearTimeout(inst.offscreenTimer);
+              inst.offscreenTimer = setTimeout(() => {
+                inst.offscreenTimer = 0;
+                if (!inst.visible && inst.built && !inst.building) {
+                  this._disposeInstance(inst);
+                }
+              }, this.releaseOffscreenMs);
+            }
           }
         },
         { threshold: 0.05 }
@@ -246,6 +324,10 @@ class PreviewEngine {
       built: false,
       building: false,
       ro: null,
+      // 世代令牌：每次释放/卸载实例就 +1。buildScene 里 await 回来后据此判断
+      // 「这次构建结果是否已经作废」，避免滑出视口期间完成的构建被装进实例再也无人释放。
+      gen: 0,
+      offscreenTimer: 0,
     };
     this.instances.set(container, inst);
 
@@ -275,6 +357,12 @@ class PreviewEngine {
     if (!inst) return;
     if (this.io) this.io.unobserve(container);
     inst.ro?.disconnect();
+    if (inst.offscreenTimer) {
+      clearTimeout(inst.offscreenTimer);
+      inst.offscreenTimer = 0;
+    }
+    // 作废可能正在飞行中的构建（不管当前有没有 built）
+    inst.gen = (inst.gen || 0) + 1;
     if (inst.built) this._disposeInstance(inst);
     inst.canvas?.remove();
     this.instances.delete(container);
@@ -292,10 +380,28 @@ class PreviewEngine {
       .catch((e) => console.warn('[plan-preview] 构建失败', e))
       .finally(() => {
         inst.building = false;
+        // 关键：构建是在 await 中完成的。若期间卡片已经滑出视口，
+        // 此时必须补装释放定时器，否则这份 30~48MB 的克隆几何会永久驻留
+        // （快速滚动时很容易命中：滑出时还在 building，装不上定时器）
+        if (
+          inst.built &&
+          !inst.visible &&
+          this.releaseOffscreenMs > 0 &&
+          !inst.offscreenTimer
+        ) {
+          inst.offscreenTimer = setTimeout(() => {
+            inst.offscreenTimer = 0;
+            if (!inst.visible && inst.built && !inst.building) {
+              this._disposeInstance(inst);
+            }
+          }, this.releaseOffscreenMs);
+        }
       });
   }
 
   _disposeInstance(inst) {
+    // 作废正在飞行中的构建：它 await 回来后会发现 gen 变了，自行丢弃结果
+    inst.gen = (inst.gen || 0) + 1;
     try {
       inst.cutter?.release?.();
       inst.rig?.dispose?.();
@@ -460,6 +566,8 @@ function fitCardSideView(pivot, camera) {
 
 async function buildScene(engine, inst) {
   const params = inst.params;
+  // 捕获当前世代，用于在 await 返回后判断本次构建是否已经作废
+  const gen = inst.gen;
   const preset = getPreset(inst.envId) || getPreset('studio');
 
   const scene = new THREE.Scene();
@@ -469,7 +577,9 @@ async function buildScene(engine, inst) {
   scene.background = new THREE.Color(0xffffff);
   scene.fog = new THREE.Fog(0xffffff, preset.fog?.near ?? 40, preset.fog?.far ?? 120);
 
-  // 灯光
+  // 灯光（释放滑出视口的卡片后会重建同一实例，这里必须先清空旧引用，
+  // 否则 inst.lights 会把上一轮已被销毁的灯光越积越多）
+  inst.lights = [];
   for (const spec of preset.lights) addPreviewLight(scene, inst.lights, spec);
 
   // 实景装饰（赛道 / 欧洲城市）——白底下不叠加深色场景，保持"只放模型"的纯净感
@@ -480,6 +590,10 @@ async function buildScene(engine, inst) {
 
   // 车身：优先用方案里用户提交的车型，缺省回退默认 SL 350 演示车
   const src = await loadCarSource(inst.carModelUrl);
+  // await 期间实例可能已被释放或卸载（滑出视口 / 网格重绘）。
+  // 此时必须丢弃这次构建，否则会在已作废的实例上留下 30~48MB 的克隆几何，
+  // 而且再也装不上释放定时器 —— 快滚时会一次留下好几份。
+  if (gen !== inst.gen) return;
   const carGroup = deepCloneCar(src);
   const carInner = new THREE.Group();
   carInner.add(carGroup);
