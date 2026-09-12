@@ -202,12 +202,36 @@ function startPreview(container) {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
-  // 原为 (4.4, 1.7, 5.4)（视距 ≈ 7.15，车仅占画布宽约 35%）。
-  // 沿同一视线方向把相机拉近到视距 ≈ 3.57（正好为一半），车模放大正好 2×。
-  // Hero 画布实测约 572×260（aspect ≈ 2.2）：车旋转到最宽投影 3.31 时约占宽 58%、
-  // 占高 43%，仍有余量不溢出；窄屏单列（aspect ≈ 1.5）时约占宽 83%，仍在框内。
-  camera.position.set(2.2, 0.9, 2.7);
-  camera.lookAt(0, 0.1, 0);
+
+  /* 车模归一后的车体半尺寸（载入后按实际模型算出，不写死）。
+     h = 水平扫掠半径（Y 轴自转时取"长/宽"里更大的那个的一半）
+     v = 竖直扫掠半径（俯仰/侧摆时取"高/宽"里更大的那个的一半）
+     用这两个而不是"外接球"，是为了既保证完整可见、又不会把车缩得太小。 */
+  let carExtent = { h: 1.6, v: 0.7 };
+
+  /**
+   * 按「外接球 + 当前容器宽高比」自适应求解相机距离。
+   *
+   * ⚠️ 原先相机位置是**写死**的 (2.2, 0.9, 2.7)，注释里按 572×260 的旧画布算过"占高 43% 有余量"，
+   * 但容器比例一变化（窗口变宽变矮、单列布局），实际可视范围就装不下车，
+   * 车会被 `.garage-hero__preview` 的 `overflow:hidden` 从下边缘硬切掉。
+   * 外接球求解能保证**任意容器比例 + 任意自转角度**下整车都在画面内。
+   */
+  function fitCamera() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!w || !h) return;
+    const tanV = Math.tan((camera.fov * Math.PI) / 360);
+    const tanH = tanV * (w / h);
+    // 竖直/水平两个方向各算一个所需距离，取较大者；1.12 为四周留白
+    const dist = Math.max(carExtent.v / tanV, carExtent.h / tanH) * 1.12;
+    const dir = new THREE.Vector3(2.2, 0.9, 2.7).normalize();
+    camera.position.copy(dir.multiplyScalar(dist));
+    // 视点略低于车心 → 车在画面中略微上移，底部不贴边（原来 lookAt 在车心上方 0.1，反而把车压低）
+    camera.lookAt(0, -carExtent.v * 0.1, 0);
+    camera.updateProjectionMatrix();
+  }
+  fitCamera();
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xc2ccd6, 1.05));
   const key = new THREE.DirectionalLight(0xffffff, 2.3);
@@ -236,6 +260,8 @@ function startPreview(container) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    // 容器比例变化后重新取景，避免车被切（原实现只更新 aspect，视距不变）
+    fitCamera();
   });
   ro.observe(container);
 
@@ -248,9 +274,20 @@ function startPreview(container) {
       const center = box.getCenter(new THREE.Vector3());
       group.position.sub(center); // 以轮心/几何中心为原点
       const maxDim = Math.max(size.x, size.y, size.z) || 1;
-      pivot.scale.setScalar(3.0 / maxDim);
+      const scale = 3.0 / maxDim;
+      pivot.scale.setScalar(scale);
       pivot.add(group);
       scene.add(pivot);
+      // 用缩放后的真实车体范围重新取景（自转/俯仰到最大投影时也能完整装下）
+      const sx = size.x * scale;
+      const sy = size.y * scale;
+      const sz = size.z * scale;
+      const hh = 0.5 * Math.max(sx, sz); // 水平：自转时取长/宽里更大的
+      const vv = 0.5 * Math.max(sy, sz); // 竖直：俯仰/侧摆时取高/宽里更大的
+      if (Number.isFinite(hh) && Number.isFinite(vv) && hh > 0.2) {
+        carExtent = { h: hh, v: vv };
+        fitCamera();
+      }
     })
     .catch((e) => {
       console.warn('[garage-preview] 车模载入失败', e);
