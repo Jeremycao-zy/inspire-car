@@ -2649,6 +2649,32 @@ async function enterTuner(plan, opts = {}) {
 }
 
 // 返回第一层：保存当前方案 → 刷新卡片 → 显示车库
+/**
+ * 离开工作台时彻底释放当前车模（车身 + 拆解件 + 轮毂）。
+ *
+ * ⚠️ 这是「生成完返回车库、什么也没动就崩」的根因之一：
+ * 原先 returnToGarage 只调用 viewer.pause() 停掉渲染循环，**但从没释放车模本身**。
+ * 单个生成的车模解析后 40~47MB（实测 46.7MB），每生成一次 / 进出一个方案就永久多留一份，
+ * 叠加车库卡片缩略图后很快堆到数百 MB，把页面顶崩。
+ *
+ * 释放后必须把 currentCarUrl 置空：loadPlanCar 里 `src !== currentCarUrl` 会跳过载车，
+ * 不清空的话再次进入同一方案会拿到已经 dispose 掉的模型（白屏 / 报错）。
+ */
+function releaseStudioCar() {
+  try {
+    if (carGroup) {
+      carGroup.removeFromParent();
+      disposeObject(carGroup);
+      carGroup = null;
+    }
+    clearBangParts();
+    currentCarUrl = null;
+    if (app && Array.isArray(app._bodyMaps)) app._bodyMaps = [];
+  } catch (e) {
+    console.warn('[studio] 释放车模失败（不影响继续使用）:', e?.message || e);
+  }
+}
+
 function returnToGarage() {
   if (currentPlan && panel) {
     const rec = {
@@ -2671,6 +2697,9 @@ function returnToGarage() {
   // 离开工作台回到车库：隐藏画布仍在后台渲染会持续占 GPU，移动端易触发页面重载。
   // 停掉工作台查看器循环，车库侧预览按需渲染（previewEngine 脏标记机制）即可。
   viewer.pause();
+  // 光停渲染不够：车模本身（40~47MB）还挂在场景里。回到车库就彻底释放，
+  // 否则每生成一次就永久多留一份，最终把页面顶崩。
+  releaseStudioCar();
 
   // 按钮短暂反馈「已保存」
   const btn = document.getElementById('back-to-garage');
