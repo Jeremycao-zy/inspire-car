@@ -19,11 +19,12 @@
  */
 
 import * as THREE from 'three';
-import { loadGLB, normalizeCar, boxOf } from '../core/glb.js';
+import { loadGLB, normalizeCar, normalizeWheel, boxOf } from '../core/glb.js';
 import { PRESET_CAR_URL, isPresetCarUrl } from '../core/presetCar.js';
 import { WheelRig } from '../tuning/wheelRig.js';
 import { Chassis } from '../tuning/chassis.js';
 import { measure } from '../tuning/shellMeasure.js';
+import { RIM_PRESETS } from '../tuning/proceduralRim.js';
 import { getPreset, buildEnvScene, disposeEnvScene } from '../core/environments.js';
 import { buildDecor, makeSkyTexture } from '../core/scenes.js';
 
@@ -110,6 +111,37 @@ export function clearCarSourceCache() {
       .catch(() => {});
   }
   _carPromiseByUrl.clear();
+}
+
+/* 真实轮毂模型缓存（按 URL）。体积远小于车身，简单缓存即可多卡片共享。 */
+const _wheelPromiseByUrl = new Map();
+
+/**
+ * 按方案参数加载真实轮毂模型（自定义生成 / 预设款式 glbUrl）。
+ * 失败时返回 null，调用方回退程序化轮毂。
+ */
+async function loadWheelSource(params) {
+  let url = params?.customWheelUrl || null;
+  // rimPreset='custom' 表示当前是自定义生成轮毂，已由 customWheelUrl 处理
+  if (!url && params?.rimPreset && params.rimPreset !== 'custom') {
+    const preset = RIM_PRESETS.find((p) => p.style === params.rimPreset);
+    url = preset?.glbUrl || null;
+  }
+  if (!url) return null;
+
+  if (_wheelPromiseByUrl.has(url)) return _wheelPromiseByUrl.get(url);
+  const p = loadGLB(url, { progress: false })
+    .then(({ group }) => {
+      const measured = normalizeWheel(group);
+      return { group, measured };
+    })
+    .catch((e) => {
+      console.warn('[plan-preview] 轮毂模型载入失败，将回退程序化轮毂', url, e);
+      _wheelPromiseByUrl.delete(url);
+      return null;
+    });
+  _wheelPromiseByUrl.set(url, p);
+  return p;
 }
 
 /**
@@ -508,6 +540,23 @@ class PreviewEngine {
     }
     this.decorCache.clear();
 
+    // 释放共享的轮毂模型源（此时所有实例已被 clear() 卸掉，不会误伤）
+    for (const p of _wheelPromiseByUrl.values()) {
+      Promise.resolve(p)
+        .then((src) => {
+          if (!src?.group) return;
+          src.group.traverse((o) => {
+            if (o.isMesh) {
+              o.geometry?.dispose?.();
+              const mats = Array.isArray(o.material) ? o.material : [o.material];
+              for (const m of mats) m?.dispose?.();
+            }
+          });
+        })
+        .catch(() => {});
+    }
+    _wheelPromiseByUrl.clear();
+
     this.renderer.dispose();
     this.renderer.forceContextLoss?.();
     this.renderer = null;
@@ -662,20 +711,57 @@ async function buildScene(engine, inst) {
           : 0.3,
     });
 
-    // 底盘 + 四轮
+    // 底盘 + 四轮（与工作流主程序 refitCar 完全一致：真实轴距/轮距/轴位置优先）
     const chassis = new Chassis(pivot);
-    chassis.derive(metrics, { front: params.front, rear: params.rear });
+    const p = params;
+    const real = {
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      // 实测前后轴的绝对 x 坐标（米）。给了才采信，不给退回 ±wheelbase/2。
+      axleX_F: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleX_R: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+      // ChassisParams 内部按半轮距用，故 track / 2000
+      halfTrack_F: p.trackFront ? p.trackFront / 2000 : null,
+      halfTrack_R: p.trackRear ? p.trackRear / 2000 : null,
+      rideHeight: p.groundClearance ? p.groundClearance / 1000 : null,
+    };
+    chassis.derive(metrics, { front: p.front, rear: p.rear }, real);
     chassis.build();
     // 卡片预览只展示用户改装后的车身外观（车身+车轮），隐藏底盘结构，
     // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
-    chassis.setVisible(params.chassis?.visible === true);
+    chassis.setVisible(p.chassis?.visible === true);
     inst.chassis = chassis;
 
     const rig = new WheelRig(pivot);
-    rig.useProceduralWheel();
+    // 关键：把整车真实尺寸喂给轮位求解，否则退回默认 4.6m 车长 → 车轮永远错位
+    const carSize = boxOf(carOuter).getSize(new THREE.Vector3());
+    rig.setCarSize(carSize);
+
+    const wheelSrc = await loadWheelSource(p);
+    if (gen !== inst.gen) return;
+    if (wheelSrc) {
+      // 用用户在工作室里换的真实轮毂模型（A款/B款/自定义生成）
+      rig.setWheelSource(wheelSrc.group, wheelSrc.measured);
+    } else {
+      // 无真实轮毂模型时回退程序化轮毂，保证预览永远可用
+      rig.useProceduralWheel(p.rimPreset === 'custom' ? 'default' : (p.rimPreset || 'default'));
+    }
+
+    // 实测前后轴绝对坐标优先于 ±wheelbase/2 对称摆位；缺测时清掉残留轴位退回估算。
+    // 卡片每次都是全新 rig，无旧车轴位残留，clearAxlePositions 在此仅为与 studio 同语义。
+    if (!(Number.isFinite(p.axleXFront) && Number.isFinite(p.axleXRear))) {
+      rig.clearAxlePositions();
+    }
+    rig.setRealGeometry({
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      trackFront: p.trackFront ? p.trackFront / 1000 : null,
+      trackRear: p.trackRear ? p.trackRear / 1000 : null,
+      axleXFront: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleXRear: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+    });
+
     rig.setCornerSpec(chassis.cornerSpec());
     rig.setBodyHalfWidth(metrics.bodyHalfWidth);
-    rig.update(params);
+    rig.update(p);
     inst.rig = rig;
   }
 
