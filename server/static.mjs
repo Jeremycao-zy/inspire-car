@@ -350,6 +350,10 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
 
   /**
    * 发送文件内容（含 ETag / 304 / Range / HEAD）。
+   * 实际逻辑统一收敛到模块级 sendFileCachable()，这里只负责算出本目录的
+   * Cache-Control，让 /api/asset/:name（生成好的 30MB GLB）复用同一套协商缓存，
+   * 避免两处各写一份、其中一份悄悄漏掉 304。
+   *
    * @param {{method:string, headers:object}} req
    * @param {import('node:http').ServerResponse} res
    * @param {string} file 绝对路径
@@ -358,95 +362,7 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
    * @returns {Promise<void>}
    */
   async function sendFile(req, res, file, st, rel) {
-    const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
-    const lastModified = st.mtime.toUTCString();
-    const base = {
-      'Content-Type': mimeOf(file),
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': cacheControlOf(rel),
-      ETag: etag,
-      'Last-Modified': lastModified,
-      'X-Content-Type-Options': 'nosniff',
-    };
-
-    // 条件请求：ETag 优先，其次 Last-Modified
-    const inm = req.headers['if-none-match'];
-    if (inm && matchesEtag(inm, etag)) {
-      res.writeHead(304, { ...base, 'Content-Length': 0 });
-      res.end();
-      return;
-    }
-    const ims = req.headers['if-modified-since'];
-    if (!inm && ims && Date.parse(ims) >= Math.floor(st.mtimeMs / 1000) * 1000) {
-      res.writeHead(304, { ...base, 'Content-Length': 0 });
-      res.end();
-      return;
-    }
-
-    const range = parseRange(req.headers.range, st.size);
-    if (range && range.unsatisfiable) {
-      res.writeHead(416, {
-        ...base,
-        'Content-Range': `bytes */${st.size}`,
-        'Content-Length': 0,
-      });
-      res.end();
-      return;
-    }
-
-    if (req.method === 'HEAD') {
-      res.writeHead(200, { ...base, 'Content-Length': st.size });
-      res.end();
-      return;
-    }
-
-    if (range) {
-      const len = range.end - range.start + 1;
-      res.writeHead(206, {
-        ...base,
-        'Content-Range': `bytes ${range.start}-${range.end}/${st.size}`,
-        'Content-Length': len,
-      });
-      pipeFile(req, res, file, range.start, range.end);
-      return;
-    }
-
-    res.writeHead(200, { ...base, 'Content-Length': st.size });
-    pipeFile(req, res, file, 0, st.size - 1);
-  }
-
-  /**
-   * 用 ReadStream 把文件推给响应（44MB 的 GLB 不能一次性读进内存）。
-   * @param {object} req
-   * @param {import('node:http').ServerResponse} res
-   * @param {string} file 绝对路径
-   * @param {number} start
-   * @param {number} end
-   * @returns {void}
-   */
-  function pipeFile(req, res, file, start, end) {
-    const stream = fs.createReadStream(file, { start, end });
-    let destroyed = false;
-
-    req.on('close', () => {
-      if (!destroyed) {
-        destroyed = true;
-        stream.destroy();
-      }
-    });
-
-    stream.on('error', () => {
-      if (!destroyed) {
-        destroyed = true;
-        try {
-          res.destroy();
-        } catch {
-          /* 连接已断，忽略 */
-        }
-      }
-    });
-
-    stream.pipe(res);
+    return sendFileCachable(req, res, file, st, { cacheControl: cacheControlOf(rel) });
   }
 
   return {
@@ -456,6 +372,120 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
     spaFallback: useSpaFallback,
     handle,
   };
+}
+
+/* ------------------------- 可复用的带缓存文件发送 ------------------------- */
+
+/**
+ * 发送文件内容：强 ETag / Last-Modified → 304、单段 Range → 206、HEAD 无 body。
+ *
+ * 为什么抽成模块级函数：
+ *   /api/asset/:name（生成好的 GLB，单文件 25~45MB）过去自己 writeHead(200) 直出，
+ *   没有任何校验器 —— 浏览器缓存一过期就只能重传整个文件，移动网络下就是"每次都要下载半天"。
+ *   这里让它和 dist/ 静态服务共用同一套协商缓存实现，改一处两边都生效。
+ *
+ * @param {{method:string, headers:object}} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {string} file 绝对路径
+ * @param {import('node:fs').Stats} st 调用方已 stat 好的结果
+ * @param {object} [opts]
+ * @param {string} [opts.cacheControl] 覆盖 Cache-Control，默认 'public, max-age=3600'
+ * @param {string} [opts.contentType]  覆盖 Content-Type，默认按扩展名推断
+ * @param {string} [opts.cors]         需要跨域时给 'Access-Control-Allow-Origin' 的值，如 '*'
+ * @param {object} [opts.extraHeaders] 追加的响应头
+ * @returns {Promise<void>}
+ */
+export async function sendFileCachable(req, res, file, st, opts = {}) {
+  const { cacheControl = 'public, max-age=3600', contentType, cors, extraHeaders } = opts;
+
+  // size + mtime 组成的 ETag：生成好的模型是"写一次永不改"，mtime 稳定，足够可靠
+  const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+  const base = {
+    'Content-Type': contentType || mimeOf(file),
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': cacheControl,
+    ETag: etag,
+    'Last-Modified': st.mtime.toUTCString(),
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (cors) base['Access-Control-Allow-Origin'] = cors;
+  if (extraHeaders) Object.assign(base, extraHeaders);
+
+  // 条件请求：ETag 优先，其次 Last-Modified。
+  // 命中时只回头部、不带 body —— 30MB 的模型重复打开只剩几百字节。
+  const inm = req.headers['if-none-match'];
+  if (inm && matchesEtag(inm, etag)) {
+    res.writeHead(304, base);
+    res.end();
+    return;
+  }
+  const ims = req.headers['if-modified-since'];
+  if (!inm && ims && Date.parse(ims) >= Math.floor(st.mtimeMs / 1000) * 1000) {
+    res.writeHead(304, base);
+    res.end();
+    return;
+  }
+
+  const range = parseRange(req.headers.range, st.size);
+  if (range && range.unsatisfiable) {
+    res.writeHead(416, { ...base, 'Content-Range': `bytes */${st.size}`, 'Content-Length': 0 });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'HEAD') {
+    res.writeHead(200, { ...base, 'Content-Length': st.size });
+    res.end();
+    return;
+  }
+
+  if (range) {
+    const len = range.end - range.start + 1;
+    res.writeHead(206, {
+      ...base,
+      'Content-Range': `bytes ${range.start}-${range.end}/${st.size}`,
+      'Content-Length': len,
+    });
+    pipeFile(req, res, file, range.start, range.end);
+    return;
+  }
+
+  res.writeHead(200, { ...base, 'Content-Length': st.size });
+  pipeFile(req, res, file, 0, st.size - 1);
+}
+
+/**
+ * 用 ReadStream 把文件推给响应（44MB 的 GLB 不能一次性读进内存）。
+ * @param {object} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {string} file 绝对路径
+ * @param {number} start
+ * @param {number} end
+ * @returns {void}
+ */
+function pipeFile(req, res, file, start, end) {
+  const stream = fs.createReadStream(file, { start, end });
+  let destroyed = false;
+
+  req.on('close', () => {
+    if (!destroyed) {
+      destroyed = true;
+      stream.destroy();
+    }
+  });
+
+  stream.on('error', () => {
+    if (!destroyed) {
+      destroyed = true;
+      try {
+        res.destroy();
+      } catch {
+        /* 连接已断，忽略 */
+      }
+    }
+  });
+
+  stream.pipe(res);
 }
 
 /**

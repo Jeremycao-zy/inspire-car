@@ -34,7 +34,7 @@ import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
 import { handleChat } from './chat.mjs';
-import { createStaticServer } from './static.mjs';
+import { createStaticServer, sendFileCachable } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -268,18 +268,25 @@ async function handleGenerate(req, res) {
   /* ---------- 多引擎路由：HiGen3D（独立 key，与混元通道无关） ---------- */
   if (engine === 'higen3d') {
     await safeRun(() => runHigen3D({ kind, images, body, taskTitle, emit, fail, closed }));
+    if (!closed && !res.writableEnded) res.end();
     return;
   }
 
   /* ---------- 多引擎路由：Hyper3D Rodin Gen-2.5 ---------- */
   if (engine === 'hyper3d') {
-    await safeRun(() => runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed: () => closed }));
+    // 注意：closed 是按值布尔，传进子生成器后会变成永久 false 的快照，
+    // 断连检测必须传 isClosed() 取值器，否则客户端断开后轮询循环停不下来。
+    await safeRun(() =>
+      runHyper3D({ kind, images, body, taskTitle, emit, fail, isClosed: () => closed })
+    );
+    if (!closed && !res.writableEnded) res.end();
     return;
   }
 
   /* ---------- 多引擎路由：fal.ai 上的 Rodin（按次计费，精度更高，无每日上限） ---------- */
   if (engine === 'fal') {
     await safeRun(() => runFal3D({ kind, images, body, taskTitle, emit, fail, isClosed: () => closed }));
+    if (!closed && !res.writableEnded) res.end();
     return;
   }
 
@@ -514,7 +521,7 @@ async function handleGenerate(req, res) {
  * 无 HYPER3D_API_KEY 时走 DEMO（返回预置模型，绝不冒充真实结果）；
  * auth/quota 失败绝不降级 demo，必须回传 auth_error / quota_exceeded。
  */
-async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, isClosed }) {
+async function runHyper3D({ kind, images, body, taskTitle, emit, fail, isClosed }) {
   const h = hyper3d.resolveToken();
   const token = h.token;
 
@@ -551,7 +558,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
         ? ['读取轮毂照片', '识别轮辋参数', '重建辐条几何', '生成 PBR 材质', '导出 GLB']
         : ['读取整车照片', '姿态估计', '重建车身曲面', '生成 PBR 材质', '导出 GLB'];
     for (let i = 0; i < steps.length; i++) {
-      if (closed) return;
+      if (isClosed?.()) return;
       emit({ stage: 'demo', progress: (i + 1) / steps.length, message: `[离线演示] ${steps[i]}` });
       await sleep(700);
     }
@@ -655,7 +662,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     let tick = 0;
     let done = false;
     while (Date.now() < deadline) {
-      if (closed) return;
+      if (isClosed?.()) return;
       await sleep(interval);
       let jobs;
       try {
@@ -696,7 +703,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, closed, i
     if (!done) {
       logGenError('hyper3d', 'timeout', new Error('生成轮询超时'), { taskUuid });
       emit({ stage: 'timeout', progress: 1, message: '生成超时（云端任务仍在继续）', detail: taskUuid, jobId: taskUuid, resumeKey: subscriptionKey });
-      if (!closed) res.end();
+      // SSE 生命周期由调用方 handleGenerate 统一收尾（那里才有 res）
       return;
     }
 
@@ -1438,13 +1445,15 @@ async function handleAsset(req, res, name) {
   const file = path.join(CACHE_DIR, safe);
   try {
     const st = await fsp.stat(file);
-    res.writeHead(200, {
-      'Content-Type': 'model/gltf-binary',
-      'Content-Length': st.size,
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=3600',
+    // 生成的 GLB 单文件 25~45MB，移动网络下每重传一次都是"下载半天"。
+    // 文件名里带 random/hash、写一次永不覆盖 → 可以长缓存 immutable；
+    // 再补上 ETag / Last-Modified，让不支持 immutable 的客户端也能走 304 只回几百字节。
+    // Range 也一并支持，弱网断流时浏览器能续传而不是从头再来。
+    await sendFileCachable(req, res, file, st, {
+      cacheControl: 'public, max-age=31536000, immutable',
+      contentType: 'model/gltf-binary',
+      cors: '*',
     });
-    fs.createReadStream(file).pipe(res);
   } catch {
     sendJson(res, 404, { error: 'asset not found' });
   }
