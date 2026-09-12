@@ -16,34 +16,43 @@
       .brand-loading__inner { display: flex; flex-direction: column; align-items: center; gap: 24px; }
       .brand-loading__logo {
         width: 84px; height: 84px; object-fit: contain;
-        filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.6));
-        opacity: 0.72;
+        /* 基底辉光 = 呼吸动画起点值，保证入场结束与呼吸开始无缝衔接 */
+        filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
         /* 启动页动画内联自包含：即便 styles.css（JS 注入）尚未加载也好看，彻底摆脱网络时序割裂。
-           参数须与 styles.css 的 logoPulse 完全一致，避免样式表接管时观感跳变。 */
-        animation: blLogo 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-        will-change: opacity, transform;
+           参数须与 styles.css 的 logoIn / logoPulse 一致，避免样式表接管时观感跳变。
+           ① 平滑入场（淡入+轻微放大），不再"啪"地弹出来
+           ② 呼吸时光效起伏保持明显（辉光 10px→30px），但单一转向点 + 正弦缓动，不跳跃 */
+        animation:
+          blLogoIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
+          blLogo 2.6s cubic-bezier(0.45, 0, 0.55, 1) 0.6s infinite;
+        will-change: opacity, transform, filter;
       }
       .brand-loading__text {
         font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
         font-size: 28px; letter-spacing: 0.32em; color: rgba(255, 255, 255, 0.35);
         text-transform: uppercase; white-space: nowrap; user-select: none;
       }
+      /* 文字部分还原为原本方案（逐字波浪 + 霓虹辉光起伏，用户确认这版是好的） */
       .brand-loading__text span {
         display: inline-block;
-        opacity: 0.55;
+        opacity: 0.5;
         color: #fff;
         text-shadow: 0 0 10px rgba(0,240,255,0.6), 0 0 22px rgba(0,240,255,0.3);
-        animation: blLetter 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-        animation-fill-mode: both;
-        animation-delay: calc(var(--i) * 0.1s);
-        will-change: opacity, transform;
+        animation: blLetter 2.2s ease-in-out infinite;
+        animation-delay: calc(var(--i) * 0.12s);
       }
       .brand-loading__space { animation: none !important; }
-      /* 呼吸而非闪烁：幅度收窄（logo 0.72→1、letters 0.55→1，原先 0.55→1 / 0.45→1 且周期偏快，
-         亮度起伏过大是「一闪一闪」的根源）；单一转向点 + 近似正弦缓动 + 放慢到 3.6s，
-         并只动 opacity/transform 两个合成层属性（辉光保持静态），观感连续且不掉帧。 */
-      @keyframes blLogo { 0%,100% { opacity: 0.72; transform: scale(1); } 50% { opacity: 1; transform: scale(1.025); } }
-      @keyframes blLetter { 0%,100% { opacity: 0.55; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-1px); } }
+      /* logo 入场：结束值等于 blLogo 起点，衔接不跳变 */
+      @keyframes blLogoIn {
+        0%   { opacity: 0;   transform: scale(0.94); }
+        100% { opacity: 0.62; transform: scale(1); }
+      }
+      /* logo 呼吸：光效明显（10px→30px），但单一转向点 + 正弦缓动 → 不跳跃 */
+      @keyframes blLogo {
+        0%,100% { opacity: 0.62; filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45)); }
+        50%     { opacity: 1;    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1)); }
+      }
+      @keyframes blLetter { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
       /* 首屏先藏顶部栏，等样式表接管后再由应用逻辑显示，避免未样式化大 logo 闪现 */
       #appbar { display: none; }
     </style>

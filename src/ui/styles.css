@@ -63,12 +63,16 @@
   width: 84px;
   height: 84px;
   object-fit: contain;
-  /* 辉光做「静态」，呼吸时只动 opacity + 极轻微 scale（合成层属性，不触发逐帧重绘）。
-     原先 animation 里逐帧改 filter 是造成观感抖动/卡顿的另一半原因。 */
-  filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.6));
-  /* 直接显示：无延迟、无淡入，第一帧即在 */
-  animation: logoPulse 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  will-change: opacity, transform;
+  /* 基底辉光 = 呼吸动画的起点值，保证「入场结束 → 呼吸开始」无缝衔接 */
+  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  /* ① logoIn：平滑入场（淡入 + 轻微放大），避免图片一解码就"啪"地弹出来
+     ② logoPulse：霓虹呼吸。**光效起伏保持明显**（辉光 10px→30px、透明度 0.62→1），
+        但只保留单一转向点 + 近似正弦缓动，去掉旧版 0/35/50/65/100 分段造成的
+        "冲到顶—平住—再落下"的跳跃感 —— 这是"不丝滑"的根因，不是光效本身。 */
+  animation:
+    logoIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
+    logoPulse 2.6s cubic-bezier(0.45, 0, 0.55, 1) 0.6s infinite;
+  will-change: opacity, transform, filter;
 }
 
 .brand-loading__text {
@@ -82,19 +86,12 @@
   user-select: none;
 }
 
+/* 文字部分还原为原本的方案（用户确认这一版是好的：光效明显、逐字波浪） */
 .brand-loading__text span {
   display: inline-block;
-  /* 霓虹辉光改为「静态」：呼吸时只改 opacity（合成层属性），不再逐帧改 color/text-shadow。
-     逐帧改 text-shadow 是 letters 抖动/掉帧的主要原因。 */
-  color: rgba(255, 255, 255, 0.8);
-  text-shadow:
-    0 0 10px rgba(0, 240, 255, 0.6),
-    0 0 22px rgba(0, 240, 255, 0.3);
-  animation: letterPulse 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  /* backwards 填充：延迟期间就保持起始态，消除 letter 入场瞬间的亮度跳变 */
-  animation-fill-mode: both;
-  animation-delay: calc(var(--i) * 0.1s);
-  will-change: opacity;
+  animation: letterPulse 2.2s ease-in-out infinite;
+  animation-fill-mode: forwards;
+  animation-delay: calc(var(--i) * 0.08s);
 }
 
 .brand-loading__space {
@@ -103,40 +100,81 @@
   animation: none !important;
 }
 
-/* 呼吸曲线的三个关键点：
-   ① 幅度收窄 —— logo 0.72→1。原来 0.5→1 等于亮度翻倍，观感是「闪」不是「呼吸」，
-      这是用户说「一闪一闪」的根因。
-   ② 单一转向点 —— 只保留 0%/50%/100%。原来 0/35/50/65/100 五个关键帧会让 CSS 在
-      **每一段之间各自套用缓动**，造成「冲到顶 → 平住 → 再落下」的停顿跳变感。
-   ③ 近似正弦的 cubic-bezier + 放慢到 3.6s —— 连续的往复曲线，转折点无痕迹。 */
-@keyframes logoPulse {
-  0%, 100% {
-    opacity: 0.72;
+/* logo 入场：淡入 + 轻微放大，结束值（opacity 0.62）正好等于 logoPulse 的起点值，
+   两段动画衔接处不会跳变。 */
+@keyframes logoIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 0.62;
     transform: scale(1);
   }
+}
+
+/* logo 呼吸：光效幅度保持明显（辉光 10px→30px、透明度 0.62→1），
+   但只保留 0%/50%/100% 单一转向点 + 近似正弦缓动。
+   旧版 0/35/50/65/100 五个关键帧会让 CSS 在**每段之间各自套用缓动**，
+   产生"冲到顶 → 平住 → 再落下"的停顿跳变 —— 那才是"不丝滑"的来源。 */
+@keyframes logoPulse {
+  0%, 100% {
+    opacity: 0.62;
+    filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  }
   50% {
     opacity: 1;
-    transform: scale(1.025);
+    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1));
   }
 }
 
-/* letters 同理：幅度 0.55→1（原 0.3→1），去掉分段平住，位移收到 1px 更从容。
-   color / text-shadow 已移到 .brand-loading__text span 上做成静态，这里不再逐帧变更。 */
+/* 文字：还原原本方案（逐字波浪 + 霓虹辉光起伏） */
 @keyframes letterPulse {
   0%, 100% {
-    opacity: 0.55;
+    opacity: 0.3;
+    color: rgba(255, 255, 255, 0.45);
+    text-shadow: none;
     transform: translateY(0);
+  }
+  35%, 65% {
+    opacity: 1;
+    color: #fff;
+    text-shadow:
+      0 0 8px rgba(0, 240, 255, 0.65),
+      0 0 18px rgba(0, 240, 255, 0.35),
+      0 0 34px rgba(0, 240, 255, 0.18);
+    transform: translateY(-1px);
   }
   50% {
     opacity: 1;
-    transform: translateY(-1px);
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(0, 240, 255, 0.8),
+      0 0 26px rgba(0, 240, 255, 0.45),
+      0 0 48px rgba(0, 240, 255, 0.22);
+    transform: translateY(-2px);
   }
 }
 
-/* 移动端不再需要降级的「lite」版本（原 logoPulseLite / letterPulseLite）。
-   现在 logoPulse / letterPulse 只动 opacity 与 transform 两个合成层属性、辉光是静态的，
-   移动端 GPU 同样扛得住；删掉旧的 lite 版本可以顺带消除移动端仍在使用的 0.5→1 大幅度闪光，
-   并让桌面与移动端共用同一条呼吸曲线、观感统一。 */
+/* 移动端：文字沿用原本的 lite 方案（只动 opacity、不逐帧改 text-shadow，省移动端重绘）。
+   logo 不做降级 —— 光效起伏是用户明确要求保留的效果，且只有一张小图，开销可控。 */
+@media (max-width: 768px) {
+  .brand-loading__text span {
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(0, 240, 255, 0.6),
+      0 0 22px rgba(0, 240, 255, 0.3);
+    animation: letterPulseLite 2.2s ease-in-out infinite;
+    animation-fill-mode: forwards;
+    animation-delay: calc(var(--i) * 0.12s);
+    will-change: opacity;
+  }
+}
+
+@keyframes letterPulseLite {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
 
 @media (max-width: 480px) {
   .brand-loading__logo {
