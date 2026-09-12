@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
 import { PRESET_CAR_URL, HERO_CAR_URL } from '../core/presetCar.js';
-import { previewEngine, previewParamsOf } from './planPreview.js';
+import { previewEngine, previewParamsOf, clearCarSourceCache } from './planPreview.js';
 import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
@@ -668,6 +668,8 @@ export function mountGarage({ onEnter, mount } = {}) {
     aiOrb = null;
     previewEngine.clear();
     previewEngine.disposeRenderer();
+    // 车模源解析缓存也要一起释放：单份 GLB 解析后 30~48MB，留着会让内存只增不减
+    clearCarSourceCache();
     root.innerHTML = '';
     if (_activeCleanup === dispose) _activeCleanup = null;
   }

@@ -91,14 +91,31 @@ function mountAiOrb() {
   let raf = 0;
   let running = true;
   let t = 0;
+  /* 这个球是首页上第 3 个 WebGL 上下文（另两个是 hero 车模预览和卡片缩略图预览引擎）。
+   * 它原先无条件跑满 60fps、且从不因页面不可见而停 —— 是移动端持续 GPU 负载的来源之一，
+   * 叠加那些动辄 30~48MB 的车模，很容易把 Safari 顶到 jetsam（页面重载＝用户看到的"闪退"）。
+   * 现在：①限帧 30fps（点阵旋转在这个速度下肉眼无差别，步进加倍以保持原转速）
+   *      ②页面切到后台（document.hidden）时只驱动时间、不渲染 */
+  const FRAME_MS = 1000 / 30;
+  let last = 0;
   function frame() {
-    if (!running) return;
-    t += 0.005;
+    if (!running) {
+      raf = 0;
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+    const now = performance.now();
+    if (document.hidden) {
+      last = now;
+      return;
+    }
+    if (now - last < FRAME_MS) return;
+    last = now;
+    t += 0.01;
     points.rotation.y = t;
     points.rotation.x = Math.sin(t * 0.5) * 0.18;
     points.position.y = Math.sin(t * 1.4) * 0.04;
     renderer.render(scene, camera);
-    raf = requestAnimationFrame(frame);
   }
   frame();
 
