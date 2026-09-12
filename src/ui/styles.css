@@ -63,10 +63,12 @@
   width: 84px;
   height: 84px;
   object-fit: contain;
-  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.5));
-  /* 直接显示，跟随 INSPIRE CAR 做同款霓虹辉光脉冲（无延迟、无淡入，第一帧即在） */
-  animation: logoPulse 2.2s ease-in-out infinite;
-  will-change: opacity, filter;
+  /* 辉光做「静态」，呼吸时只动 opacity + 极轻微 scale（合成层属性，不触发逐帧重绘）。
+     原先 animation 里逐帧改 filter 是造成观感抖动/卡顿的另一半原因。 */
+  filter: brightness(0) invert(1) drop-shadow(0 0 14px rgba(0, 240, 255, 0.6));
+  /* 直接显示：无延迟、无淡入，第一帧即在 */
+  animation: logoPulse 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: opacity, transform;
 }
 
 .brand-loading__text {
@@ -82,9 +84,17 @@
 
 .brand-loading__text span {
   display: inline-block;
-  animation: letterPulse 2.2s ease-in-out infinite;
-  animation-fill-mode: forwards;
-  animation-delay: calc(var(--i) * 0.08s);
+  /* 霓虹辉光改为「静态」：呼吸时只改 opacity（合成层属性），不再逐帧改 color/text-shadow。
+     逐帧改 text-shadow 是 letters 抖动/掉帧的主要原因。 */
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow:
+    0 0 10px rgba(0, 240, 255, 0.6),
+    0 0 22px rgba(0, 240, 255, 0.3);
+  animation: letterPulse 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  /* backwards 填充：延迟期间就保持起始态，消除 letter 入场瞬间的亮度跳变 */
+  animation-fill-mode: both;
+  animation-delay: calc(var(--i) * 0.1s);
+  will-change: opacity;
 }
 
 .brand-loading__space {
@@ -93,76 +103,40 @@
   animation: none !important;
 }
 
+/* 呼吸曲线的三个关键点：
+   ① 幅度收窄 —— logo 0.72→1。原来 0.5→1 等于亮度翻倍，观感是「闪」不是「呼吸」，
+      这是用户说「一闪一闪」的根因。
+   ② 单一转向点 —— 只保留 0%/50%/100%。原来 0/35/50/65/100 五个关键帧会让 CSS 在
+      **每一段之间各自套用缓动**，造成「冲到顶 → 平住 → 再落下」的停顿跳变感。
+   ③ 近似正弦的 cubic-bezier + 放慢到 3.6s —— 连续的往复曲线，转折点无痕迹。 */
 @keyframes logoPulse {
   0%, 100% {
-    opacity: 0.5;
-    filter: brightness(0) invert(1) drop-shadow(0 0 8px rgba(0, 240, 255, 0.4));
-  }
-  35%, 65% {
-    opacity: 1;
-    filter: brightness(0) invert(1) drop-shadow(0 0 22px rgba(0, 240, 255, 0.85));
+    opacity: 0.72;
+    transform: scale(1);
   }
   50% {
     opacity: 1;
-    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1));
+    transform: scale(1.025);
   }
 }
 
+/* letters 同理：幅度 0.55→1（原 0.3→1），去掉分段平住，位移收到 1px 更从容。
+   color / text-shadow 已移到 .brand-loading__text span 上做成静态，这里不再逐帧变更。 */
 @keyframes letterPulse {
   0%, 100% {
-    opacity: 0.3;
-    color: rgba(255, 255, 255, 0.45);
-    text-shadow: none;
+    opacity: 0.55;
     transform: translateY(0);
-  }
-  35%, 65% {
-    opacity: 1;
-    color: #fff;
-    text-shadow:
-      0 0 8px rgba(0, 240, 255, 0.65),
-      0 0 18px rgba(0, 240, 255, 0.35),
-      0 0 34px rgba(0, 240, 255, 0.18);
-    transform: translateY(-1px);
   }
   50% {
     opacity: 1;
-    color: #fff;
-    text-shadow:
-      0 0 10px rgba(0, 240, 255, 0.8),
-      0 0 26px rgba(0, 240, 255, 0.45),
-      0 0 48px rgba(0, 240, 255, 0.22);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 }
 
-/* 移动端：只动 opacity（合成层、不逐帧重绘），保留静态霓虹辉光，闪动感不变但不再卡顿。
-   桌面端仍走上面的 logoPulse / letterPulse（逐帧改 filter/text-shadow，桌面 GPU 扛得住）。 */
-@media (max-width: 768px) {
-  .brand-loading__logo {
-    animation: logoPulseLite 2.2s ease-in-out infinite;
-    will-change: opacity;
-  }
-  .brand-loading__text span {
-    color: #fff;
-    text-shadow:
-      0 0 10px rgba(0, 240, 255, 0.6),
-      0 0 22px rgba(0, 240, 255, 0.3);
-    animation: letterPulseLite 2.2s ease-in-out infinite;
-    animation-fill-mode: forwards;
-    animation-delay: calc(var(--i) * 0.12s);
-    will-change: opacity;
-  }
-}
-
-@keyframes logoPulseLite {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-@keyframes letterPulseLite {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
-}
+/* 移动端不再需要降级的「lite」版本（原 logoPulseLite / letterPulseLite）。
+   现在 logoPulse / letterPulse 只动 opacity 与 transform 两个合成层属性、辉光是静态的，
+   移动端 GPU 同样扛得住；删掉旧的 lite 版本可以顺带消除移动端仍在使用的 0.5→1 大幅度闪光，
+   并让桌面与移动端共用同一条呼吸曲线、观感统一。 */
 
 @media (max-width: 480px) {
   .brand-loading__logo {
