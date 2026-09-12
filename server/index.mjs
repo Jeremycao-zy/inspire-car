@@ -34,6 +34,7 @@ import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
 import { handleChat } from './chat.mjs';
+import { handleTts } from './voice.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1824,6 +1825,11 @@ const server = http.createServer(async (req, res) => {
   /* ---------- AI 对话 ---------- */
   if (u.pathname === '/api/chat' && req.method === 'POST') {
     await handleChat(req, res);
+    return;
+  }
+  /* ---------- 语音合成（百炼 qwen-tts，复用既有 key） ---------- */
+  if (u.pathname === '/api/tts' && req.method === 'POST') {
+    await handleTts(req, res);
     return;
   }
 

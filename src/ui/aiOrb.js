@@ -241,8 +241,22 @@ function mountAiOrb() {
     return reply;
   }
 
-  /** 朗读回复 */
-  function speak(text) {
+  /* 服务端音色（百炼 qwen-tts）：系统默认中文音色机械感重、各平台还不一致，
+     优先用服务端合成；失败或无 key 时自动退回浏览器 speechSynthesis。 */
+  let audioEl = null;
+  function stopAudio() {
+    if (audioEl) {
+      try {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** 浏览器内置语音（兜底） */
+  function speakFallback(text) {
     if (!('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
@@ -259,18 +273,79 @@ function mountAiOrb() {
     }
   }
 
+  /** 朗读回复：优先服务端真人音色 */
+  async function speak(text) {
+    if (!text) return;
+    wrap.classList.add('is-speaking');
+    try {
+      const r = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        if (blob && blob.size > 1000) {
+          if (!audioEl) audioEl = new Audio();
+          const url = URL.createObjectURL(blob);
+          stopAudio();
+          audioEl.src = url;
+          audioEl.onended = () => {
+            wrap.classList.remove('is-speaking');
+            URL.revokeObjectURL(url);
+          };
+          audioEl.onerror = () => {
+            wrap.classList.remove('is-speaking');
+            URL.revokeObjectURL(url);
+          };
+          await audioEl.play().catch(() => {
+            throw new Error('play blocked');
+          });
+          return;
+        }
+      }
+      throw new Error('tts unavailable');
+    } catch {
+      // 服务端音色不可用 → 退回系统语音，保证一定有声音
+      wrap.classList.remove('is-speaking');
+      speakFallback(text);
+    }
+  }
+
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recog = null;
   let listening = false;
 
+  /* wanting = 用户还处在"想说话"的状态。识别引擎常会因为静音/网络自行 end，
+     只要用户没主动结束就自动重启，避免"说了一半就断开"（对话时灵时不灵的主因）。 */
+  let wanting = false;
+  let restartTimer = 0;
+
   function stopListening() {
+    wanting = false;
     listening = false;
+    clearTimeout(restartTimer);
+    restartTimer = 0;
     wrap.classList.remove('is-listening');
     try {
       recog?.stop();
     } catch {
       /* ignore */
     }
+  }
+
+  function restartListening(delay = 350) {
+    if (!wanting || !recog) return;
+    clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => {
+      if (!wanting) return;
+      try {
+        recog.start();
+      } catch {
+        // 已在运行等状态：稍后再试
+        restartListening(600);
+      }
+    }, delay);
   }
 
   if (SR) {
@@ -281,7 +356,33 @@ function mountAiOrb() {
     recog.onstart = () => {
       listening = true;
       wrap.classList.add('is-listening');
-      showCaption('正在聆听…', 0);
+    };
+    recog.onend = () => {
+      listening = false;
+      // 用户没喊停 → 自动续听
+      if (wanting) restartListening();
+      else wrap.classList.remove('is-listening');
+    };
+    recog.onerror = (ev) => {
+      const code = ev?.error || '';
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        // 麦克风权限被拒：给明确指引，并退回文字面板
+        wanting = false;
+        listening = false;
+        wrap.classList.remove('is-listening');
+        showCaption('麦克风被禁用，请在浏览器地址栏允许麦克风权限。', 5000);
+        return;
+      }
+      if (code === 'no-speech') {
+        restartListening(200); // 只是没听到声音，继续听
+        return;
+      }
+      if (code === 'network') {
+        showCaption('网络不稳定，正在重试聆听…', 2500);
+        restartListening(800);
+        return;
+      }
+      restartListening(600);
     };
     recog.onresult = async (ev) => {
       const text = Array.from(ev.results)
@@ -303,30 +404,28 @@ function mountAiOrb() {
         showCaption('网络好像不太稳，稍后再试一次。', 4000);
       }
     };
-    recog.onerror = () => {
-      stopListening();
-      showCaption('没听清，再点一次试试。', 3000);
-    };
-    recog.onend = () => stopListening();
   }
 
   wrap.addEventListener('click', () => {
     // 正在听 → 再点一次结束
-    if (listening) {
+    if (wanting || listening) {
       stopListening();
       caption.classList.remove('show');
       return;
     }
+    stopAudio();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     wrap.classList.remove('is-speaking');
     if (!recog) {
       openPanel(); // 浏览器不支持语音识别 → 退回文字面板
       return;
     }
+    wanting = true;
+    showCaption('正在聆听…', 0);
     try {
       recog.start();
     } catch {
-      /* 已在运行 */
+      restartListening(400); // 引擎正忙，稍后自动重试
     }
   });
   closeBtn.addEventListener('click', closePanel);
@@ -346,6 +445,9 @@ function mountAiOrb() {
   }
   function dispose() {
     pause();
+    wanting = false;
+    clearTimeout(restartTimer);
+    stopAudio();
     try {
       recog?.abort?.();
     } catch {
