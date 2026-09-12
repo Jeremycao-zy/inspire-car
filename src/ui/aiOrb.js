@@ -120,11 +120,22 @@ function mountAiOrb() {
   frame();
 
   /* ---------- 对话面板 ---------- */
+  // 朗读音色：默认 Cherry（百炼 qwen-tts 真人音色），可在面板里切换并持久化
+  let currentVoice = 'Cherry';
   const panel = document.createElement('div');
   panel.className = 'ai-chat';
   panel.innerHTML = `
     <div class="ai-chat__head">
       <div class="ai-chat__title">AI 改装助手<small>轮毂 · 姿态 · 车漆建议</small></div>
+      <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
+        <span>音色</span>
+        <select class="ai-chat__voice-sel">
+          <option value="Cherry">Cherry · 甜美</option>
+          <option value="Serena">Serena · 温柔知性</option>
+          <option value="Ethan">Ethan · 沉稳男声</option>
+          <option value="Chelsie">Chelsie · 明亮亲切</option>
+        </select>
+      </label>
       <button class="ai-chat__close" aria-label="关闭">×</button>
     </div>
     <div class="ai-chat__list"></div>
@@ -137,6 +148,13 @@ function mountAiOrb() {
   const ta = panel.querySelector('textarea');
   const sendBtn = panel.querySelector('.ai-chat__send');
   const closeBtn = panel.querySelector('.ai-chat__close');
+  const voiceSel = panel.querySelector('.ai-chat__voice-sel');
+  currentVoice = localStorage.getItem('aiOrbVoice') || 'Cherry';
+  voiceSel.value = currentVoice;
+  voiceSel.addEventListener('change', () => {
+    currentVoice = voiceSel.value;
+    try { localStorage.setItem('aiOrbVoice', currentVoice); } catch { /* ignore */ }
+  });
 
   const history = [];
   function addBubble(role, text, thinking = false) {
@@ -244,6 +262,24 @@ function mountAiOrb() {
   /* 服务端音色（百炼 qwen-tts）：系统默认中文音色机械感重、各平台还不一致，
      优先用服务端合成；失败或无 key 时自动退回浏览器 speechSynthesis。 */
   let audioEl = null;
+  // 音频解锁：部分浏览器（尤其 iOS Safari）要求媒体播放由用户手势直接触发。
+  // 在首次点击时预热，使异步拿到 TTS 音频后仍能顺利播放，避免被自动播放策略拦截后
+  // 静默退回系统语音。
+  let audioUnlocked = false;
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) { const c = new Ctx(); c.resume?.(); }
+    } catch { /* ignore */ }
+    try {
+      const a = new Audio();
+      a.muted = true;
+      a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+      a.play().then(() => a.pause()).catch(() => {});
+    } catch { /* ignore */ }
+  }
   function stopAudio() {
     if (audioEl) {
       try {
@@ -281,7 +317,7 @@ function mountAiOrb() {
       const r = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voice: currentVoice }),
       });
       if (r.ok) {
         const blob = await r.blob();
@@ -305,8 +341,10 @@ function mountAiOrb() {
         }
       }
       throw new Error('tts unavailable');
-    } catch {
-      // 服务端音色不可用 → 退回系统语音，保证一定有声音
+    } catch (err) {
+      // 服务端音色不可用 → 退回系统语音，保证一定有声音（不再静默切换，给出提示便于排查）
+      console.warn('[aiOrb] TTS 真人语音失败，退回系统语音：', err);
+      showCaption('真人语音暂不可用，已切换系统语音', 2600);
       wrap.classList.remove('is-speaking');
       speakFallback(text);
     }
@@ -407,6 +445,7 @@ function mountAiOrb() {
   }
 
   wrap.addEventListener('click', () => {
+    unlockAudio(); // 首次点击预热音频播放权限
     // 正在听 → 再点一次结束
     if (wanting || listening) {
       stopListening();

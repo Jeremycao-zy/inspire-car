@@ -200,6 +200,28 @@
 .ai-chat__close:hover {
   background: rgba(0, 229, 255, 0.12);
 }
+.ai-chat__voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6fb9c9;
+  white-space: nowrap;
+}
+.ai-chat__voice-sel {
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: #d6f7ff;
+  border-radius: 8px;
+  padding: 3px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 150px;
+}
+.ai-chat__voice-sel:focus {
+  outline: none;
+  border-color: rgba(0, 229, 255, 0.6);
+}
 .ai-chat__list {
   flex: 1;
   overflow-y: auto;
