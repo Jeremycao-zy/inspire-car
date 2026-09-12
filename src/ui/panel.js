@@ -1132,7 +1132,9 @@ export function createPanel(app, mount) {
       '按四个轮位把原车轮从车身网格里剔除，新轮毂才能装进轮拱。切多了会伤到轮眉、切少了会有残留，用上面两个滑杆微调。可随时「恢复原车轮」。'
     )
   );
-  tabBodies.wheels.appendChild(section('切除原车轮（换轮毂用）', cutBox));
+  // 切除原车轮：BANG 自动拆解已把原车轮剥掉，这个手切是「BANG 失败」的兜底，
+  // 正常流程几乎用不到。收到「高级/兜底工具」里，默认收起，减少面板堆砌。
+  tabBodies.wheels.appendChild(collapsible('切除原车轮 · 兜底工具', cutBox));
 
   tabBodies.paint.appendChild(section('车漆', colorWheel.root));
 
@@ -1170,7 +1172,9 @@ export function createPanel(app, mount) {
       '在 Hyper3D 网页版 / Scenario 用 BANG 拆完部件后，把拆出的 GLB 选进来；会自动识别车轮并装到四个轮位，其余部件摆在车旁。'
     )
   );
-  tabBodies.wheels.appendChild(section('导入已拆解部件（BANG）', partBox));
+  // 手动导入已拆解部件：BANG 现在在 pipeline 内自动跑，手动拖 GLB 回来是「逃生舱」性质的覆盖入口。
+  // 默认收起，避免和上面的自动化流程并列显得冗余。
+  tabBodies.wheels.appendChild(collapsible('导入已拆解部件(BANG) · 手动兜底', partBox));
 
   tabBodies.scene.appendChild(section('场景', sceneBox));
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
