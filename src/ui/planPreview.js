@@ -188,11 +188,22 @@ class PreviewEngine {
     this.decorCache = new Map(); // decorKey -> 模板 Group（共享几何/贴图）
     this.ok = false;
     this.raf = 0;
+    // 移动端判定：iPhone/iPad/Android，或窄屏。
+    // 单个生成的车模 40~47MB（.cache/models 实测 46.7MB / 45.8MB / 44.4MB …），
+    // 一张已构建卡片就吃掉这么一份 —— 移动端必须比桌面端保守得多。
+    const mobile =
+      /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') ||
+      (typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(max-width: 768px)').matches);
+
     // 卡片滑出视口后，延迟多久释放它的克隆几何（毫秒）。
-    // 每张已构建的卡片都持有一份 30~48MB 的车模克隆（deepCloneCar 会 clone 全部几何），
+    // 每张已构建的卡片都持有一份 40~47MB 的车模克隆（deepCloneCar 会 clone 全部几何），
     // 滚过的方案越多、显存堆积越多 —— 这正是移动端反复进出方案后被系统杀进程的原因之一。
-    // 延迟是为了避免快速来回滚动时反复构建/销毁。
-    this.releaseOffscreenMs = 4000;
+    // 延迟是为了避免快速来回滚动时反复构建/销毁；移动端更激进一些。
+    this.releaseOffscreenMs = mobile ? 1500 : 4000;
+    // 同时"已构建"的卡片数量上限（兜底：即便视口里同时能看到好几张，也封住峰值内存）
+    this.maxBuilt = mobile ? 1 : 3;
 
     this._createRenderer();
     if (!this.ok) return;
@@ -207,6 +218,7 @@ class PreviewEngine {
             inst.visible = e.isIntersecting;
 
             if (inst.visible) {
+              inst.lastSeenTs = Date.now(); // 供"超出上限时淘汰最久未见者"排序
               // 重新进入视口：取消待执行的释放，必要时重建，再补一帧
               if (inst.offscreenTimer) {
                 clearTimeout(inst.offscreenTimer);
@@ -373,6 +385,34 @@ class PreviewEngine {
     for (const c of [...this.instances.keys()]) this.unmount(c);
   }
 
+  /**
+   * 封住"同时已构建"的卡片数量。
+   * 每张已构建卡片都常驻一整份 40~47MB 的车模几何，即便有滑出视口释放作兜底，
+   * 视口内同时可见多张（桌面）或快速来回滚动（移动端）仍可能瞬间堆到数百 MB。
+   * 这里做硬上限：超出的按「最后可见时间」从最久的开始释放，优先淘汰已滑出视口的。
+   */
+  _enforceBuiltLimit() {
+    if (!this.maxBuilt) return;
+    const built = [...this.instances.values()].filter((i) => i.built);
+    if (built.length <= this.maxBuilt) return;
+    built.sort((a, b) => (a.lastSeenTs || 0) - (b.lastSeenTs || 0));
+    let need = built.length - this.maxBuilt;
+    for (const i of built) {
+      if (need <= 0) break;
+      if (!i.visible && i.built) {
+        this._disposeInstance(i);
+        need--;
+      }
+    }
+    for (const i of built) {
+      if (need <= 0) break;
+      if (i.built) {
+        this._disposeInstance(i);
+        need--;
+      }
+    }
+  }
+
   _build(inst) {
     if (inst.built || inst.building) return;
     inst.building = true;
@@ -380,6 +420,9 @@ class PreviewEngine {
       .catch((e) => console.warn('[plan-preview] 构建失败', e))
       .finally(() => {
         inst.building = false;
+        inst.lastSeenTs = Date.now();
+        // 构建刚完成就先封一次顶，避免峰值超过上限
+        this._enforceBuiltLimit();
         // 关键：构建是在 await 中完成的。若期间卡片已经滑出视口，
         // 此时必须补装释放定时器，否则这份 30~48MB 的克隆几何会永久驻留
         // （快速滚动时很容易命中：滑出时还在 building，装不上定时器）
