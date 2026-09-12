@@ -14,15 +14,12 @@ import { getVisionKey } from './vision.mjs';
 const TTS_URL =
   'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 
-/** qwen-tts 官方音色（可按需扩展） */
+/** qwen-tts 官方音色（DashScope 实测仅支持这 4 个，其余会 400 InvalidParameter） */
 export const VOICES = [
   'Cherry', // 女声 · 甜美自然（默认）
   'Serena', // 女声 · 温柔知性
   'Ethan', // 男声 · 沉稳
   'Chelsie', // 女声 · 明亮亲切
-  'Dylan', // 男声 · 年轻活力（北京腔）
-  'Jada', // 女声 · 干练
-  'Sunny', // 女声 · 活泼
 ];
 const DEFAULT_VOICE = process.env.TTS_VOICE || 'Cherry';
 
