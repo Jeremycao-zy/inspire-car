@@ -261,38 +261,54 @@ function mountAiOrb() {
 
   /* 服务端音色（百炼 qwen-tts）：系统默认中文音色机械感重、各平台还不一致，
      优先用服务端合成；失败或无 key 时自动退回浏览器 speechSynthesis。 */
-  let audioEl = null;
-  // 1px 静音 WAV：用于在用户手势内预热「真正的播放元素」本身。
-  // iOS Safari 要求被异步播放的元素本身就在手势里被 play 过，临时元素无法解锁。
-  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-  // 音频解锁：部分浏览器（尤其 iOS Safari）要求媒体播放由用户手势直接触发。
-  // 关键：预热「真正的播放元素 audioEl 本身」而非临时元素——否则异步拿到 TTS
-  // 音频后再 play 会被自动播放策略拦截，静默退回系统语音。
-  let audioUnlocked = false;
+  // Web Audio 播放：用 AudioContext 解码 WAV 后用 AudioBufferSourceNode 播放。
+  // 关键优势：只要在用户手势里 resume 过 AudioContext，异步（fetch 回来后）播放
+  // 就不再受 <audio> 元素的自动播放策略约束——这才是之前「退回系统语音」的根因
+  // （<audio>.play() 在 iOS Safari / 部分浏览器即便预热过也仍可能被拦截）。
+  let audioCtx = null;
+  let currentSource = null;
+  function getCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+  // 在用户手势里解锁音频上下文（点击 AI 球 / 发送按钮 / 回车都会调用）
   function unlockAudio() {
-    if (audioUnlocked) return;
-    audioUnlocked = true;
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) { const c = new Ctx(); c.resume?.(); }
-    } catch { /* ignore */ }
-    try {
-      if (!audioEl) audioEl = new Audio();
-      audioEl.muted = true;
-      audioEl.src = SILENT_WAV;
-      audioEl.play()
-        .then(() => { try { audioEl.pause(); audioEl.currentTime = 0; } catch {} })
-        .catch(() => {});
-    } catch { /* ignore */ }
+    getCtx();
   }
   function stopAudio() {
-    if (audioEl) {
-      try {
-        audioEl.pause();
-        audioEl.currentTime = 0;
-      } catch {
-        /* ignore */
+    try {
+      if (currentSource) {
+        currentSource.onended = null;
+        currentSource.stop();
+        currentSource.disconnect();
       }
+    } catch {
+      /* ignore */
+    }
+    currentSource = null;
+  }
+  // 解码并播放 TTS 音频；成功返回 true，失败（解码异常 / 无上下文）返回 false
+  async function playTts(ab) {
+    const ctx = getCtx();
+    if (!ctx || !ab || ab.byteLength < 1000) return false;
+    try {
+      const buf = await ctx.decodeAudioData(ab);
+      stopAudio();
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = () => wrap.classList.remove('is-speaking');
+      src.start(0);
+      currentSource = src;
+      return true;
+    } catch (e) {
+      console.warn('[aiOrb] 解码/播放 TTS 失败', e);
+      return false;
     }
   }
 
@@ -325,39 +341,10 @@ function mountAiOrb() {
         body: JSON.stringify({ text, voice: currentVoice }),
       });
       if (r.ok) {
-        const blob = await r.blob();
-        if (blob && blob.size > 1000) {
-          if (!audioEl) audioEl = new Audio();
-          const url = URL.createObjectURL(blob);
-          stopAudio();
-          audioEl.muted = false;
-          audioEl.src = url;
-          // 先尝试播放；若被自动播放策略拦截，稍后重试一次
-          // （用户此前已交互过，多数浏览器此时已解锁）
-          let played = false;
-          try {
-            await audioEl.play();
-            played = true;
-          } catch {
-            try {
-              await new Promise((r) => setTimeout(r, 60));
-              await audioEl.play();
-              played = true;
-            } catch {
-              /* 仍被拦截 */
-            }
-          }
-          if (played) {
-            audioEl.onended = () => {
-              wrap.classList.remove('is-speaking');
-              URL.revokeObjectURL(url);
-            };
-            audioEl.onerror = () => {
-              wrap.classList.remove('is-speaking');
-              URL.revokeObjectURL(url);
-            };
-            return;
-          }
+        const ab = await r.arrayBuffer();
+        if (ab && ab.byteLength > 1000) {
+          const played = await playTts(ab);
+          if (played) return; // 真人语音已成功播放，结束
         }
       }
       throw new Error('tts unavailable');
