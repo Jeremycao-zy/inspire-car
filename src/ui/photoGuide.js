@@ -481,9 +481,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   function showOverlay(stage, progress, message) {
     overlay.classList.remove('hidden');
     const isDone = stage === 'done';
-    // 完成用 ✨，加载中用霓虹圆环（不再用漏斗 ⏳）
+    // 完成用 logo 闪动，加载中用霓虹圆环（不再用漏斗 ⏳ / 星星 ✨）
     if (isDone) {
-      overlayIcon.textContent = '✨';
+      overlayIcon.innerHTML = `<img class="photo-guide__overlay-icon--done" src="${logoMarkUrl}" alt="INSPIRE CAR">`;
       stopTips();
     } else {
       if (!overlayIcon.querySelector('.photo-guide__overlay-spinner')) {

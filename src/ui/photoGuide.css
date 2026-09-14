@@ -445,14 +445,14 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.45));
 }
 
 /* 加载指示器：霓虹青→紫渐变圆环，替代漏斗 emoji */
 .photo-guide__overlay-spinner {
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: conic-gradient(
     from 0deg,
@@ -470,10 +470,32 @@
   to { transform: rotate(360deg); }
 }
 
+/* 建模完成：logo 闪动图案（替代原来的 ✨） */
+.photo-guide__overlay-icon--done {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  animation: photo-guide-logo-flash 1.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 18px rgba(0, 240, 255, 0.55));
+}
+
+@keyframes photo-guide-logo-flash {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(0.94);
+    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.4));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 30px rgba(0, 240, 255, 0.95));
+  }
+}
+
 /* 建模等待期：改装知识自动轮播（非卡片式，极简居中排版） */
 .photo-guide__overlay-tips {
-  min-height: 80px;
-  margin: 4px 0 22px;
+  min-height: 110px;
+  margin: 8px 0 26px;
   padding: 0 8px;
   text-align: center;
   opacity: 1;
@@ -487,41 +509,41 @@
 }
 
 .photo-guide__overlay-tip-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--neon-purple, #b14aed);
-  margin: 0 0 8px;
-  opacity: 0.85;
-  text-shadow: 0 0 8px rgba(177, 74, 237, 0.45);
+  margin: 0 0 10px;
+  opacity: 1;
+  text-shadow: 0 0 12px rgba(177, 74, 237, 0.6);
 }
 
 .photo-guide__overlay-tip-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
   color: var(--neon-cyan, #00f0ff);
-  margin: 0 0 8px;
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+  margin: 0 0 12px;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
 }
 
 .photo-guide__overlay-tip-text {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-dim, #9aa7c7);
-  line-height: 1.6;
-  margin: 0 auto 14px;
-  max-width: 330px;
+  line-height: 1.65;
+  margin: 0 auto 18px;
+  max-width: 360px;
 }
 
 .photo-guide__overlay-tip-dots {
   display: flex;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .photo-guide__overlay-tip-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: rgba(0, 240, 255, 0.35);
   transition: background 0.2s ease, box-shadow 0.2s ease;
@@ -529,22 +551,23 @@
 
 .photo-guide__overlay-tip-dot.active {
   background: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.55);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.65);
 }
 
+/* 系统过程信息：缩小、弱化，让视线聚焦在改装知识上 */
 .photo-guide__overlay-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
   color: #eafcff;
-  margin: 0 0 8px;
-  text-shadow: 0 0 12px rgba(0, 240, 255, 0.45);
+  margin: 0 0 6px;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
 }
 
 .photo-guide__overlay-text {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-dim, #9aa7c7);
-  margin: 0 0 20px;
-  line-height: 1.55;
+  margin: 0 0 12px;
+  line-height: 1.5;
 }
 
 .photo-guide__bar {
@@ -634,5 +657,23 @@
 
   .photo-guide__start {
     width: 100%;
+  }
+
+  /* 移动端：知识区仍要醒目，但系统信息继续收小 */
+  .photo-guide__overlay-tip-title {
+    font-size: 17px;
+  }
+
+  .photo-guide__overlay-tip-text {
+    font-size: 13px;
+    max-width: 300px;
+  }
+
+  .photo-guide__overlay-title {
+    font-size: 14px;
+  }
+
+  .photo-guide__overlay-text {
+    font-size: 10px;
   }
 }
