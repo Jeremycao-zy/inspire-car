@@ -11,7 +11,6 @@
  */
 
 import { ET_REF } from '../tuning/wheelRig.js';
-import { RIM_PRESETS } from '../tuning/proceduralRim.js';
 import { createColorWheel } from './colorWheel.js';
 import { renderMyWheels } from './myWheels.js';
 import {
@@ -503,19 +502,6 @@ export function createPanel(app, mount) {
   }
   syncPrec();
 
-  /* ---- 轮毂款式：底部选择栏（不再放在上传生成区内） ----
-   * 所有预设均指向真实 GLB 模型；加载失败时内部会自动回退到程序化轮毂。 */
-  const rimPresetButtons = RIM_PRESETS.map((p) =>
-    el('button', {
-      class: 'chip',
-      'data-rim-preset': p.id,
-      onclick: () => app.loadPresetWheel(p.style),
-    }, p.label)
-  );
-  function syncRimPreset() {
-    for (const b of rimPresetButtons) b.classList.toggle('on', b.dataset.rimPreset === app.params.rimPreset);
-  }
-
   /* ---- 步骤 3：轮毂参数 ---- */
   const presetBar = el('div', { class: 'presets' });
   for (const name of Object.keys(PRESETS)) {
@@ -847,7 +833,6 @@ export function createPanel(app, mount) {
       tabBodies[k].classList.toggle('hidden', k !== id);
       tabButtons[k].classList.toggle('active', k === id);
     }
-    bottomPresetBar.classList.toggle('hidden', id !== 'wheels');
   }
 
   // 轮毂校准安全网（摆位微调）
@@ -1180,14 +1165,6 @@ export function createPanel(app, mount) {
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
   tabBodies.scene.appendChild(section('视角', views));
 
-  /* ---- 底部轮毂款式选择栏：只在「轮毂」Tab 显示 ---- */
-  const bottomPresetBar = el(
-    'div',
-    { class: 'bottom-preset-bar' },
-    el('div', { class: 'bpb-label' }, '轮毂款式'),
-    el('div', { class: 'bpb-chips' }, ...rimPresetButtons)
-  );
-
   mount.appendChild(
     el(
       'div',
@@ -1202,8 +1179,7 @@ export function createPanel(app, mount) {
       tabsBar,
       // 由 TABS 派生而不是逐个手写：新增 Tab 时不会漏挂对应的 body
       // （曾经因为手写列表漏挂，导致点了 Tab 所有面板都隐藏）
-      ...TABS.map(([id]) => tabBodies[id]),
-      bottomPresetBar
+      ...TABS.map(([id]) => tabBodies[id])
     )
   );
 
@@ -1240,10 +1216,13 @@ export function createPanel(app, mount) {
     // 参数来源 + 参数可信度（与车名把握分离）
     const src = bodyInfoEl.querySelector('.body-info__src');
     const isOfficial = rs.source === 'official-db';
-    src.className = 'body-info__src ' + (isOfficial ? 'is-official' : 'is-llm');
+    const isVision = rs.source === 'vision';
+    src.className = 'body-info__src ' + (isOfficial ? 'is-official' : isVision ? 'is-vision' : 'is-llm');
     src.textContent = isOfficial
       ? `来源：官方车型库 · 参数可信度 ${Math.round((rs.confidence ?? 0.95) * 100)}%`
-      : `来源：大模型估算 · 参数可信度 ${Math.round((rs.confidence ?? 0) * 100)}%`;
+      : isVision
+        ? `来源：视觉识别 · 仅车名（未查到真车参数）`
+        : `来源：大模型估算 · 参数可信度 ${Math.round((rs.confidence ?? 0) * 100)}%`;
 
     // 复用原 rows：车长/车宽/车高/轴距/前后轮距/离地/接近离去角
     const rows = [
@@ -1265,7 +1244,6 @@ export function createPanel(app, mount) {
     syncSuspTarget();
     syncScene();
     syncPrec();
-    syncRimPreset();
     syncExposure();
     syncBang();
     renderBodyData();

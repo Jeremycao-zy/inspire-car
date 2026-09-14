@@ -33,6 +33,7 @@ import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
+import * as wheels from './wheels.mjs';
 import { handleChat } from './chat.mjs';
 import { handleTts } from './voice.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
@@ -1782,6 +1783,41 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === '/api/upload-part' && req.method === 'POST') {
     await handleUploadPart(req, res);
+    return;
+  }
+
+  /* ---- 轮毂仓库：账户持久化的轮毂索引 ---- */
+  if (u.pathname === '/api/wheels' && req.method === 'GET') {
+    const owner = wheels.resolveWheelOwner(req);
+    sendJson(res, 200, { wheels: wheels.getWheels(owner) });
+    return;
+  }
+  if (u.pathname === '/api/wheels' && req.method === 'POST') {
+    const owner = wheels.resolveWheelOwner(req);
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+      return;
+    }
+    const w = wheels.addWheel(owner, {
+      url: String(body?.url || ''),
+      name: String(body?.name || ''),
+      thumb: String(body?.thumb || ''),
+    });
+    if (!w) {
+      sendJson(res, 400, { error: '缺少 url 或 owner' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, wheel: w });
+    return;
+  }
+  if (u.pathname.startsWith('/api/wheels/') && req.method === 'DELETE') {
+    const owner = wheels.resolveWheelOwner(req);
+    const id = decodeURIComponent(u.pathname.slice('/api/wheels/'.length));
+    const list = wheels.removeWheel(owner, id);
+    sendJson(res, 200, { ok: true, wheels: list });
     return;
   }
 
