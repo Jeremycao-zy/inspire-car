@@ -199,6 +199,13 @@ function sendJson(res, code, obj) {
   res.end(buf);
 }
 
+/** 从 Bearer 解析已登录用户 id；未登录返回 null（整车方案仅对登录用户持久化） */
+async function authUid(req) {
+  const token = bearerToken(req);
+  const payload = auth.verifyToken(token);
+  return payload && payload.uid ? payload.uid : null;
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ------------------------- SSE 生成流 ------------------------- */
@@ -1858,6 +1865,33 @@ const server = http.createServer(async (req, res) => {
     const id = decodeURIComponent(u.pathname.slice('/api/wheels/'.length));
     const list = await wheels.removeWheel(owner, id);
     sendJson(res, 200, { ok: true, wheels: list });
+    return;
+  }
+
+  /* ---- 整车方案：按账号持久化（跨设备） ---- */
+  if (u.pathname === '/api/plans' && req.method === 'GET') {
+    const uid = await authUid(req);
+    if (!uid) { sendJson(res, 401, { error: 'auth required' }); return; }
+    sendJson(res, 200, { plans: await db.getPlans(uid) });
+    return;
+  }
+  if (u.pathname === '/api/plans' && req.method === 'POST') {
+    const uid = await authUid(req);
+    if (!uid) { sendJson(res, 401, { error: 'auth required' }); return; }
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (e) { sendJson(res, 400, { error: e.message }); return; }
+    if (!body || !body.id) { sendJson(res, 400, { error: 'invalid plan' }); return; }
+    const saved = await db.upsertPlan(uid, body);
+    sendJson(res, 200, { ok: true, plan: saved });
+    return;
+  }
+  if (u.pathname.startsWith('/api/plans/') && req.method === 'DELETE') {
+    const uid = await authUid(req);
+    if (!uid) { sendJson(res, 401, { error: 'auth required' }); return; }
+    const id = decodeURIComponent(u.pathname.slice('/api/plans/'.length));
+    const plans = await db.deletePlan(uid, id);
+    sendJson(res, 200, { ok: true, plans });
     return;
   }
 

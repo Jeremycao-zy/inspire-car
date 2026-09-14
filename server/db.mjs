@@ -4,8 +4,8 @@
  * 双模式（调用方 auth.mjs / wheels.mjs 无需感知当前是哪种）：
  *
  *   · SQL 模式（生产 / 有 DATABASE_URL）：
- *      使用 PostgreSQL（pg）。启动自动建表（users / wheels + 唯一/普通索引），
- *      账号与「我的轮毂」索引真正持久化，Railway 重新部署后数据不丢。
+ *      使用 PostgreSQL（pg）。启动自动建表（users / wheels / plans / models + 唯一/普通索引），
+ *      账号、「我的轮毂」索引、整车方案与生成的 GLB 字节真正持久化，Railway 重新部署后数据不丢。
  *      仅当 DATABASE_URL 存在时才动态 import('pg')，所以本地没装 pg 也不会报错。
  *
  *   · JSON 模式（本地开发 / 无数据库）：
@@ -111,6 +111,18 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plans (
+      id          TEXT NOT NULL,
+      owner       TEXT NOT NULL,
+      data        JSONB NOT NULL,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (owner, id)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS plans_owner ON plans (owner)');
 }
 
 /* ------------------------- JSON 回退存储 ------------------------- */
@@ -118,6 +130,7 @@ async function migrate() {
 const USERS_DIR = path.join(ROOT, '.cache', 'users');
 const WHEELS_DIR = path.join(ROOT, '.cache', 'wheels');
 const MODELS_DIR = path.join(ROOT, '.cache', 'models');
+const PLANS_DIR = path.join(ROOT, '.cache', 'plans');
 const USERS_FILE = path.join(USERS_DIR, 'users.json');
 
 function ensureJsonDirs() {
@@ -125,6 +138,7 @@ function ensureJsonDirs() {
     fs.mkdirSync(USERS_DIR, { recursive: true });
     fs.mkdirSync(WHEELS_DIR, { recursive: true });
     fs.mkdirSync(MODELS_DIR, { recursive: true });
+    fs.mkdirSync(PLANS_DIR, { recursive: true });
   } catch {
     /* ignore */
   }
@@ -404,4 +418,74 @@ export async function modelExists(name) {
   if (!name) return false;
   const r = await pool.query('SELECT 1 FROM models WHERE name=$1', [String(name)]);
   return r.rowCount > 0;
+}
+
+/* ------------------------- 整车方案（按账号） ------------------------- */
+
+function planFileFor(uid) {
+  return path.join(PLANS_DIR, `${uid}.json`);
+}
+function readPlansJson(uid) {
+  try {
+    const list = JSON.parse(fs.readFileSync(planFileFor(uid), 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function writePlansJson(uid, list) {
+  fs.mkdirSync(PLANS_DIR, { recursive: true });
+  fs.writeFileSync(planFileFor(uid), JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+
+/**
+ * 取某账号的全部整车方案（按最近更新倒序）。
+ * @param {string} uid
+ * @returns {Promise<object[]>}
+ */
+export async function getPlans(uid) {
+  if (dbMode !== 'sql' || !uid) return readPlansJson(uid);
+  const r = await pool.query(
+    'SELECT data, updated_at FROM plans WHERE owner=$1 ORDER BY updated_at DESC',
+    [uid]
+  );
+  return r.rows.map((row) => row.data);
+}
+
+/**
+ * 写入/更新一个整车方案（按 owner+id 幂等 upsert）。
+ * SQL 模式整份存 JSONB；JSON 模式回退到本地文件。
+ * @param {string} uid
+ * @param {object} plan 含 id 的方案对象
+ * @returns {Promise<object|null>}
+ */
+export async function upsertPlan(uid, plan) {
+  if (!uid || !plan || !plan.id) return null;
+  if (dbMode === 'sql') {
+    await pool.query(
+      `INSERT INTO plans (id, owner, data, updated_at, created_at)
+       VALUES ($1, $2, $3, now(), now())
+       ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [String(plan.id), uid, plan]
+    );
+    return plan;
+  }
+  const list = readPlansJson(uid);
+  const idx = list.findIndex((p) => p.id === plan.id);
+  if (idx >= 0) list[idx] = plan;
+  else list.unshift(plan);
+  writePlansJson(uid, list);
+  return plan;
+}
+
+/** 删除一个方案，返回删除后列表 */
+export async function deletePlan(uid, id) {
+  if (!uid || !id) return [];
+  if (dbMode === 'sql') {
+    await pool.query('DELETE FROM plans WHERE owner=$1 AND id=$2', [uid, String(id)]);
+    return getPlans(uid);
+  }
+  const list = readPlansJson(uid).filter((p) => p.id !== id);
+  writePlansJson(uid, list);
+  return list;
 }
