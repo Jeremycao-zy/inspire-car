@@ -236,3 +236,86 @@
   color: #7fe9ff;
   text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
 }
+
+/* ---------------- 登录方式切换 Tab ---------------- */
+
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 14px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(10, 10, 20, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.14);
+}
+.auth-tab {
+  flex: 1;
+  height: 38px;
+  border: none;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-dim, #9aa7c7);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.auth-tab:hover {
+  color: #cfe9ff;
+}
+.auth-tab.is-active {
+  color: #0a0a14;
+  background: linear-gradient(100deg, var(--neon-cyan, #00f0ff) 0%, #7fe9ff 100%);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+}
+
+/* ---------------- 手机号验证码登录 ---------------- */
+
+.auth-code-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.auth-code-row .auth-field__input {
+  flex: 1;
+}
+.auth-code-btn {
+  flex: 0 0 auto;
+  width: 116px;
+  height: 46px;
+  border: 1px solid rgba(0, 240, 255, 0.34);
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.06);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.auth-code-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.12);
+}
+.auth-code-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  color: var(--text-dim, #9aa7c7);
+}
+
+/* 提示信息（成功 / 开发模式验证码）——与错误框区分色 */
+.auth-info {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8ff0d4;
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.3), 0 0 14px rgba(0, 240, 255, 0.16);
+}
+.auth-info--dev {
+  color: #ffe08a;
+  background: rgba(255, 196, 0, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 196, 0, 0.3), 0 0 14px rgba(255, 196, 0, 0.14);
+}

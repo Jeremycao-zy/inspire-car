@@ -4,9 +4,10 @@
  * 双模式（调用方 auth.mjs / wheels.mjs 无需感知当前是哪种）：
  *
  *   · SQL 模式（生产 / 有 DATABASE_URL）：
- *      使用 PostgreSQL（pg）。启动自动建表（users / wheels / plans / models + 唯一/普通索引），
+ *      使用 PostgreSQL（pg）。启动自动建表（users / wheels / plans / models / otp + 唯一/普通索引），
  *      账号、「我的轮毂」索引、整车方案与生成的 GLB 字节真正持久化，Railway 重新部署后数据不丢。
  *      仅当 DATABASE_URL 存在时才动态 import('pg')，所以本地没装 pg 也不会报错。
+ *      密码字段 salt/pw 允许为空——手机号验证码登录的用户没有密码。
  *
  *   · JSON 模式（本地开发 / 无数据库）：
  *      回退到 .cache 下的文件存储，行为与历史一致，便于零依赖跑通。
@@ -79,8 +80,9 @@ async function migrate() {
       id         TEXT PRIMARY KEY,
       username   TEXT NOT NULL,
       email      TEXT,
-      salt       TEXT NOT NULL,
-      pw         TEXT NOT NULL,
+      phone      TEXT,
+      salt       TEXT,
+      pw         TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
@@ -89,6 +91,28 @@ async function migrate() {
   );
   await pool.query(
     'CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower ON users (lower(email)) WHERE email IS NOT NULL'
+  );
+  // 兼容已上线的旧 users 表：旧表 salt/pw 是 NOT NULL 且可能没有 phone 列。
+  // ALTER 用 IF EXISTS / DROP NOT NULL（幂等），重复部署不会报错。
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT');
+  await pool.query('ALTER TABLE users ALTER COLUMN salt DROP NOT NULL');
+  await pool.query('ALTER TABLE users ALTER COLUMN pw DROP NOT NULL');
+  await pool.query(
+    'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_lower ON users (lower(phone)) WHERE phone IS NOT NULL'
+  );
+
+  // 手机号验证码登录：每个手机号同时只保留一条有效验证码（发送新码即作废旧码）。
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS otp (
+      phone      TEXT NOT NULL,
+      code       TEXT NOT NULL,
+      purpose    TEXT NOT NULL DEFAULT 'login',
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    'CREATE INDEX IF NOT EXISTS otp_phone ON otp (phone)'
   );
 
   await pool.query(`
@@ -131,6 +155,7 @@ const USERS_DIR = path.join(ROOT, '.cache', 'users');
 const WHEELS_DIR = path.join(ROOT, '.cache', 'wheels');
 const MODELS_DIR = path.join(ROOT, '.cache', 'models');
 const PLANS_DIR = path.join(ROOT, '.cache', 'plans');
+const OT_DIR = path.join(ROOT, '.cache', 'otp');
 const USERS_FILE = path.join(USERS_DIR, 'users.json');
 
 function ensureJsonDirs() {
@@ -139,6 +164,7 @@ function ensureJsonDirs() {
     fs.mkdirSync(WHEELS_DIR, { recursive: true });
     fs.mkdirSync(MODELS_DIR, { recursive: true });
     fs.mkdirSync(PLANS_DIR, { recursive: true });
+    fs.mkdirSync(OT_DIR, { recursive: true });
   } catch {
     /* ignore */
   }
@@ -201,15 +227,33 @@ export async function userExistsByEmail(email) {
   return readUsersJson().some((u) => u.email && u.email.toLowerCase() === lower);
 }
 
+export async function userExistsByPhone(phone) {
+  const lower = String(phone || '').toLowerCase();
+  if (!lower) return false;
+  if (dbMode === 'sql') {
+    const r = await pool.query('SELECT 1 FROM users WHERE lower(phone)=$1', [lower]);
+    return r.rowCount > 0;
+  }
+  return readUsersJson().some((u) => u.phone && u.phone.toLowerCase() === lower);
+}
+
 /**
- * 写入新用户（调用方已保证用户名/邮箱不冲突、密码已哈希）。
- * @param {{id,username,email,salt,pw}} record
+ * 写入新用户（调用方已保证用户名/邮箱/手机号不冲突）。
+ * 密码类字段 salt/pw 允许为 null（手机号验证码登录的用户无密码）。
+ * @param {{id,username,email?,phone?,salt?,pw?}} record
  */
 export async function createUser(record) {
   if (dbMode === 'sql') {
     await pool.query(
-      'INSERT INTO users (id, username, email, salt, pw) VALUES ($1,$2,$3,$4,$5)',
-      [record.id, record.username, record.email || null, record.salt, record.pw]
+      'INSERT INTO users (id, username, email, phone, salt, pw) VALUES ($1,$2,$3,$4,$5,$6)',
+      [
+        record.id,
+        record.username,
+        record.email || null,
+        record.phone || null,
+        record.salt ?? null,
+        record.pw ?? null,
+      ]
     );
     return;
   }
@@ -218,8 +262,9 @@ export async function createUser(record) {
     id: record.id,
     username: record.username,
     email: record.email || null,
-    salt: record.salt,
-    pw: record.pw,
+    phone: record.phone || null,
+    salt: record.salt ?? null,
+    pw: record.pw ?? null,
     createdAt: new Date().toISOString(),
   });
   writeUsersJson(users);
@@ -233,8 +278,8 @@ export async function findUserByLogin(login) {
   if (!lower) return null;
   if (dbMode === 'sql') {
     const r = await pool.query(
-      `SELECT id, username, email, salt, pw, created_at
-         FROM users WHERE lower(username)=$1 OR lower(email)=$1
+      `SELECT id, username, email, phone, salt, pw, created_at
+         FROM users WHERE lower(username)=$1 OR lower(email)=$1 OR lower(phone)=$1
          LIMIT 1`,
       [lower]
     );
@@ -244,6 +289,7 @@ export async function findUserByLogin(login) {
       id: row.id,
       username: row.username,
       email: row.email,
+      phone: row.phone,
       salt: row.salt,
       pw: row.pw,
       createdAt: iso(row.created_at),
@@ -252,25 +298,134 @@ export async function findUserByLogin(login) {
   const users = readUsersJson();
   return (
     users.find(
-      (u) => u.username.toLowerCase() === lower || (u.email && u.email.toLowerCase() === lower)
+      (u) =>
+        u.username.toLowerCase() === lower ||
+        (u.email && u.email.toLowerCase() === lower) ||
+        (u.phone && u.phone.toLowerCase() === lower)
     ) || null
   );
+}
+
+/** 按手机号查完整记录（含 salt/pw，供验证码登录回查） */
+export async function findUserByPhone(phone) {
+  const lower = String(phone || '').toLowerCase();
+  if (!lower) return null;
+  if (dbMode === 'sql') {
+    const r = await pool.query(
+      `SELECT id, username, email, phone, salt, pw, created_at
+         FROM users WHERE lower(phone)=$1 LIMIT 1`,
+      [lower]
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      phone: row.phone,
+      salt: row.salt,
+      pw: row.pw,
+      createdAt: iso(row.created_at),
+    };
+  }
+  const users = readUsersJson();
+  return users.find((u) => u.phone && u.phone.toLowerCase() === lower) || null;
 }
 
 /** 按 id 查公开用户对象（不含 salt/pw） */
 export async function findUserById(id) {
   if (dbMode === 'sql') {
     const r = await pool.query(
-      'SELECT id, username, email, created_at FROM users WHERE id=$1',
+      'SELECT id, username, email, phone, created_at FROM users WHERE id=$1',
       [id]
     );
     const row = r.rows[0];
     if (!row) return null;
-    return { id: row.id, username: row.username, email: row.email, createdAt: iso(row.created_at) };
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      phone: row.phone,
+      createdAt: iso(row.created_at),
+    };
   }
   const u = readUsersJson().find((x) => x.id === id);
   if (!u) return null;
-  return { id: u.id, username: u.username, email: u.email || null, createdAt: u.createdAt };
+  return {
+    id: u.id,
+    username: u.username,
+    email: u.email || null,
+    phone: u.phone || null,
+    createdAt: u.createdAt,
+  };
+}
+
+/* ------------------------- 验证码（OTP） ------------------------- */
+
+/**
+ * 写入（并作废旧的）某手机号的验证码。每个手机号同时只保留一条有效记录。
+ * @param {string} phone
+ * @param {string} code   明文 6 位验证码
+ * @param {number} ttlMs  有效期（毫秒）
+ */
+export async function saveOtp(phone, code, ttlMs) {
+  const lower = String(phone || '').toLowerCase();
+  if (!lower) return;
+  if (dbMode === 'sql') {
+    await pool.query('DELETE FROM otp WHERE lower(phone)=$1', [lower]);
+    await pool.query(
+      'INSERT INTO otp (phone, code, expires_at, created_at) VALUES ($1,$2,now()+$3::int*interval \'1 ms\',$4)',
+      [lower, code, ttlMs, new Date().toISOString()]
+    );
+    return;
+  }
+  // JSON 回退：存到 .cache/otp/<phone>.json
+  const file = path.join(OT_DIR, `${lower}.json`);
+  fs.mkdirSync(OT_DIR, { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ phone: lower, code, expiresAt: Date.now() + ttlMs, createdAt: Date.now() }),
+    { mode: 0o600 }
+  );
+}
+
+/**
+ * 取某手机号当前有效的验证码记录（不含已删除的）。
+ * @returns {Promise<{code:string, expiresAt:number, createdAt:number}|null>}
+ */
+export async function getLatestOtp(phone) {
+  const lower = String(phone || '').toLowerCase();
+  if (!lower) return null;
+  if (dbMode === 'sql') {
+    const r = await pool.query(
+      `SELECT code, expires_at, created_at FROM otp WHERE lower(phone)=$1 ORDER BY created_at DESC LIMIT 1`,
+      [lower]
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    return { code: row.code, expiresAt: new Date(row.expires_at).getTime(), createdAt: new Date(row.created_at).getTime() };
+  }
+  try {
+    const o = JSON.parse(fs.readFileSync(path.join(OT_DIR, `${lower}.json`), 'utf8'));
+    return { code: o.code, expiresAt: o.expiresAt, createdAt: o.createdAt };
+  } catch {
+    return null;
+  }
+}
+
+/** 作废某手机号的验证码（登录/注册成功后调用，一次性使用） */
+export async function deleteOtp(phone) {
+  const lower = String(phone || '').toLowerCase();
+  if (!lower) return;
+  if (dbMode === 'sql') {
+    await pool.query('DELETE FROM otp WHERE lower(phone)=$1', [lower]);
+    return;
+  }
+  try {
+    fs.unlinkSync(path.join(OT_DIR, `${lower}.json`));
+  } catch {
+    /* ignore */
+  }
 }
 
 /* ------------------------- 轮毂 ------------------------- */

@@ -154,3 +154,38 @@ export async function fetchMe() {
     return readUser();
   }
 }
+
+/** 请求发送手机验证码；返回 { ok, dev, code } 或抛错 */
+export async function sendPhoneCode(phone) {
+  const res = await fetch('/api/auth/phone-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(data.error || '发送失败');
+    e.code = data.code;
+    throw e;
+  }
+  return data;
+}
+
+/** 手机号 + 验证码登录/注册（手机号不存在则自动注册） */
+export async function phoneLogin({ phone, code }) {
+  const res = await fetch('/api/auth/phone-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, code }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(data.error || '登录失败');
+    e.code = data.code;
+    throw e;
+  }
+  writeToken(data.token);
+  writeUser(data.user);
+  emitChange();
+  return data.user;
+}
