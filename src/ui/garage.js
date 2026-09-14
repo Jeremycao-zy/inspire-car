@@ -264,8 +264,10 @@ function startPreview(container) {
     if (!w || !h) return;
     const tanV = Math.tan((camera.fov * Math.PI) / 360);
     const tanH = tanV * (w / h);
-    // 竖直/水平两个方向各算一个所需距离，取较大者；1.12 为四周留白
-    const dist = Math.max(carExtent.v / tanV, carExtent.h / tanH) * 1.12;
+    // 竖直/水平两个方向各算一个所需距离，取较大者。
+    // carExtent.h/v 本身已是「约束运动」(360°偏航 + ±12°俯仰 + ±3°侧摆) 下的真实投影上界，
+    // 所以此处只留一点点安全边距即可放大车模而不被 overflow:hidden 硬切。1.05 ≈ 四周留 5% 余量。
+    const dist = Math.max(carExtent.v / tanV, carExtent.h / tanH) * 1.05;
     const dir = new THREE.Vector3(2.2, 0.9, 2.7).normalize();
     camera.position.copy(dir.multiplyScalar(dist));
     // 视点略低于车心 → 车在画面中略微上移，底部不贴边（原来 lookAt 在车心上方 0.1，反而把车压低）
