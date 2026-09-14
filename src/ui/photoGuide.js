@@ -314,14 +314,16 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     const input = el('input', {
       type: 'file',
       accept: 'image/*',
-      capture: 'environment',
+      // 注意：不要加 capture 属性——capture 会强制直接开相机，
+      // 把 iOS/Android 的「照片图库 / 选取文件」选项藏掉，导致手机上只能拍照、选不了相册。
+      // 去掉后系统弹窗会同时提供「拍照 / 照片图库 / 选取文件」。
       onChange: (e) => handleFileChange(angle.id, e.target.files?.[0]),
     });
 
     const uploadZone = el(
       'label',
       { class: 'photo-guide__upload' },
-      '📷 拍照 / 上传',
+      '📷 拍照或选相册',
       input
     );
 
@@ -338,7 +340,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
           input.click();
         },
       },
-      '重新拍摄'
+      '重新选择'
     );
 
     return el(
