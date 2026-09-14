@@ -103,18 +103,28 @@ async function migrate() {
     )
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS wheels_owner ON wheels (owner)');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS models (
+      name TEXT PRIMARY KEY,
+      data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 /* ------------------------- JSON 回退存储 ------------------------- */
 
 const USERS_DIR = path.join(ROOT, '.cache', 'users');
 const WHEELS_DIR = path.join(ROOT, '.cache', 'wheels');
+const MODELS_DIR = path.join(ROOT, '.cache', 'models');
 const USERS_FILE = path.join(USERS_DIR, 'users.json');
 
 function ensureJsonDirs() {
   try {
     fs.mkdirSync(USERS_DIR, { recursive: true });
     fs.mkdirSync(WHEELS_DIR, { recursive: true });
+    fs.mkdirSync(MODELS_DIR, { recursive: true });
   } catch {
     /* ignore */
   }
@@ -351,4 +361,47 @@ export async function removeWheel(uid, id) {
   const list = readWheelsJson(uid).filter((w) => w.id !== id);
   writeWheelsJson(uid, list);
   return list;
+}
+
+/* ------------------------- 模型文件（GLB） ------------------------- */
+
+/**
+ * 把生成的 GLB 字节持久化到数据库。
+ *   · SQL 模式：真正落库（INSERT ... ON CONFLICT DO UPDATE 幂等），
+ *     这样 Railway 重新部署把 .cache 清空后，本地缺失的模型能从 DB 取回。
+ *   · JSON 模式：no-op——本地 .cache/models 已经是真源，无需重复存。
+ *
+ * @param {string} name   文件名（含 .glb），作为主键
+ * @param {Buffer} buffer GLB 二进制
+ */
+export async function saveModel(name, buffer) {
+  if (dbMode !== 'sql') return;
+  if (!name || !Buffer.isBuffer(buffer) || buffer.length < 12) return;
+  await pool.query(
+    `INSERT INTO models (name, data, created_at) VALUES ($1,$2,now())
+       ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, created_at = now()`,
+    [String(name), buffer]
+  );
+}
+
+/**
+ * 从数据库取回 GLB 字节（仅 SQL 模式有意义；JSON 模式返回 null）。
+ * @param {string} name
+ * @returns {Promise<{data:Buffer, createdAt:string}|null>}
+ */
+export async function getModel(name) {
+  if (dbMode !== 'sql') return null;
+  if (!name) return null;
+  const r = await pool.query('SELECT data, created_at FROM models WHERE name=$1', [String(name)]);
+  const row = r.rows[0];
+  if (!row) return null;
+  return { data: row.data, createdAt: iso(row.created_at) };
+}
+
+/** 模型是否已存库（仅 SQL 模式） */
+export async function modelExists(name) {
+  if (dbMode !== 'sql') return false;
+  if (!name) return false;
+  const r = await pool.query('SELECT 1 FROM models WHERE name=$1', [String(name)]);
+  return r.rowCount > 0;
 }

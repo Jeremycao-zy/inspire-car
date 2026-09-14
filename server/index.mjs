@@ -738,6 +738,7 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, isClosed 
     const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
     const name = `${kind}-${ts}-${crypto.randomBytes(3).toString('hex')}.glb`;
     await fsp.writeFile(path.join(CACHE_DIR, name), glb.buffer);
+    await db.saveModel(name, glb.buffer); // SQL 模式落库，重新部署后本地缺失可回源
 
     // 写历史索引 + 额度计数（仅成功生成计入消耗）
     const usage = bumpUsage();
@@ -1461,6 +1462,44 @@ async function handleAsset(req, res, name) {
       cors: '*',
     });
   } catch {
+    /* 本地文件缺失：可能是 Railway 重新部署把 .cache 清空了。
+     * SQL 模式下尝试从数据库取回持久化的 GLB 字节，让老模型仍可被前端加载。 */
+    const m = await db.getModel(safe);
+    if (m && Buffer.isBuffer(m.data) && m.data.length >= 12) {
+      const total = m.data.length;
+      const range = req.headers.range;
+      const baseHeaders = {
+        'Content-Type': 'model/gltf-binary',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Accept-Ranges': 'bytes',
+      };
+      if (range) {
+        const rm = /^bytes=(\d*)-(\d*)$/.exec(range);
+        let start = 0;
+        let end = total - 1;
+        if (rm) {
+          if (rm[1]) start = parseInt(rm[1], 10);
+          if (rm[2]) end = parseInt(rm[2], 10);
+        }
+        if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= total) {
+          res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+          res.end();
+          return;
+        }
+        end = Math.min(end, total - 1);
+        res.writeHead(206, {
+          ...baseHeaders,
+          'Content-Range': `bytes ${start}-${end}/${total}`,
+          'Content-Length': end - start + 1,
+        });
+        res.end(m.data.subarray(start, end + 1));
+        return;
+      }
+      res.writeHead(200, { ...baseHeaders, 'Content-Length': total });
+      res.end(m.data);
+      return;
+    }
     sendJson(res, 404, { error: 'asset not found' });
   }
 }
