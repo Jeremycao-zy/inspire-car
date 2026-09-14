@@ -6,7 +6,10 @@
  *   · 密码哈希：crypto.scrypt（CPU 密集型、抗 GPU 暴力破解），每用户随机 16B salt。
  *   · 令牌：无状态 JWT。header.payload 用 base64url 编码，再用 HMAC-SHA256 签名，
  *           secret 取自环境变量 AUTH_SECRET，缺失时回退到 .cache/users/.secret（首次启动生成）。
- *   · 用户存储：.cache/users/users.json（数组，按用户名/邮箱唯一索引）。
+ *           ⚠️ 生产环境（Railway）必须把 AUTH_SECRET 设为固定值（控制台 Variables），
+ *              否则每次重新部署会重新生成密钥，导致所有已登录用户被踢下线。
+ *   · 用户存储：交给 server/db.mjs（DATABASE_URL 存在 → PostgreSQL；
+ *              否则 → .cache/users/users.json 文件回退，仅本地开发用）。
  *   · 纯函数导出，server/index.mjs 仅做路由与请求体解析。
  *
  * 不引入 refresh token / 邮件验证 / 限额，v1 只解决「注册 + 登录 + 身份校验」。
@@ -14,14 +17,13 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as db from './db.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT, '.cache', 'users');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SECRET_FILE = path.join(DATA_DIR, '.secret');
 
 const SCRYPT_KEYLEN = 64;
@@ -111,25 +113,7 @@ function verifyPassword(password, salt, expectedHex) {
   return crypto.timingSafeEqual(a, b);
 }
 
-/* ------------------------- 用户存储 ------------------------- */
-
-function readUsers() {
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
-}
-function writeUsers(list) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2), { mode: 0o600 });
-}
-
-/** 去掉密码字段，返回安全用户对象 */
-function publicUser(u) {
-  if (!u) return null;
-  return { id: u.id, username: u.username, email: u.email || null, createdAt: u.createdAt };
-}
+/* ------------------------- 校验规则 ------------------------- */
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -141,12 +125,14 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/* ------------------------- 注册 / 登录 ------------------------- */
+
 /**
  * 注册新用户。
  * @param {{username:string, email?:string, password:string}} input
- * @returns {{ok:true, user, token} | {ok:false, error:string, code:string}}
+ * @returns {Promise<{ok:true, user, token} | {ok:false, error:string, code:string}>}
  */
-export function registerUser(input) {
+export async function registerUser(input) {
   const username = String(input?.username || '').trim();
   const email = normalizeEmail(input?.email);
   const password = String(input?.password || '');
@@ -161,11 +147,10 @@ export function registerUser(input) {
     return { ok: false, error: '密码至少 6 位', code: 'bad_password' };
   }
 
-  const users = readUsers();
-  if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+  if (await db.userExistsByUsername(username)) {
     return { ok: false, error: '该用户名已被注册', code: 'username_taken' };
   }
-  if (email && users.some((u) => u.email && u.email === email)) {
+  if (email && (await db.userExistsByEmail(email))) {
     return { ok: false, error: '该邮箱已被注册', code: 'email_taken' };
   }
 
@@ -178,26 +163,22 @@ export function registerUser(input) {
     pw: hashPassword(password, salt),
     createdAt: new Date().toISOString(),
   };
-  users.push(user);
-  writeUsers(users);
+  await db.createUser(user);
 
   return { ok: true, user: publicUser(user), token: signToken(user) };
 }
 
 /**
  * 校验登录凭据（login 可为用户名或邮箱）。
- * @returns {{ok:true, user, token} | {ok:false, error:string, code:string}}
+ * @returns {Promise<{ok:true, user, token} | {ok:false, error:string, code:string}>}
  */
-export function verifyCredentials(input) {
+export async function verifyCredentials(input) {
   const login = String(input?.login || '').trim().toLowerCase();
   const password = String(input?.password || '');
   if (!login || !password) {
     return { ok: false, error: '请输入账号和密码', code: 'missing' };
   }
-  const users = readUsers();
-  const user = users.find(
-    (u) => u.username.toLowerCase() === login || (u.email && u.email === login)
-  );
+  const user = await db.findUserByLogin(login);
   // 统一错误，避免泄露账号是否存在
   if (!user || !verifyPassword(password, user.salt, user.pw)) {
     return { ok: false, error: '账号或密码错误', code: 'invalid' };
@@ -205,16 +186,20 @@ export function verifyCredentials(input) {
   return { ok: true, user: publicUser(user), token: signToken(user) };
 }
 
-/** 按 id 取公开用户对象（token 校验后回查用） */
-export function getUserById(id) {
-  const users = readUsers();
-  return publicUser(users.find((u) => u.id === id));
+/** 去掉密码字段，返回安全用户对象 */
+function publicUser(u) {
+  if (!u) return null;
+  return { id: u.id, username: u.username, email: u.email || null, createdAt: u.createdAt };
 }
 
-/** 在服务启动时确保数据目录存在（避免首次注册时才抢建） */
+/** 按 id 取公开用户对象（token 校验后回查用） */
+export async function getUserById(id) {
+  return db.findUserById(id);
+}
+
+/** 在服务启动时确保密钥可用（避免首次注册时才抢建；DB 连接由 db.initDb 负责） */
 export function initAuth() {
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
     getSecret(); // 预热密钥
   } catch {
     /* ignore */
