@@ -1168,15 +1168,8 @@ input[type='range']::-moz-range-thumb {
   color: var(--err);
 }
 
-/* ---------------- 精度档位 / 悬挂读数 ---------------- */
+/* ---------------- 悬挂读数 ---------------- */
 
-.prec-bar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-/* 精度档位复用 .chip，选中态用 .on 高亮 */
 .chip.on {
   background: var(--accent-dim);
   border-color: var(--accent);
