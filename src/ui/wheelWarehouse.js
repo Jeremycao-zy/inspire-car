@@ -36,12 +36,7 @@ function h(tag, props = {}, ...children) {
  */
 export function mountWheelWarehouse({ onEquip } = {}) {
   const section = h('section', { class: 'garage-wheels' });
-  const head = h(
-    'div',
-    { class: 'gw-head' },
-    h('h2', { class: 'garage-section-title' }, '轮毂仓库'),
-    h('p', { class: 'gw-sub' }, '你生成的每一套轮毂都永久保存在账户里，悬空选装到任意车模。')
-  );
+  const head = h('div', { class: 'gw-head' }, h('h2', { class: 'garage-section-title' }, '轮毂仓库'));
 
   const stage = h('div', { class: 'gw-stage' });
   const canvas = h('div', { class: 'gw-stage__canvas' });
