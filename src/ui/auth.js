@@ -44,6 +44,27 @@ function el(tag, props = {}, ...children) {
 let layer = null;
 let onDone = null;
 
+/* ---- 第三方登录（微信 / 苹果）图标 ---- */
+const WECHAT_SVG =
+  '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M9.5 4C5.36 4 2 6.91 2 10.5c0 1.95 1.02 3.69 2.62 4.86L4 19l2.83-1.55c.84.2 1.74.3 2.67.3.19 0 .38-.01.56-.02-.18-.56-.28-1.16-.28-1.78 0-3.59 3.58-6.5 8-6.5.31 0 .61.02.9.05C18.1 6.2 14.36 4 9.5 4zM7.5 8.25a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75zm4 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75zM22 15.95c0-2.99-2.91-5.45-6.5-5.45S9 12.96 9 15.95s2.91 5.45 6.5 5.45c.69 0 1.35-.09 1.97-.25L19.5 22l-.5-2.2c1.84-.98 3-2.55 3-3.85zm-8.75-1.6a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5zm4.5 0a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5z"/></svg>';
+const APPLE_SVG =
+  '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>';
+
+/** 发起第三方登录：先问后端要授权跳转 URL，未配置则就地提示 */
+async function startOAuth(provider) {
+  try {
+    const res = await fetch(`/api/auth/oauth/${provider}/start`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) {
+      showError(data.error || '该登录方式暂未开放');
+      return;
+    }
+    window.location.href = data.url; // 跳去微信扫码 / Apple 授权
+  } catch {
+    showError('网络异常，请稍后再试');
+  }
+}
+
 function buildLayer() {
   if (layer) return layer;
 
@@ -164,7 +185,25 @@ function buildLayer() {
     switchText
   );
 
-  const card = el('div', { class: 'auth-card' }, brand, heading, hint, form);
+  /* ---- 其他登录方式：微信 / 苹果（图标入口） ---- */
+  const wechatBtn = el(
+    'button',
+    { type: 'button', class: 'auth-oauth-btn auth-oauth-btn--wechat', 'aria-label': '微信登录', html: WECHAT_SVG }
+  );
+  wechatBtn.addEventListener('click', () => void startOAuth('wechat'));
+  const appleBtn = el(
+    'button',
+    { type: 'button', class: 'auth-oauth-btn auth-oauth-btn--apple', 'aria-label': '苹果登录', html: APPLE_SVG }
+  );
+  appleBtn.addEventListener('click', () => void startOAuth('apple'));
+  const oauthSection = el(
+    'div',
+    { class: 'auth-oauth' },
+    el('div', { class: 'auth-oauth__divider' }, el('span', {}, '其他登录方式')),
+    el('div', { class: 'auth-oauth__row' }, wechatBtn, appleBtn)
+  );
+
+  const card = el('div', { class: 'auth-card' }, brand, heading, hint, form, oauthSection);
   layer = el('div', { class: 'auth-layer' }, card);
   document.body.appendChild(layer);
 

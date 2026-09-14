@@ -33,6 +33,7 @@ import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
+import * as oauth from './oauth.mjs';
 import * as db from './db.mjs';
 import * as wheels from './wheels.mjs';
 import { handleChat } from './chat.mjs';
@@ -1769,6 +1770,124 @@ async function handleAuthPhoneLogin(req, res) {
   sendJson(res, 200, { token: r.token, user: r.user });
 }
 
+/* ------------------------- 第三方 OAuth 登录（微信 / 苹果） ------------------------- */
+
+/** API 源（微信/苹果回跳的 redirect_uri 必须指向本 API 的可达地址） */
+function apiBase(req) {
+  const proto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  return `${proto}://${host}`;
+}
+
+/** 前端 SPA 源（登录成功后回跳到这里；单端口部署与 API 同源，可用 PUBLIC_BASE_URL 覆盖） */
+function appBase(req) {
+  return (process.env.PUBLIC_BASE_URL || '').trim() || apiBase(req);
+}
+
+function readFormBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 1e6) req.destroy();
+    });
+    req.on('end', () => {
+      const o = {};
+      for (const [k, v] of new URLSearchParams(data)) o[k] = v;
+      resolve(o);
+    });
+    req.on('error', reject);
+  });
+}
+
+/**
+ * GET /api/auth/oauth/:provider/start
+ * 出参：{ ok:true, url }（前端拿到后 window.location 跳转）或 { error }（未配置）。
+ */
+async function handleOauthStart(req, res, provider) {
+  if (!oauth.providerConfigured(provider)) {
+    sendJson(res, 400, {
+      error:
+        provider === 'wechat'
+          ? '微信登录尚未配置：需在微信开放平台注册「网站应用」并设置 WECHAT_APPID/WECHAT_SECRET'
+          : 'Apple 登录尚未配置：需在 Apple Developer 配置 Sign in with Apple 并设置 APPLE_CLIENT_ID',
+      code: 'not_configured',
+    });
+    return;
+  }
+  const redirectUri = `${apiBase(req)}/api/auth/oauth/${provider}/callback`;
+  const state = oauth.createState(provider);
+  const url = oauth.buildAuthorizeUrl(provider, { redirectUri, state });
+  sendJson(res, 200, { ok: true, url });
+}
+
+function oauthErrorPage(res, msg) {
+  const safe = String(msg || '第三方登录失败').replace(/[<>&]/g, '');
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(
+    `<!doctype html><meta charset="utf-8"><title>登录未完成</title>` +
+      `<body style="margin:0;font-family:system-ui,-apple-system;background:#0b0e13;color:#e8edf3;display:flex;align-items:center;justify-content:center;min-height:100vh">` +
+      `<div style="max-width:420px;text-align:center;padding:24px">` +
+      `<h2 style="margin:0 0 12px">第三方登录未完成</h2>` +
+      `<p style="color:#9aa7b4;line-height:1.6">${safe}</p>` +
+      `<p><a href="/" style="color:#22d3ee;text-decoration:none">← 返回灵感改装</a></p>` +
+      `</div></body>`
+  );
+}
+
+/**
+ * GET|POST /api/auth/oauth/:provider/callback
+ * 微信 GET（query code/state）；苹果 POST form_post（body code/id_token/state）。
+ * 成功后 302 回前端并带 oauth_token，前端启动时读取并写入登录态。
+ */
+async function handleOauthCallback(req, res, provider) {
+  try {
+    const u = new URL(req.url, 'http://x');
+    let code = '';
+    let state = '';
+    let idToken = '';
+    if (req.method === 'POST') {
+      const form = await readFormBody(req);
+      code = form.code || '';
+      state = form.state || '';
+      idToken = form.id_token || '';
+      if (form.error) return oauthErrorPage(res, `第三方返回错误：${form.error}`);
+    } else {
+      code = u.searchParams.get('code') || '';
+      state = u.searchParams.get('state') || '';
+      if (u.searchParams.get('error')) return oauthErrorPage(res, `第三方返回错误：${u.searchParams.get('error')}`);
+    }
+    if (!state) return oauthErrorPage(res, '缺少 state 参数');
+    if (!oauth.consumeState(state, provider)) return oauthErrorPage(res, '登录状态已过期或不匹配，请重新发起登录');
+
+    let identity;
+    if (provider === 'wechat') {
+      if (!code) return oauthErrorPage(res, '微信回调缺少 code');
+      identity = await oauth.exchangeWechat(code);
+    } else if (provider === 'apple') {
+      if (!idToken) return oauthErrorPage(res, 'Apple 回调缺少 id_token');
+      identity = await oauth.verifyAppleIdToken(idToken);
+    } else {
+      return oauthErrorPage(res, '未知的登录渠道');
+    }
+
+    const r = await auth.loginOrRegisterByOAuth({
+      provider,
+      providerUserId: identity.id,
+      email: identity.email,
+    });
+    if (!r.ok) return oauthErrorPage(res, r.error);
+
+    res.writeHead(302, {
+      Location: `${appBase(req)}/?oauth_token=${encodeURIComponent(r.token)}`,
+    });
+    res.end();
+  } catch (e) {
+    console.error('[oauth] callback error:', e);
+    oauthErrorPage(res, e?.message || '第三方登录失败');
+  }
+}
+
 /* ------------------------- 启动 ------------------------- */
 
 /* 生产单端口模式：API server 顺带服务 dist/ 构建产物。
@@ -1980,6 +2099,27 @@ const server = http.createServer(async (req, res) => {
   }
   if (u.pathname === '/api/auth/phone-login' && req.method === 'POST') {
     await handleAuthPhoneLogin(req, res);
+    return;
+  }
+
+  /* ---------- 第三方 OAuth 登录（微信 / 苹果） ---------- */
+  if (u.pathname.startsWith('/api/auth/oauth/')) {
+    const seg = u.pathname.split('/').filter(Boolean); // ['api','auth','oauth',provider,action]
+    const provider = seg[3];
+    const action = seg[4];
+    if ((provider === 'wechat' || provider === 'apple') && action === 'start' && req.method === 'GET') {
+      await handleOauthStart(req, res, provider);
+      return;
+    }
+    if (
+      (provider === 'wechat' || provider === 'apple') &&
+      action === 'callback' &&
+      (req.method === 'GET' || req.method === 'POST')
+    ) {
+      await handleOauthCallback(req, res, provider);
+      return;
+    }
+    sendJson(res, 404, { error: 'not found' });
     return;
   }
 

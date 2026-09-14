@@ -40,7 +40,7 @@ import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
 import { mountPhotoGuide } from './ui/photoGuide.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
-import { fetchMe } from './auth.js';
+import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
 import './ui/styles.css';
@@ -2802,6 +2802,7 @@ function showPhotoGuide(existingPlan = null) {
 // 第一层入口：灵感车库（白色科技车库风）。选择方案 / 新建 → 进入 TUNING STUDIO。
 // 门禁：未登录先弹登录浮层，登录成功后再挂载车库；注销/令牌失效回到浮层。
 async function bootGarage() {
+  consumeOAuthCallback(); // 第三方（微信/苹果）回跳带 oauth_token 时先落登录态
   const user = await fetchMe();
   if (!user) {
     showAuthOverlay((u) => {
