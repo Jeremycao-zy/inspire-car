@@ -299,6 +299,48 @@ export async function loginOrRegisterByPhone(input) {
   return { ok: true, user: publicUser(user), token: signToken(user) };
 }
 
+/* ------------------------- 第三方 OAuth 登录（微信 / 苹果） ------------------------- */
+
+/**
+ * 用平台身份（provider + providerUserId）登录；不存在则自动建号。
+ * 不设密码 / 手机号：与验证码登录一样，salt/pw 留空，只能靠该第三方再登录。
+ * 用户名用「渠道前缀 + 平台 ID 哈希」，全局唯一且不泄露原始 openid/sub。
+ *
+ * @param {{provider:string, providerUserId:string, email?:string}} input
+ * @returns {Promise<{ok:true, user, token} | {ok:false, error:string, code:string}>}
+ */
+export async function loginOrRegisterByOAuth(input) {
+  const provider = String(input?.provider || '').toLowerCase();
+  const providerUserId = String(input?.providerUserId || '').trim();
+  if (!provider || !providerUserId) {
+    return { ok: false, error: '第三方身份信息缺失', code: 'bad_oauth' };
+  }
+  const prefix = provider === 'wechat' ? 'wx' : provider === 'apple' ? 'apple' : 'oauth';
+  const base = `${prefix}_${crypto
+    .createHash('sha256')
+    .update(providerUserId)
+    .digest('hex')
+    .slice(0, 12)}`;
+
+  let user = await db.findUserByLogin(base);
+  if (!user) {
+    let username = base;
+    let n = 0;
+    while (await db.userExistsByUsername(username)) username = base + ++n;
+    user = {
+      id: crypto.randomBytes(8).toString('hex'),
+      username,
+      email: input?.email || null,
+      phone: null,
+      salt: null,
+      pw: null,
+      createdAt: new Date().toISOString(),
+    };
+    await db.createUser(user);
+  }
+  return { ok: true, user: publicUser(user), token: signToken(user) };
+}
+
 /** 去掉密码字段，返回安全用户对象 */
 function publicUser(u) {
   if (!u) return null;

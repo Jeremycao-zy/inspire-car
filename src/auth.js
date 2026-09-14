@@ -194,3 +194,22 @@ export async function phoneLogin({ phone, code }) {
   emitChange();
   return data.user;
 }
+
+/**
+ * 第三方 OAuth 回跳处理：后端登录成功后 302 回 `/?oauth_token=...`。
+ * 启动时调用一次：把 token 写入登录态、从地址栏抹掉（避免泄露/刷新重复），
+ * 返回是否消费了回跳。随后再走 fetchMe 拉取 user。
+ */
+export function consumeOAuthCallback() {
+  try {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('oauth_token');
+    if (!token) return false;
+    writeToken(token);
+    url.searchParams.delete('oauth_token');
+    window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    return true;
+  } catch {
+    return false;
+  }
+}
