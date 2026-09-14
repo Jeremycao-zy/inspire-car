@@ -33,6 +33,7 @@ import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
+import * as db from './db.mjs';
 import * as wheels from './wheels.mjs';
 import { handleChat } from './chat.mjs';
 import { handleTts } from './voice.mjs';
@@ -1623,7 +1624,7 @@ async function handleAuthRegister(req, res) {
     sendJson(res, 400, { error: e.message });
     return;
   }
-  const r = auth.registerUser(body);
+  const r = await auth.registerUser(body);
   if (!r.ok) {
     sendJson(res, 400, { error: r.error, code: r.code });
     return;
@@ -1644,7 +1645,7 @@ async function handleAuthLogin(req, res) {
     sendJson(res, 400, { error: e.message });
     return;
   }
-  const r = auth.verifyCredentials(body);
+  const r = await auth.verifyCredentials(body);
   if (!r.ok) {
     sendJson(res, 401, { error: r.error, code: r.code });
     return;
@@ -1665,14 +1666,14 @@ function handleAuthLogout(req, res) {
  * GET /api/auth/me
  * 校验 Bearer token，返回当前用户；失败返回 401。
  */
-function handleAuthMe(req, res) {
+async function handleAuthMe(req, res) {
   const token = bearerToken(req);
   const payload = auth.verifyToken(token);
   if (!payload) {
     sendJson(res, 401, { error: '未登录或登录已过期', code: 'unauthorized' });
     return;
   }
-  const user = auth.getUserById(payload.uid);
+  const user = await auth.getUserById(payload.uid);
   if (!user) {
     sendJson(res, 401, { error: '用户不存在', code: 'unauthorized' });
     return;
@@ -1789,7 +1790,7 @@ const server = http.createServer(async (req, res) => {
   /* ---- 轮毂仓库：账户持久化的轮毂索引 ---- */
   if (u.pathname === '/api/wheels' && req.method === 'GET') {
     const owner = wheels.resolveWheelOwner(req);
-    sendJson(res, 200, { wheels: wheels.getWheels(owner) });
+    sendJson(res, 200, { wheels: await wheels.getWheels(owner) });
     return;
   }
   if (u.pathname === '/api/wheels' && req.method === 'POST') {
@@ -1801,7 +1802,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: e.message });
       return;
     }
-    const w = wheels.addWheel(owner, {
+    const w = await wheels.addWheel(owner, {
       url: String(body?.url || ''),
       name: String(body?.name || ''),
       thumb: String(body?.thumb || ''),
@@ -1816,7 +1817,7 @@ const server = http.createServer(async (req, res) => {
   if (u.pathname.startsWith('/api/wheels/') && req.method === 'DELETE') {
     const owner = wheels.resolveWheelOwner(req);
     const id = decodeURIComponent(u.pathname.slice('/api/wheels/'.length));
-    const list = wheels.removeWheel(owner, id);
+    const list = await wheels.removeWheel(owner, id);
     sendJson(res, 200, { ok: true, wheels: list });
     return;
   }
@@ -1854,7 +1855,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (u.pathname === '/api/auth/me' && req.method === 'GET') {
-    handleAuthMe(req, res);
+    await handleAuthMe(req, res);
     return;
   }
 
@@ -1872,11 +1873,32 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'not found' });
 });
 
-server.listen(PORT, HOST, () => {
-  const tk = resolveToken();
-  const hk = hyper3d.resolveToken();
+async function start() {
+  // 先连库（有 DATABASE_URL 则建表并切到 PostgreSQL，否则回退本地 JSON）
+  const dbInfo = await db.initDb();
   auth.initAuth(); // 预热用户数据目录与令牌密钥
-  const shownHost = HOST === '0.0.0.0' ? '127.0.0.1' : HOST;
+
+  // 持久化登录关键：生产连库后必须把 AUTH_SECRET 设为固定值，
+  // 否则每次部署重新生成密钥会让所有已登录用户被踢下线。
+  if (dbInfo.mode === 'sql' && !process.env.AUTH_SECRET) {
+    console.warn(
+      '\n  ⚠️  已连接数据库，但未设置固定 AUTH_SECRET（环境变量）。\n' +
+      '      每次重新部署会重新生成 JWT 密钥，导致所有已登录用户被踢下线。\n' +
+      '      请在 Railway 控制台 Variables 里设置一个固定随机值（如 openssl rand -hex 48）。\n'
+    );
+  }
+  if (dbInfo.mode === 'json') {
+    console.warn(
+      '\n  ⚠️  未检测到 DATABASE_URL，用户数据走本地 .cache JSON 文件。\n' +
+      '      该模式仅适合本地开发；Railway 容器文件系统是临时的，重新部署后账号会丢失。\n' +
+      '      上线请添加 PostgreSQL 插件（自动注入 DATABASE_URL）。\n'
+    );
+  }
+
+  server.listen(PORT, HOST, () => {
+    const tk = resolveToken();
+    const hk = hyper3d.resolveToken();
+    const shownHost = HOST === '0.0.0.0' ? '127.0.0.1' : HOST;
   console.log(`\n  ▸ API 服务已启动  http://${shownHost}:${PORT}`);
   if (staticServer.enabled) {
     console.log(`  ▸ 静态资源：已开启（${path.relative(ROOT, staticServer.root) || '.'}）— ${staticServer.reason}`);
@@ -1894,4 +1916,11 @@ server.listen(PORT, HOST, () => {
       `  ▸ 想切到真实生成：export HYPER3D_API_KEY=<你的 key>  或写入 ~/.workbuddy/tokens/hyper3d\n`
     );
   }
+  console.log(`  ▸ 数据存储：${dbInfo.mode === 'sql' ? 'PostgreSQL（持久化）' : '本地 JSON 文件（仅开发）'}`);
+  });
+}
+
+start().catch((e) => {
+  console.error('启动失败：', e);
+  process.exit(1);
 });
