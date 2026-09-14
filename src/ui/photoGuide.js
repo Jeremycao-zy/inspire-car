@@ -263,23 +263,27 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     )
   );
 
-  // 进度/错误覆盖层
-  const progressFill = el('div', { class: 'photo-guide__bar-fill' });
+  // 进度/错误覆盖层（简约版：保留转圈 + 改装知识 + 进度条/小车logo引导 + 微文案）
+  const progressMarker = el('img', { class: 'photo-guide__bar-marker', src: logoMarkUrl, alt: '' });
+  const progressFill = el('div', { class: 'photo-guide__bar-fill' }, progressMarker);
   const overlayIcon = el('div', { class: 'photo-guide__overlay-icon' });
   const overlaySpinner = el('div', { class: 'photo-guide__overlay-spinner' });
   overlayIcon.appendChild(overlaySpinner);
-  const overlayTitle = el('h3', { class: 'photo-guide__overlay-title' }, '正在建模…');
-  const overlayText = el('p', { class: 'photo-guide__overlay-text' }, '正在压缩并上传照片，请稍候');
+  // 过程标题/错误提示：平时隐藏，仅在错误时显示
+  const overlayTitle = el('h3', { class: 'photo-guide__overlay-title is-hidden' }, '正在建模…');
+  const overlayText = el('p', { class: 'photo-guide__overlay-text is-hidden' }, '正在压缩并上传照片，请稍候');
   const overlayTips = el('div', { class: 'photo-guide__overlay-tips' });
+  const overlayCaption = el('p', { class: 'photo-guide__overlay-caption' }, '');
   const overlayActions = el('div', { class: 'photo-guide__overlay-actions' });
   const overlayBox = el(
     'div',
     { class: 'photo-guide__overlay-box' },
     overlayIcon,
+    overlayTips,
     overlayTitle,
     overlayText,
-    overlayTips,
     el('div', { class: 'photo-guide__bar' }, progressFill),
+    overlayCaption,
     overlayActions
   );
   const overlay = el('div', { class: 'photo-guide__overlay hidden' }, overlayBox);
@@ -412,9 +416,6 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
         <div class="photo-guide__overlay-tip-label">改装小知识</div>
         <div class="photo-guide__overlay-tip-title">${escapeHtml(tip.title)}</div>
         <div class="photo-guide__overlay-tip-text">${escapeHtml(tip.text)}</div>
-        <div class="photo-guide__overlay-tip-dots">${LOADING_TIPS
-          .map((_, idx) => `<span class="photo-guide__overlay-tip-dot${idx === i ? ' active' : ''}"></span>`)
-          .join('')}</div>
       `;
       overlayTips.classList.remove('fade');
     }, 220);
@@ -491,8 +492,10 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       }
       if (!tipTimer) startTips();
     }
-    overlayTitle.textContent = isDone ? '建模完成' : '正在建模…';
-    overlayText.textContent = message || '处理中…';
+    // 简约版：不显示大标题/详细说明，进程信息以微文案形式挂在进度条下方
+    overlayTitle.classList.add('is-hidden');
+    overlayText.classList.add('is-hidden');
+    overlayCaption.textContent = message || '处理中…';
     progressFill.style.width = `${Math.max(0, Math.min(100, (progress || 0) * 100))}%`;
     overlayActions.innerHTML = '';
   }
@@ -502,6 +505,10 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     stopTips();
     overlayIcon.innerHTML = '<div class="photo-guide__overlay-spinner"></div>';
     overlayTips.innerHTML = '';
+    overlayCaption.textContent = '';
+    overlayCaption.classList.remove('is-hidden');
+    overlayTitle.classList.add('is-hidden');
+    overlayText.classList.add('is-hidden');
   }
 
   function showError(err) {
@@ -525,6 +532,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     stopTips();
     overlayTips.innerHTML = '';
     overlayIcon.textContent = '⚠️';
+    overlayTitle.classList.remove('is-hidden');
+    overlayText.classList.remove('is-hidden');
+    overlayCaption.classList.add('is-hidden');
     overlayTitle.textContent = title;
     overlayText.textContent = hint;
     progressFill.style.width = '0%';
