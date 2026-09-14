@@ -1727,6 +1727,48 @@ async function handleAuthMe(req, res) {
   sendJson(res, 200, { user });
 }
 
+/**
+ * POST /api/auth/phone-code
+ * 入参：{ phone }
+ * 出参：{ ok }  或 { ok, dev, code }（开发模式透传验证码）  或 { error, code }
+ */
+async function handleAuthPhoneCode(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const r = await auth.sendPhoneCode(body);
+  if (!r.ok) {
+    sendJson(res, 400, { error: r.error, code: r.code });
+    return;
+  }
+  sendJson(res, 200, { ok: true, dev: r.dev || false, code: r.code || undefined });
+}
+
+/**
+ * POST /api/auth/phone-login
+ * 入参：{ phone, code }
+ * 出参：{ token, user }（手机号不存在则自动注册）  或 { error, code }
+ */
+async function handleAuthPhoneLogin(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const r = await auth.loginOrRegisterByPhone(body);
+  if (!r.ok) {
+    sendJson(res, 401, { error: r.error, code: r.code });
+    return;
+  }
+  sendJson(res, 200, { token: r.token, user: r.user });
+}
+
 /* ------------------------- 启动 ------------------------- */
 
 /* 生产单端口模式：API server 顺带服务 dist/ 构建产物。
@@ -1930,6 +1972,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (u.pathname === '/api/auth/me' && req.method === 'GET') {
     await handleAuthMe(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/phone-code' && req.method === 'POST') {
+    await handleAuthPhoneCode(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/phone-login' && req.method === 'POST') {
+    await handleAuthPhoneLogin(req, res);
     return;
   }
 

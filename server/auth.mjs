@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as db from './db.mjs';
+import * as sms from './sms.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -124,6 +125,14 @@ function isValidUsername(name) {
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
+/** 大陆手机号：1 开头、第二位 3-9、共 11 位 */
+function normalizePhone(phone) {
+  const p = String(phone || '').trim().replace(/[\s-]/g, '');
+  return /^1[3-9]\d{9}$/.test(p) ? p : null;
+}
+function isValidPhone(phone) {
+  return normalizePhone(phone) !== null;
+}
 
 /* ------------------------- 注册 / 登录 ------------------------- */
 
@@ -186,10 +195,88 @@ export async function verifyCredentials(input) {
   return { ok: true, user: publicUser(user), token: signToken(user) };
 }
 
+/* ------------------------- 手机号验证码登录 ------------------------- */
+
+const OTP_TTL_MS = Number(process.env.OTP_TTL_MS || 5 * 60 * 1000); // 默认 5 分钟
+const OTP_COOLDOWN_MS = Number(process.env.OTP_COOLDOWN_MS || 60 * 1000); // 重发冷却 60s
+
+/**
+ * 发送手机号验证码。
+ * @param {{phone:string}} input
+ * @returns {Promise<{ok:boolean, dev?:boolean, code?:string, error?:string, code?:string}>}
+ */
+export async function sendPhoneCode(input) {
+  const phone = normalizePhone(input?.phone);
+  if (!phone) return { ok: false, error: '请输入正确的手机号', code: 'bad_phone' };
+
+  // 重发冷却：避免刷短信
+  const recent = await db.getLatestOtp(phone);
+  if (recent && recent.createdAt && Date.now() - recent.createdAt < OTP_COOLDOWN_MS) {
+    return { ok: false, error: '验证码发送过于频繁，请稍后再试', code: 'too_frequent' };
+  }
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  await db.saveOtp(phone, code, OTP_TTL_MS);
+  const sent = await sms.sendSmsCode(phone, code);
+  if (!sent.ok) return { ok: false, error: sent.error || '短信发送失败', code: 'sms_failed' };
+  // dev 模式下把验证码透传给前端便于本地测试；生产模式不返回 code。
+  return { ok: true, dev: sent.dev, code: sent.dev ? code : undefined };
+}
+
+/**
+ * 校验验证码并登录 / 注册（手机号不存在则自动注册）。
+ * @param {{phone:string, code:string}} input
+ * @returns {Promise<{ok:boolean, user?, token?, error?:string, code?:string}>}
+ */
+export async function loginOrRegisterByPhone(input) {
+  const phone = normalizePhone(input?.phone);
+  const code = String(input?.code || '').trim();
+  if (!phone) return { ok: false, error: '请输入手机号', code: 'bad_phone' };
+  if (!/^\d{6}$/.test(code)) return { ok: false, error: '请输入 6 位验证码', code: 'bad_code' };
+
+  const rec = await db.getLatestOtp(phone);
+  if (!rec) return { ok: false, error: '请先获取验证码', code: 'no_code' };
+  if (Date.now() > rec.expiresAt) {
+    await db.deleteOtp(phone);
+    return { ok: false, error: '验证码已过期，请重新获取', code: 'expired' };
+  }
+  if (rec.code !== code) return { ok: false, error: '验证码错误', code: 'invalid' };
+
+  // 一次性使用：校验通过立即作废
+  await db.deleteOtp(phone);
+
+  let user = await db.findUserByPhone(phone);
+  if (!user) {
+    // 自动注册：用户名取手机号后 8 位，冲突则追加随机后缀
+    let username = 'm' + phone.slice(-8);
+    let n = 0;
+    while (await db.userExistsByUsername(username)) {
+      username = 'm' + phone.slice(-8) + (++n);
+    }
+    user = {
+      id: crypto.randomBytes(8).toString('hex'),
+      username,
+      email: null,
+      phone,
+      salt: null,
+      pw: null,
+      createdAt: new Date().toISOString(),
+    };
+    await db.createUser(user);
+  }
+  return { ok: true, user: publicUser(user), token: signToken(user) };
+}
+
 /** 去掉密码字段，返回安全用户对象 */
 function publicUser(u) {
   if (!u) return null;
-  return { id: u.id, username: u.username, email: u.email || null, createdAt: u.createdAt };
+  return {
+    id: u.id,
+    username: u.username,
+    email: u.email || null,
+    phone: u.phone || null,
+    createdAt: u.createdAt,
+  };
 }
 
 /** 按 id 取公开用户对象（token 校验后回查用） */
