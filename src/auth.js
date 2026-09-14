@@ -78,12 +78,17 @@ export async function authFetch(url, options = {}) {
   return res;
 }
 
-/** 注册并自动登录 */
-export async function register({ username, email, password }) {
+/** 注册并自动登录（账号可以是手机号或用户名；手机号需同时传 code 短信验证码） */
+export async function register({ account, username, email, password, code }) {
   const res = await fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, email: email || undefined, password }),
+    body: JSON.stringify({
+      account: account ?? username,
+      email: email || undefined,
+      password,
+      code: code || undefined,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
