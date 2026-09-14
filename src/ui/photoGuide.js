@@ -9,8 +9,33 @@ import { generateModel, GenerateError } from '../api/generate.js';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 import './photoGuide.css';
 
+/** 建模等待时的改装知识小贴士（自动轮播 + 可手动点切下一条） */
+const LOADING_TIPS = [
+  { title: 'ET 值：轮毂偏距', text: '偏距越小轮毂越向外凸，改装时要同时考虑轮拱宽度与悬挂倾角。' },
+  { title: '扁平比与路感', text: '胎壁越薄（如 35）路感越直接，但舒适性下降、鼓包风险也会增加。' },
+  { title: '降低车身必做定位', text: '改变车高会连带改变倾角与束角，建议降低后做一次四轮定位。' },
+  { title: '刹车的真相', text: '刹车线性更多来自刹车皮和盘片配方，而不是单纯看活塞数量。' },
+  { title: '倾角 Camber', text: '适度的负倾角能提升弯道接地，但会加速轮胎内侧磨损。' },
+  { title: '轮距加法兰', text: '法兰盘能扩轮距提升稳定性，但也会增加转向和悬挂负荷。' },
+  { title: '车衣 vs 改色膜', text: 'TPU 车衣能自动修复划痕；PVC 改色膜颜色多但保护力较弱。' },
+  { title: '进气温度', text: '每降低 10°C，空气密度提升约 3%，自然吸气也能获得更好响应。' },
+  { title: '排气背压', text: '排气过通畅会损失低扭，街车建议保留适度回压更平顺。' },
+  { title: '胎压要冷胎看', text: '行驶后胎压会升高 0.1-0.2 bar，补气和检查都以冷胎为准。' },
+  { title: '簧下质量', text: '每减轻 1 kg 簧下质量，约等于减少 15 kg 簧上质量的效果。' },
+  { title: '包围不是越夸张越好', text: '街车过于夸张的包围容易产生乱流，反而增加高速油耗与噪音。' },
+];
+
 function $(sel) {
   return document.querySelector(sel);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function el(tag, props = {}, ...children) {
@@ -240,9 +265,12 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
   // 进度/错误覆盖层
   const progressFill = el('div', { class: 'photo-guide__bar-fill' });
-  const overlayIcon = el('div', { class: 'photo-guide__overlay-icon' }, '⏳');
+  const overlayIcon = el('div', { class: 'photo-guide__overlay-icon' });
+  const overlaySpinner = el('div', { class: 'photo-guide__overlay-spinner' });
+  overlayIcon.appendChild(overlaySpinner);
   const overlayTitle = el('h3', { class: 'photo-guide__overlay-title' }, '正在建模…');
   const overlayText = el('p', { class: 'photo-guide__overlay-text' }, '正在压缩并上传照片，请稍候');
+  const overlayTips = el('div', { class: 'photo-guide__overlay-tips' });
   const overlayActions = el('div', { class: 'photo-guide__overlay-actions' });
   const overlayBox = el(
     'div',
@@ -250,6 +278,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     overlayIcon,
     overlayTitle,
     overlayText,
+    overlayTips,
     el('div', { class: 'photo-guide__bar' }, progressFill),
     overlayActions
   );
@@ -371,6 +400,50 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     startBtn.textContent = generating ? '建模中…' : '开始建模';
   }
 
+  // ---------- 建模等待期：改装知识轮播 + 霓虹圆环加载 ----------
+  let tipIndex = 0;
+  let tipTimer = null;
+
+  function renderTip(i) {
+    const tip = LOADING_TIPS[i % LOADING_TIPS.length];
+    overlayTips.classList.add('fade');
+    setTimeout(() => {
+      overlayTips.innerHTML = `
+        <div class="photo-guide__overlay-tip-title">${escapeHtml(tip.title)}</div>
+        <div class="photo-guide__overlay-tip-text">${escapeHtml(tip.text)}</div>
+        <div class="photo-guide__overlay-tip-dots">${LOADING_TIPS
+          .map((_, idx) => `<span class="photo-guide__overlay-tip-dot${idx === i ? ' active' : ''}"></span>`)
+          .join('')}</div>
+      `;
+      overlayTips.classList.remove('fade');
+    }, 220);
+  }
+
+  function nextTip() {
+    tipIndex = (tipIndex + 1) % LOADING_TIPS.length;
+    renderTip(tipIndex);
+  }
+
+  function startTips() {
+    stopTips();
+    tipIndex = Math.floor(Math.random() * LOADING_TIPS.length);
+    renderTip(tipIndex);
+    tipTimer = setInterval(nextTip, 6000);
+  }
+
+  function stopTips() {
+    if (tipTimer) {
+      clearInterval(tipTimer);
+      tipTimer = null;
+    }
+  }
+
+  // 点击小知识卡片可手动切换下一条，增加"交互感"
+  overlayTips.addEventListener('click', () => {
+    if (!tipTimer) return;
+    nextTip();
+  });
+
   async function handleStart() {
     if (generating) return;
     // 组装 files 时给每个 File 打上角度标签，供识别阶段挑最佳图（侧方/45° 优先）
@@ -412,8 +485,18 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
   function showOverlay(stage, progress, message) {
     overlay.classList.remove('hidden');
-    overlayIcon.textContent = stage === 'done' ? '✨' : '⏳';
-    overlayTitle.textContent = stage === 'done' ? '建模完成' : '正在建模…';
+    const isDone = stage === 'done';
+    // 完成用 ✨，加载中用霓虹圆环（不再用漏斗 ⏳）
+    if (isDone) {
+      overlayIcon.textContent = '✨';
+      stopTips();
+    } else {
+      if (!overlayIcon.querySelector('.photo-guide__overlay-spinner')) {
+        overlayIcon.innerHTML = '<div class="photo-guide__overlay-spinner"></div>';
+      }
+      if (!tipTimer) startTips();
+    }
+    overlayTitle.textContent = isDone ? '建模完成' : '正在建模…';
     overlayText.textContent = message || '处理中…';
     progressFill.style.width = `${Math.max(0, Math.min(100, (progress || 0) * 100))}%`;
     overlayActions.innerHTML = '';
@@ -421,6 +504,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
   function hideOverlay() {
     overlay.classList.add('hidden');
+    stopTips();
+    overlayIcon.innerHTML = '<div class="photo-guide__overlay-spinner"></div>';
+    overlayTips.innerHTML = '';
   }
 
   function showError(err) {
@@ -441,6 +527,8 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       hint = '可点击重试继续等待，不重复扣额度。';
     }
 
+    stopTips();
+    overlayTips.innerHTML = '';
     overlayIcon.textContent = '⚠️';
     overlayTitle.textContent = title;
     overlayText.textContent = hint;
