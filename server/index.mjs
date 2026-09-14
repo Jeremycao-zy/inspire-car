@@ -1767,6 +1767,7 @@ const server = http.createServer(async (req, res) => {
     const fk = fal.resolveToken();
     sendJson(res, 200, {
       ok: true,
+      dbMode: db.dbMode,
       // 顶层字段保留混元状态，保证旧客户端兼容；新客户端应优先读 engines[engine]
       mode: tk.token ? 'live' : 'demo',
       expiresAt: tk.expiresAt || null,
