@@ -1,23 +1,20 @@
 /**
- * myWheels.js — 「我的轮毂」库
+ * myWheels.js — 「我的轮毂」库（服务端账户持久化）
  *
  * 逻辑：
- *   · 用户每次成功生成（live）轮毂，把模型 URL + 上传照片缩略图 + 名称存进 localStorage。
- *   · 库是用户级别的（key 按 userId），不随方案切换而丢失。
+ *   · 用户每次成功生成（live）轮毂，把模型 URL + 上传照片缩略图 + 名称登记进
+ *     服务端 /api/wheels（账户绑定；未登录回退 'anon' 共享库）。
+ *   · 库是用户级别的，不随方案切换而丢失，可在「轮毂仓库」与「工作室-轮毂 Tab」共用。
  *   · 在「轮毂」Tab 下渲染成可横向滚动的卡片列表；点击卡片即把该轮毂换到当前车上。
- *   · 每个方案只保存「当前用哪套轮毂」（customWheelUrl + rimPreset='custom'），
- *     因此不同车库卡片可以装载不同轮毂。
+ *   · 每个方案只保存「当前用哪套轮毂」（customWheelUrl），不同车库卡片可装载不同轮毂。
+ *
+ * 与 src/ui/wheelWarehouse.js 共用 server/wheels.mjs 这一份索引。
  */
 
 import './myWheels.css';
-import { currentUser } from '../auth.js';
+import { listWheels, addWheel, removeWheel } from '../api/wheels.js';
 
 const MAX_STORED = 30;
-
-function storageKey() {
-  const u = currentUser();
-  return `inspire-car-my-wheels:${u?.id || 'anon'}`;
-}
 
 function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
@@ -49,40 +46,23 @@ function fmtDate(ts) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function getMyWheels() {
-  try {
-    const raw = localStorage.getItem(storageKey());
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.warn('[myWheels] 读取失败', e.message);
-    return [];
-  }
+/** 取当前账户的轮毂列表 */
+export async function getMyWheels() {
+  return listWheels();
 }
 
-function setMyWheels(list) {
-  try {
-    localStorage.setItem(storageKey(), JSON.stringify(list));
-  } catch (e) {
-    console.warn('[myWheels] 保存失败', e.message);
-  }
-}
-
-export function addMyWheel({ url, name = '', thumb = '' } = {}) {
+/**
+ * 把一个生成好的轮毂登记进仓库（服务端去重）。
+ * @returns {Promise<object|null>}
+ */
+export async function addMyWheel({ url, name = '', thumb = '' } = {}) {
   if (!url) return null;
-  const list = getMyWheels();
-  // 同一 URL 不重复，移到最前
-  const idx = list.findIndex((w) => w.url === url);
-  if (idx >= 0) list.splice(idx, 1);
-  const id = 'mw-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-  list.unshift({ id, url, name: name || '我的轮毂', thumb, createdAt: Date.now() });
-  if (list.length > MAX_STORED) list.length = MAX_STORED;
-  setMyWheels(list);
-  return list[0];
+  return addWheel({ url, name, thumb });
 }
 
-export function removeMyWheel(id) {
-  const list = getMyWheels().filter((w) => w.id !== id);
-  setMyWheels(list);
+export async function removeMyWheel(id) {
+  if (!id) return;
+  await removeWheel(id);
 }
 
 /**
@@ -113,14 +93,14 @@ function fileToDataURL(file) {
 }
 
 /**
- * 渲染「我的轮毂」列表。
+ * 渲染「我的轮毂」列表（服务端来源）。
  * @param {HTMLElement} container
  * @param {{app:object, activeUrl?:string|null}} opts
  */
-export function renderMyWheels(container, { app, activeUrl = null } = {}) {
+export async function renderMyWheels(container, { app, activeUrl = null } = {}) {
   if (!container) return;
   container.innerHTML = '';
-  const list = getMyWheels();
+  const list = await getMyWheels();
   if (!list.length) {
     container.appendChild(
       h('div', { class: 'myw-empty' }, '上传轮毂照片生成后，你的轮毂会出现在这里，可随时换装。')
@@ -138,7 +118,7 @@ export function renderMyWheels(container, { app, activeUrl = null } = {}) {
       imgWrap.appendChild(h('div', { class: 'myw-noimg', text: '轮毂' }));
     }
 
-    const nameEl = h('div', { class: 'myw-name', text: w.name });
+    const nameEl = h('div', { class: 'myw-name', text: w.name || '我的轮毂' });
     const dateEl = h('div', { class: 'myw-date', text: fmtDate(w.createdAt) });
 
     const delBtn = h(
@@ -146,9 +126,9 @@ export function renderMyWheels(container, { app, activeUrl = null } = {}) {
       {
         class: 'myw-del',
         title: '删除',
-        onclick: (e) => {
+        onclick: async (e) => {
           e.stopPropagation();
-          removeMyWheel(w.id);
+          await removeMyWheel(w.id);
           renderMyWheels(container, { app, activeUrl });
         },
       },

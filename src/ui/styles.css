@@ -1080,6 +1080,9 @@ input[type='range']::-moz-range-thumb {
 .body-info__src.is-llm {
   color: #ffcf6b;
 } /* 大模型估算：琥珀 */
+.body-info__src.is-vision {
+  color: #18e6ff;
+} /* 视觉识别（仅车名）：青 */
 .body-info__grid {
   display: grid;
   grid-template-columns: auto 1fr;

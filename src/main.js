@@ -977,6 +977,36 @@ const app = {
     return true;
   },
 
+  /**
+   * 仅视觉识别成功、但查不到真车参数时，记录车型名供 TUNING STUDIO 展示。
+   * 不覆盖车长/宽/高等比例（保持默认，避免把车拉变形），只填车型名与来源徽章，
+   * 保证「识别到了但没查到参数」时，工作室界面依然显示识别结果而不是空白。
+   * @returns {boolean} 是否记录成功
+   */
+  applyVisionRecognition(rec) {
+    if (!rec?.fullName) return false;
+    this.params.realSpecs = {
+      length: null,
+      width: null,
+      height: null,
+      wheelbase: null,
+      trackFront: null,
+      trackRear: null,
+      groundClearance: null,
+      approachAngle: null,
+      departureAngle: null,
+      rimInch: null,
+      tireWidth: null,
+      aspect: null,
+      source: 'vision',
+      confidence: 0,
+      nameConfidence: rec.confidence ?? null, // 车名识别把握（来自视觉）
+      fullName: rec.fullName || '',
+      query: rec.fullName || '',
+    };
+    return true;
+  },
+
   refitCar({ recapture = true } = {}) {
     if (!carGroup) return;
     // ② 摆正 + 归一
@@ -1807,14 +1837,19 @@ async function applyRecognitionFromFiles(files) {
   if (!files?.length) return null;
   const rec = await recognize(files).catch(() => null);
   if (!rec?.available) return null;
+  // 视觉识别成功：先把车名记下来，保证工作室一定展示（即便参数查不到）
+  app.applyVisionRecognition(rec);
   const sp = await fetchCarSpecs(rec.fullName, rec.year).catch(() => null);
-  if (!sp?.available) return null;
-  if (!app.applyRealSpecs(sp, { nameConfidence: rec.confidence })) return null;
-  const rs = app.params.realSpecs;
-  rs.fullName = rec.fullName || rs.query || '';
-  rs.query = rec.fullName || rs.query || '';
-  console.log('[specs] 应用真车参数', rs);
-  return rs;
+  if (sp?.available && app.applyRealSpecs(sp, { nameConfidence: rec.confidence })) {
+    const rs = app.params.realSpecs;
+    // 车名以视觉识别为准（specs 的 query 可能是归一后的别名），避免显示错名
+    rs.fullName = rec.fullName || rs.query || '';
+    rs.query = rec.fullName || rs.query || '';
+    console.log('[specs] 应用真车参数', rs);
+  } else {
+    console.log('[specs] 仅视觉识别（未查到真车参数）', app.params.realSpecs);
+  }
+  return app.params.realSpecs;
 }
 
 /**
@@ -1906,10 +1941,14 @@ async function runGenerate({ kind, files, images, resumeJobId, resumeKey, resume
           // 识别结果即时落盘，保证「返回车库 → 重新进入工作室」比例不丢
           persistRealSpecsToPlan();
         } else {
+          // 视觉识别成功但查不到真车参数：仍记录车名，保证工作室展示识别结果
+          app.applyVisionRecognition(rec);
           u.setRecog(
             `已识别：${rec.fullName}（把握 ${pct}%）· 未查到真车参数，按默认比例`,
             'warn'
           );
+          try { panel?.syncAll(); } catch (e) { console.warn('[sync] 面板同步异常，已忽略：', e.message); }
+          persistRealSpecsToPlan();
         }
       }
     } else if (rec?.reason === 'no-key') {
@@ -2503,6 +2542,22 @@ async function loadPlanCar() {
     // 必须先于「自定义轮毂还原」执行：applyBangParts 内部会清掉旧拆解物，
     // 若先还原轮毂再装配，清拆解物这一步会把刚还原的自定义轮毂一起打回程序化。
     await restoreBangForPlan();
+    // 首页「轮毂仓库」跨页选装：用户从首页点「装到当前车」时还没进工作台，
+    // 目标轮毂暂存在 sessionStorage，这里落到当前方案并清除暂存。
+    let pendingWheel = null;
+    try {
+      pendingWheel = sessionStorage.getItem('pending-wheel-url');
+    } catch {
+      /* ignore */
+    }
+    if (pendingWheel && currentPlan) {
+      currentPlan.params.customWheelUrl = pendingWheel;
+      try {
+        sessionStorage.removeItem('pending-wheel-url');
+      } catch {
+        /* ignore */
+      }
+    }
     // 方案保存了自定义轮毂 → 最后再载入，确保它是一锤定音的最终状态
     if (currentPlan?.params?.customWheelUrl) {
       await app.loadWheelFromUrl(currentPlan.params.customWheelUrl).catch((e) => {

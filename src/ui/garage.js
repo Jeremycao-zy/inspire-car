@@ -18,6 +18,7 @@ import { currentUser, logout } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import { mountAiOrb } from './aiOrb.js';
+import { mountWheelWarehouse } from './wheelWarehouse.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 
@@ -555,6 +556,7 @@ export function mountGarage({ onEnter, mount } = {}) {
 
   let preview = null;
   let aiOrb = null;
+  let warehouse = null;
 
   /* 顶部品牌栏 */
   const u = currentUser();
@@ -646,6 +648,21 @@ export function mountGarage({ onEnter, mount } = {}) {
   root.appendChild(hero);
   root.appendChild(body);
 
+  /* 轮毂仓库：账户持久拥有的轮毂，以全息 3D 轮毂呈现，可悬空选装到任意车。
+   * 首页点「装到当前车」时还没进工作台，先把目标轮毂暂存到 sessionStorage，
+   * 进入工作台载车后由 main.js 的 loadPlanCar 落地到当前方案。 */
+  warehouse = mountWheelWarehouse({
+    onEquip(url) {
+      try {
+        sessionStorage.setItem('pending-wheel-url', url);
+      } catch (e) {
+        /* ignore */
+      }
+      onEnter?.(null);
+    },
+  });
+  root.appendChild(warehouse.el);
+
   // 页脚：协议常驻入口。用户注册时勾选过，但仍需随时可回查——
   // 只放在注册弹窗里、之后无法查看，发生争议时难以证明用户有合理机会阅读。
   const legalFoot = el('div', { class: 'garage-legal' });
@@ -703,6 +720,8 @@ export function mountGarage({ onEnter, mount } = {}) {
     preview = null;
     aiOrb?.dispose();
     aiOrb = null;
+    warehouse?.dispose();
+    warehouse = null;
     previewEngine.clear();
     previewEngine.disposeRenderer();
     // 车模源解析缓存也要一起释放：单份 GLB 解析后 30~48MB，留着会让内存只增不减
@@ -718,12 +737,15 @@ export function mountGarage({ onEnter, mount } = {}) {
       root.classList.add('hidden');
       preview?.pause();
       aiOrb?.pause();
+      warehouse?.pause();
     },
     show() {
       root.classList.remove('hidden');
       renderGrid();
       preview?.resume();
       aiOrb?.resume();
+      warehouse?.resume();
+      warehouse?.refresh?.();
     },
     refresh() {
       renderGrid();
