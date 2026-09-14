@@ -442,25 +442,27 @@
 }
 
 .photo-guide__overlay-icon {
-  font-size: 36px;
-  margin-bottom: 12px;
-  filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.5));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 18px;
+  filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.45));
 }
 
 /* 加载指示器：霓虹青→紫渐变圆环，替代漏斗 emoji */
 .photo-guide__overlay-spinner {
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: conic-gradient(
     from 0deg,
     transparent 0%,
-    rgba(0, 240, 255, 0.25) 45%,
-    var(--neon-cyan, #00f0ff) 70%,
+    rgba(0, 240, 255, 0.22) 40%,
+    var(--neon-cyan, #00f0ff) 72%,
     var(--neon-purple, #b14aed) 100%
   );
-  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
   animation: photo-guide-spin 1s linear infinite;
 }
 
@@ -468,69 +470,58 @@
   to { transform: rotate(360deg); }
 }
 
-/* 建模等待期改装知识轮播 */
+/* 建模等待期：改装知识自动轮播（非卡片式，极简居中排版） */
 .photo-guide__overlay-tips {
-  min-height: 84px;
-  margin: 0 0 18px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  text-align: left;
-  background: rgba(0, 240, 255, 0.06);
-  border: 1px solid rgba(0, 240, 255, 0.22);
-  box-shadow: inset 0 0 18px rgba(0, 240, 255, 0.05);
-  cursor: pointer;
+  min-height: 80px;
+  margin: 4px 0 22px;
+  padding: 0 8px;
+  text-align: center;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.22s ease, transform 0.22s ease, border-color 0.2s ease;
-  user-select: none;
-}
-
-.photo-guide__overlay-tips:hover {
-  border-color: rgba(0, 240, 255, 0.45);
-  background: rgba(0, 240, 255, 0.09);
+  transition: opacity 0.26s ease, transform 0.26s ease;
 }
 
 .photo-guide__overlay-tips.fade {
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateY(8px);
+}
+
+.photo-guide__overlay-tip-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--neon-purple, #b14aed);
+  margin: 0 0 8px;
+  opacity: 0.85;
+  text-shadow: 0 0 8px rgba(177, 74, 237, 0.45);
 }
 
 .photo-guide__overlay-tip-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--neon-cyan, #00f0ff);
-  margin: 0 0 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.photo-guide__overlay-tip-title::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+  margin: 0 0 8px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
 }
 
 .photo-guide__overlay-tip-text {
   font-size: 12px;
   color: var(--text-dim, #9aa7c7);
-  line-height: 1.55;
-  margin: 0;
+  line-height: 1.6;
+  margin: 0 auto 14px;
+  max-width: 330px;
 }
 
 .photo-guide__overlay-tip-dots {
   display: flex;
   justify-content: center;
   gap: 5px;
-  margin-top: 10px;
 }
 
 .photo-guide__overlay-tip-dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: rgba(0, 240, 255, 0.35);
   transition: background 0.2s ease, box-shadow 0.2s ease;
@@ -538,7 +529,7 @@
 
 .photo-guide__overlay-tip-dot.active {
   background: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.55);
 }
 
 .photo-guide__overlay-title {

@@ -409,6 +409,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     overlayTips.classList.add('fade');
     setTimeout(() => {
       overlayTips.innerHTML = `
+        <div class="photo-guide__overlay-tip-label">改装小知识</div>
         <div class="photo-guide__overlay-tip-title">${escapeHtml(tip.title)}</div>
         <div class="photo-guide__overlay-tip-text">${escapeHtml(tip.text)}</div>
         <div class="photo-guide__overlay-tip-dots">${LOADING_TIPS
@@ -437,12 +438,6 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       tipTimer = null;
     }
   }
-
-  // 点击小知识卡片可手动切换下一条，增加"交互感"
-  overlayTips.addEventListener('click', () => {
-    if (!tipTimer) return;
-    nextTip();
-  });
 
   async function handleStart() {
     if (generating) return;
