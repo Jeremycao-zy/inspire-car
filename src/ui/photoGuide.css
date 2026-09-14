@@ -441,18 +441,23 @@
     inset 0 0 30px rgba(0, 240, 255, 0.1);
 }
 
+/* 隐藏类：用于平时收起标题/详情，仅在错误时显示 */
+.is-hidden {
+  display: none !important;
+}
+
 .photo-guide__overlay-icon {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 22px;
   filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.45));
 }
 
-/* 加载指示器：霓虹青→紫渐变圆环，替代漏斗 emoji */
+/* 加载指示器：霓虹青→紫渐变圆环（保留） */
 .photo-guide__overlay-spinner {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: conic-gradient(
     from 0deg,
@@ -470,10 +475,10 @@
   to { transform: rotate(360deg); }
 }
 
-/* 建模完成：logo 闪动图案（替代原来的 ✨） */
+/* 建模完成：logo 闪动图案 */
 .photo-guide__overlay-icon--done {
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   object-fit: contain;
   animation: photo-guide-logo-flash 1.2s ease-in-out infinite;
   filter: drop-shadow(0 0 18px rgba(0, 240, 255, 0.55));
@@ -492,11 +497,11 @@
   }
 }
 
-/* 建模等待期：改装知识自动轮播（非卡片式，极简居中排版） */
+/* 改装知识：页面唯一视觉重心，无底部小点 */
 .photo-guide__overlay-tips {
-  min-height: 110px;
-  margin: 8px 0 26px;
-  padding: 0 8px;
+  min-height: 120px;
+  margin: 0 0 34px;
+  padding: 0 10px;
   text-align: center;
   opacity: 1;
   transform: translateY(0);
@@ -509,84 +514,119 @@
 }
 
 .photo-guide__overlay-tip-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--neon-purple, #b14aed);
-  margin: 0 0 10px;
-  opacity: 1;
-  text-shadow: 0 0 12px rgba(177, 74, 237, 0.6);
+  margin: 0 0 12px;
+  opacity: 0.95;
+  text-shadow: 0 0 12px rgba(177, 74, 237, 0.55);
 }
 
 .photo-guide__overlay-tip-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
   color: var(--neon-cyan, #00f0ff);
-  margin: 0 0 12px;
-  text-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
+  margin: 0 0 14px;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
 }
 
 .photo-guide__overlay-tip-text {
   font-size: 14px;
   color: var(--text-dim, #9aa7c7);
-  line-height: 1.65;
-  margin: 0 auto 18px;
-  max-width: 360px;
+  line-height: 1.7;
+  margin: 0 auto;
+  max-width: 340px;
 }
 
-.photo-guide__overlay-tip-dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-}
-
-.photo-guide__overlay-tip-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(0, 240, 255, 0.35);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.photo-guide__overlay-tip-dot.active {
-  background: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 8px rgba(0, 240, 255, 0.65);
-}
-
-/* 系统过程信息：缩小、弱化，让视线聚焦在改装知识上 */
-.photo-guide__overlay-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: #eafcff;
-  margin: 0 0 6px;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
-}
-
-.photo-guide__overlay-text {
-  font-size: 11px;
-  color: var(--text-dim, #9aa7c7);
-  margin: 0 0 12px;
-  line-height: 1.5;
-}
-
+/* 进度条：公路/轨道感，logo 小车作为前导引路 */
 .photo-guide__bar {
+  position: relative;
   width: 100%;
-  height: 8px;
+  height: 12px;
   border-radius: 999px;
-  background: rgba(0, 240, 255, 0.12);
-  overflow: hidden;
-  margin-bottom: 12px;
-  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.25);
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.22);
+  overflow: visible;
+  margin-bottom: 10px;
+}
+
+/* 公路中心虚线 */
+.photo-guide__bar::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  right: 10px;
+  height: 0;
+  border-top: 2px dashed rgba(0, 240, 255, 0.22);
+  transform: translateY(-50%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .photo-guide__bar-fill {
+  position: relative;
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--neon-purple, #b14aed), var(--neon-cyan, #00f0ff));
   width: 0%;
-  transition: width 0.25s ease;
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+  min-width: 0;
+  transition: width 0.35s ease;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+  z-index: 1;
+}
+
+/* logo 小车：卡在进度条最前端，随进度前进 */
+.photo-guide__bar-marker {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  transform: translate(50%, -50%);
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.85));
+  z-index: 2;
+  animation: photo-guide-marker-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes photo-guide-marker-pulse {
+  0%, 100% {
+    transform: translate(50%, -50%) scale(0.92);
+    filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.6));
+  }
+  50% {
+    transform: translate(50%, -50%) scale(1.08);
+    filter: drop-shadow(0 0 18px rgba(0, 240, 255, 1));
+  }
+}
+
+/* 进程微文案：贴在进度条下方，不再用大标题抢占视线 */
+.photo-guide__overlay-caption {
+  font-size: 11px;
+  color: var(--text-dim, #9aa7c7);
+  margin: 0 0 8px;
+  line-height: 1.45;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* 错误时恢复显示的系统标题/详情 */
+.photo-guide__overlay-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #eafcff;
+  margin: 0 0 8px;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
+
+.photo-guide__overlay-text {
+  font-size: 12px;
+  color: var(--text-dim, #9aa7c7);
+  margin: 0 0 16px;
+  line-height: 1.55;
 }
 
 .photo-guide__overlay-actions {
@@ -659,21 +699,26 @@
     width: 100%;
   }
 
-  /* 移动端：知识区仍要醒目，但系统信息继续收小 */
+  /* 移动端：简约版overlay适配 */
+  .photo-guide__overlay-box {
+    padding: 22px 20px;
+  }
+
+  .photo-guide__overlay-icon {
+    margin-bottom: 18px;
+  }
+
   .photo-guide__overlay-tip-title {
-    font-size: 17px;
+    font-size: 19px;
   }
 
   .photo-guide__overlay-tip-text {
     font-size: 13px;
-    max-width: 300px;
+    max-width: 280px;
   }
 
-  .photo-guide__overlay-title {
-    font-size: 14px;
-  }
-
-  .photo-guide__overlay-text {
-    font-size: 10px;
+  .photo-guide__bar-marker {
+    width: 26px;
+    height: 26px;
   }
 }
