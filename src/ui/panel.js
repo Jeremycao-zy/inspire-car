@@ -473,35 +473,6 @@ export function createPanel(app, mount) {
   );
   wheelEngineSelect.value = app.params.wheelEngine || 'hyper3d';
 
-  /* ---- 轮毂精度档位选择器（standard / high / extreme）---- */
-  const PRECISION_OPTIONS = [
-    ['standard', '标准'],
-    ['high', '高精'],
-    ['extreme', '极限'],
-  ];
-  const precButtons = PRECISION_OPTIONS.map(([val, label]) =>
-    el('button', {
-      class: 'chip',
-      'data-prec': val,
-      onclick: () => {
-        app.params.precision = val;
-        syncPrec();
-      },
-    }, label)
-  );
-  const precBar = el('div', { class: 'prec-bar' }, ...precButtons);
-  const precHint = el(
-    'div',
-    { class: 'ctl-hint' },
-    '生成精度：极限档细节最高，但可能更慢、偶发失败可重试'
-  );
-  wheelUpload.zone.appendChild(precBar);
-  wheelUpload.zone.appendChild(precHint);
-  function syncPrec() {
-    for (const b of precButtons) b.classList.toggle('on', b.dataset.prec === app.params.precision);
-  }
-  syncPrec();
-
   /* ---- 步骤 3：轮毂参数 ---- */
   const presetBar = el('div', { class: 'presets' });
   for (const name of Object.keys(PRESETS)) {
@@ -1243,7 +1214,6 @@ export function createPanel(app, mount) {
     syncSeg();
     syncSuspTarget();
     syncScene();
-    syncPrec();
     syncExposure();
     syncBang();
     renderBodyData();

@@ -76,7 +76,6 @@ async function main() {
     await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.waitForSelector('#garage', { timeout: 15000 });
     await page.evaluate(() => window.__garage && window.__garage.enterTuner());
-    await page.waitForSelector('.prec-bar', { timeout: 15000 });
     await page.waitForSelector('.readout.susp', { timeout: 15000 });
     // 等底盘 derive 完成（整车 GLB 载入后 rideHeight 才 > 0，读数才有真实基准值）
     await page.waitForFunction(
@@ -84,29 +83,6 @@ async function main() {
       { timeout: 20000 }
     );
     await new Promise((r) => setTimeout(r, 600)); // 等 3D 渲染稳定
-
-    /* ---- D.1 精度档位选择器 ---- */
-    console.log('\n— D.1 精度档位选择器 —');
-    const prec = await page.evaluate(() => {
-      const bar = document.querySelector('.prec-bar');
-      if (!bar) return { found: false };
-      const btns = [...bar.querySelectorAll('.chip')].map((b) => ({
-        prec: b.dataset.prec,
-        label: b.textContent.trim(),
-        on: b.classList.contains('on'),
-      }));
-      const highlighted = btns.filter((b) => b.on).map((b) => b.prec);
-      return { found: true, btns, highlighted };
-    });
-    results.D1 = prec;
-    save();
-    if (prec.found) {
-      const labels = prec.btns.map((b) => `${b.prec}=${b.label}`).join(' ');
-      assert('精度选择器存在（标准/高精/极限）', prec.btns.length === 3 && prec.btns.every((b) => ['standard', 'high', 'extreme'].includes(b.prec)), labels);
-      assert('默认高亮档 = high（高精）', prec.highlighted.length === 1 && prec.highlighted[0] === 'high', `highlighted=${JSON.stringify(prec.highlighted)}`);
-    } else {
-      assert('精度选择器存在', false);
-    }
 
     /* ---- D.2 悬挂滑杆 + 三色读数 ---- */
     console.log('\n— D.2 悬挂高低滑杆 + 三色读数 —');
@@ -209,7 +185,6 @@ async function main() {
     assert('无阻断性 JS 报错（新增代码未引入）', blocking.length === 0, `blocking=${blocking.length}`);
 
     const allPass =
-      prec.found && prec.highlighted[0] === 'high' &&
       suspBefore.slider && suspBefore.slider.min === '-10' && suspBefore.slider.max === '75' &&
       suspBefore.rows.length === 3 &&
       afterFender && afterFender.val === '-5 mm' && afterFender.cls === 'susp-danger' &&
