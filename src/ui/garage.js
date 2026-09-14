@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { loadGLB, boxOf } from '../core/glb.js';
 import { PRESET_CAR_URL, HERO_CAR_URL } from '../core/presetCar.js';
 import { previewEngine, previewParamsOf, clearCarSourceCache } from './planPreview.js';
-import { currentUser, logout } from '../auth.js';
+import { currentUser, logout, authFetch } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import { mountAiOrb } from './aiOrb.js';
@@ -171,12 +171,52 @@ function getPlans() {
 }
 
 function upsertPlan(plan) {
+  if (!plan || !plan.id) return readPlans() || [];
+  if (!plan.updatedAt) plan.updatedAt = Date.now();
   const plans = readPlans() || [];
   const idx = plans.findIndex((p) => p.id === plan.id);
   if (idx >= 0) plans[idx] = plan;
   else plans.unshift(plan);
   writePlans(plans);
+  pushPlanToServer(plan); // 登录态下同步到服务端，跨设备可见
   return plans;
+}
+
+/** 合并本地与服务端方案：按 id 去重，保留 updatedAt 较新的一份 */
+function mergePlans(local, remote) {
+  const map = new Map();
+  for (const p of [...(remote || []), ...(local || [])]) {
+    if (!p || !p.id) continue;
+    const prev = map.get(p.id);
+    if (!prev || (p.updatedAt || 0) >= (prev.updatedAt || 0)) map.set(p.id, p);
+  }
+  return [...map.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+/** 登录态下把单个方案推送到服务端（best-effort，失败不阻塞本地） */
+async function pushPlanToServer(plan) {
+  const u = currentUser();
+  if (!u?.id || !plan?.id) return;
+  try {
+    await authFetch('/api/plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(plan),
+    });
+  } catch (e) {
+    /* 离线/失败：本地已保存，下次进入会再次尝试同步 */
+  }
+}
+
+/** 登录态下从服务端删除方案（best-effort） */
+async function removePlanFromServer(id) {
+  const u = currentUser();
+  if (!u?.id || !id) return;
+  try {
+    await authFetch(`/api/plans/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 /* ---------------------------- 3D 预览（Hero） ---------------------------- */
@@ -702,10 +742,30 @@ export function mountGarage({ onEnter, mount } = {}) {
     if (!window.confirm(`确定删除「${name}」？此操作不可撤销。`)) return;
     const plans = (readPlans() || []).filter((p) => p.id !== plan.id);
     writePlans(plans);
+    removePlanFromServer(plan.id);
     renderGrid();
   }
 
+  /** 进入车库时若已登录，从服务端拉取并合并方案（跨设备同步） */
+  async function syncPlansFromServer() {
+    const u = currentUser();
+    if (!u?.id) return;
+    try {
+      const r = await authFetch('/api/plans');
+      if (!r.ok) return;
+      const data = await r.json();
+      const remote = data?.plans || [];
+      const local = readPlans() || [];
+      const merged = mergePlans(local, remote);
+      writePlans(merged);
+      renderGrid();
+    } catch (e) {
+      /* 离线/失败：保留本地 */
+    }
+  }
+
   renderGrid();
+  syncPlansFromServer();
 
   // DOM 就绪后启动预览（需要拿到 clientWidth/Height）
   let disposed = false;
