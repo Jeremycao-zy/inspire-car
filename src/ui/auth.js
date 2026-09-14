@@ -313,7 +313,7 @@ async function submitForm() {
       if (!password) return showError('请填写密码');
       if (!agreed) return showError('请先阅读并勾选同意《用户协议》和《社区内容守则》');
       if (accountIsPhone()) {
-        const code = codeField.querySelector('input').value.trim();
+        const code = codeField.value.trim();
         if (!/^\d{6}$/.test(code)) return showError('请输入 6 位短信验证码');
         submit.textContent = '注册中…';
         user = await register({ account, password, code });
