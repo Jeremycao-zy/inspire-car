@@ -137,37 +137,69 @@ function isValidPhone(phone) {
 /* ------------------------- 注册 / 登录 ------------------------- */
 
 /**
- * 注册新用户。
- * @param {{username:string, email?:string, password:string}} input
+ * 注册新用户（统一入口：账号可以是手机号，也可以是个性化用户名）。
+ *   · 账号为手机号：必须先用短信验证码校验所有权（手机号注册逻辑），
+ *     校验通过后才用「手机号 + 密码」建立账户（避免别人用你的手机号注册）。
+ *   · 账号为用户名：常规用户名 + 密码（+ 可选邮箱）注册。
+ * @param {{account:string, password:string, email?:string, code?:string}} input
+ *   account 为手机号时需额外提供 code（短信验证码）。
  * @returns {Promise<{ok:true, user, token} | {ok:false, error:string, code:string}>}
  */
 export async function registerUser(input) {
-  const username = String(input?.username || '').trim();
+  const account = String(input?.account ?? input?.username ?? '').trim();
   const email = normalizeEmail(input?.email);
   const password = String(input?.password || '');
+  const code = String(input?.code || '').trim();
 
-  if (!isValidUsername(username)) {
-    return { ok: false, error: '用户名需 2–24 位（字母/数字/下划线/中文）', code: 'bad_username' };
-  }
-  if (email && !isValidEmail(email)) {
-    return { ok: false, error: '邮箱格式不正确', code: 'bad_email' };
-  }
-  if (password.length < 6) {
-    return { ok: false, error: '密码至少 6 位', code: 'bad_password' };
-  }
+  if (!account) return { ok: false, error: '请填写账号', code: 'bad_account' };
+  if (password.length < 6) return { ok: false, error: '密码至少 6 位', code: 'bad_password' };
 
-  if (await db.userExistsByUsername(username)) {
-    return { ok: false, error: '该用户名已被注册', code: 'username_taken' };
-  }
-  if (email && (await db.userExistsByEmail(email))) {
-    return { ok: false, error: '该邮箱已被注册', code: 'email_taken' };
+  const phone = normalizePhone(account);
+  let username;
+  let phoneVal = null;
+
+  if (phone) {
+    // 手机号注册：必须短信验证码校验所有权
+    if (!code) return { ok: false, error: '请先获取并填写短信验证码', code: 'need_code' };
+    const rec = await db.getLatestOtp(phone);
+    if (!rec) return { ok: false, error: '请先获取验证码', code: 'no_code' };
+    if (Date.now() > rec.expiresAt) {
+      await db.deleteOtp(phone);
+      return { ok: false, error: '验证码已过期，请重新获取', code: 'expired' };
+    }
+    if (rec.code !== code) return { ok: false, error: '验证码错误', code: 'invalid' };
+    await db.deleteOtp(phone); // 一次性使用
+
+    if (await db.userExistsByPhone(phone)) {
+      return { ok: false, error: '该手机号已注册', code: 'phone_taken' };
+    }
+    phoneVal = phone;
+    username = 'm' + phone.slice(-8);
+    let n = 0;
+    while (await db.userExistsByUsername(username)) username = 'm' + phone.slice(-8) + ++n;
+  } else {
+    username = account;
+    if (!isValidUsername(username)) {
+      return { ok: false, error: '用户名需 2–24 位（字母/数字/下划线/中文）', code: 'bad_username' };
+    }
+    if (email && !isValidEmail(email)) {
+      return { ok: false, error: '邮箱格式不正确', code: 'bad_email' };
+    }
+    if (await db.userExistsByUsername(username)) {
+      return { ok: false, error: '该用户名已被注册', code: 'username_taken' };
+    }
+    if (email && (await db.userExistsByEmail(email))) {
+      return { ok: false, error: '该邮箱已被注册', code: 'email_taken' };
+    }
   }
 
   const salt = crypto.randomBytes(16).toString('hex');
   const user = {
     id: crypto.randomBytes(8).toString('hex'),
     username,
-    email: email || null,
+    // 手机号注册暂不绑定邮箱（邮箱为用户名账户的选填项，避免唯一索引冲突）
+    email: phoneVal ? null : email || null,
+    phone: phoneVal,
     salt,
     pw: hashPassword(password, salt),
     createdAt: new Date().toISOString(),

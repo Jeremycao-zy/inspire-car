@@ -1,18 +1,21 @@
 /**
- * auth.js (UI) — 登录 / 注册浮层
+ * auth.js (UI) — 登录 / 注册浮层（单窗口统一入口）
  *
- * 与 auth.js（状态管理）配合：本模块只负责渲染浮层、收集输入、调用 register/login/phoneLogin，
+ * 与 auth.js（状态管理）配合：本模块只负责渲染浮层、收集输入、调用 login/register，
  * 成功后通过回调通知上层（main.js）刷新门禁；失败在浮层内就地提示。
  *
- * 登录方式（顶部 Tab 切换）：
- *   · 账号密码：用户名/邮箱 + 密码，含注册（含协议勾选）。
- *   · 手机号：  手机号 + 短信验证码，验证码登录/注册二合一（手机号不存在自动注册）。
+ * 统一入口（无 Tab、无两个窗口）：
+ *   · 字段：账号 + 密码（+ 注册时可选邮箱）。
+ *   · 账号可以是手机号，也可以是个性化用户名。
+ *   · 登录：账号 + 密码（手机号账户、用户名账户都走密码）。
+ *   · 注册：账号 + 密码；当账号是手机号时，额外出现「获取验证码」做短信所有权校验
+ *     （手机号注册逻辑），通过后才用「手机号 + 密码」建立账户；用户名则直接注册。
  *
  * 设计：单例浮层，首次需要时挂载到 body，重复调用只切换模式而不重建。
  */
 
 import './auth.css';
-import { register, login, sendPhoneCode, phoneLogin } from '../auth.js';
+import { register, login, sendPhoneCode } from '../auth.js';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 import { openLegalModal } from './legalModal.js';
 
@@ -56,36 +59,19 @@ function buildLayer() {
   const heading = el('h2', { class: 'auth-card__heading' }, '登录');
   const hint = el('p', { class: 'auth-card__hint' }, '登录后即可查看你的改装方案');
 
-  /* ---- 登录方式 Tab ---- */
-  const tabPwd = el('button', { type: 'button', class: 'auth-tab', 'data-tab': 'password' }, '账号密码');
-  const tabPhone = el('button', { type: 'button', class: 'auth-tab', 'data-tab': 'phone' }, '手机号');
-  const tabRow = el('div', { class: 'auth-tabs' }, tabPwd, tabPhone);
-  tabPwd.addEventListener('click', () => setTab('password'));
-  tabPhone.addEventListener('click', () => setTab('phone'));
-
-  /* ---- 账号密码区 ---- */
-  const emailField = el(
-    'div',
-    { class: 'auth-field' },
-    el('input', {
-      class: 'auth-field__input',
-      type: 'email',
-      placeholder: '邮箱（注册时填写，可选）',
-      autocomplete: 'email',
-      'data-role': 'email',
-    })
-  );
-  const nameField = el(
+  /* ---- 账号（手机号或用户名） ---- */
+  const accountField = el(
     'div',
     { class: 'auth-field' },
     el('input', {
       class: 'auth-field__input',
       type: 'text',
-      placeholder: '用户名 / 邮箱',
+      placeholder: '手机号 / 用户名',
       autocomplete: 'username',
-      'data-role': 'login',
+      'data-role': 'account',
     })
   );
+
   const pwdField = el(
     'div',
     { class: 'auth-field' },
@@ -97,22 +83,20 @@ function buildLayer() {
       'data-role': 'password',
     })
   );
-  const passwordFields = el('div', { class: 'auth-pwd-fields' }, emailField, nameField, pwdField);
 
-  /* ---- 手机号区 ---- */
-  const phoneField = el(
+  const emailField = el(
     'div',
     { class: 'auth-field' },
     el('input', {
       class: 'auth-field__input',
-      type: 'tel',
-      inputmode: 'numeric',
-      maxlength: '11',
-      placeholder: '手机号',
-      autocomplete: 'tel',
-      'data-role': 'phone',
+      type: 'email',
+      placeholder: '邮箱（选填）',
+      autocomplete: 'email',
+      'data-role': 'email',
     })
   );
+
+  /* ---- 手机号注册时的短信验证码行 ---- */
   const codeField = el('input', {
     class: 'auth-field__input',
     type: 'text',
@@ -124,10 +108,9 @@ function buildLayer() {
   });
   const codeBtn = el('button', { type: 'button', class: 'auth-code-btn' }, '获取验证码');
   const codeRow = el('div', { class: 'auth-code-row' }, codeField, codeBtn);
-  const phoneFields = el('div', { class: 'auth-phone-fields' }, phoneField, codeRow);
   codeBtn.addEventListener('click', () => void onSendCode());
 
-  // 协议同意勾选（注册 / 手机号登录都需显式勾选——法律上的"明示同意"要件）
+  // 协议同意勾选（注册需显式勾选——法律上的"明示同意"要件）
   const agreeBox = el(
     'label',
     { class: 'auth-agree', 'data-role': 'agree-box' },
@@ -170,8 +153,10 @@ function buildLayer() {
         void submitForm();
       },
     },
-    passwordFields,
-    phoneFields,
+    accountField,
+    pwdField,
+    emailField,
+    codeRow,
     agreeBox,
     errorBox,
     infoBox,
@@ -179,17 +164,16 @@ function buildLayer() {
     switchText
   );
 
-  const card = el('div', { class: 'auth-card' }, brand, heading, hint, tabRow, form);
+  const card = el('div', { class: 'auth-card' }, brand, heading, hint, form);
   layer = el('div', { class: 'auth-layer' }, card);
   document.body.appendChild(layer);
 
-  // 内部状态
-  layer._tab = 'password';
+  // 账号框输入时实时判断是否为手机号，决定是否显示验证码行
+  accountField.querySelector('input').addEventListener('input', () => updatePhoneFields());
+
   layer._mode = 'login';
   layer._refs = {
-    heading, hint, tabRow, tabPwd, tabPhone,
-    emailField, nameField, pwdField, passwordFields,
-    phoneField, codeField, codeBtn, phoneFields,
+    heading, hint, accountField, pwdField, emailField, codeField, codeBtn, codeRow,
     agreeBox, errorBox, infoBox, submit, switchText,
   };
 
@@ -197,74 +181,63 @@ function buildLayer() {
   return layer;
 }
 
-/* 单一渲染入口：根据 _tab / _mode 决定可见性与文案 */
+/** 当前账号框内容是否像手机号 */
+function accountIsPhone() {
+  const v = layer._refs.accountField.querySelector('input').value.trim();
+  return /^1[3-9]\d{9}$/.test(v);
+}
+
+/* 单一渲染入口：按 _mode 决定可见性与文案 */
 function render() {
   const L = layer;
-  const { heading, hint, tabPwd, tabPhone, emailField, nameField, pwdField, passwordFields,
-    phoneField, codeBtn, phoneFields, agreeBox, errorBox, infoBox, submit, switchText } = L._refs;
+  const { heading, hint, accountField, pwdField, emailField, codeField, codeBtn, codeRow,
+    agreeBox, errorBox, infoBox, submit, switchText } = L._refs;
 
   errorBox.style.display = 'none';
   infoBox.style.display = 'none';
 
-  tabPwd.classList.toggle('is-active', L._tab === 'password');
-  tabPhone.classList.toggle('is-active', L._tab === 'phone');
-  const agreed = agreeBox.querySelector('input').checked;
-
-  if (L._tab === 'phone') {
-    passwordFields.style.display = 'none';
-    phoneFields.style.display = '';
-    switchText.style.display = 'none';
-    agreeBox.style.display = '';
-    heading.textContent = '手机号快捷登录';
-    hint.textContent = '输入手机号获取验证码，一键登录或注册';
-    submit.textContent = '登录 / 注册';
-    // 切到手机号后重置验证码按钮文案（若不在倒计时中）
-    if (!codeBtn._timer) codeBtn.textContent = '获取验证码';
-    return;
-  }
-
-  // 账号密码 tab
-  phoneFields.style.display = 'none';
-  passwordFields.style.display = '';
-  switchText.style.display = '';
   const mode = L._mode;
-  agreeBox.style.display = mode === 'register' ? '' : 'none';
-
   if (mode === 'register') {
     heading.textContent = '注册账号';
-    hint.textContent = '创建用户名与密码，保存你自己的改装方案';
+    hint.textContent = '手机号或用户名均可，设置密码保存你的改装方案';
     emailField.style.display = '';
-    nameField.querySelector('input').setAttribute('autocomplete', 'username');
-    nameField.querySelector('input').setAttribute('placeholder', '用户名（2–24 位）');
+    accountField.querySelector('input').setAttribute('placeholder', '手机号 / 用户名');
     pwdField.querySelector('input').setAttribute('autocomplete', 'new-password');
     pwdField.querySelector('input').setAttribute('placeholder', '设置密码（至少 6 位）');
+    agreeBox.style.display = '';
     submit.textContent = '注册并登录';
     switchText.innerHTML = '';
     switchText.appendChild(document.createTextNode('已有账号？'));
     switchText.appendChild(el('button', { type: 'button', onClick: () => setMode('login') }, '去登录'));
-    emailField.querySelector('input').focus();
+    accountField.querySelector('input').focus();
   } else {
     heading.textContent = '登录';
     hint.textContent = '登录后即可查看你的改装方案';
     emailField.style.display = 'none';
-    nameField.querySelector('input').setAttribute('autocomplete', 'username');
-    nameField.querySelector('input').setAttribute('placeholder', '用户名 / 邮箱');
+    accountField.querySelector('input').setAttribute('placeholder', '手机号 / 用户名');
     pwdField.querySelector('input').setAttribute('autocomplete', 'current-password');
     pwdField.querySelector('input').setAttribute('placeholder', '密码');
+    agreeBox.style.display = 'none';
     submit.textContent = '登录';
     switchText.innerHTML = '';
     switchText.appendChild(document.createTextNode('还没有账号？'));
     switchText.appendChild(el('button', { type: 'button', onClick: () => setMode('register') }, '去注册'));
-    nameField.querySelector('input').focus();
+    accountField.querySelector('input').focus();
   }
+  updatePhoneFields();
 }
 
-function setTab(tab) {
-  if (layer._tab === tab) return;
-  layer._tab = tab;
-  render();
+/** 注册模式 + 账号是手机号时显示验证码行 */
+function updatePhoneFields() {
+  const L = layer;
+  const { codeRow, codeBtn } = L._refs;
+  const show = L._mode === 'register' && accountIsPhone();
+  codeRow.style.display = show ? '' : 'none';
+  if (show && !codeBtn._timer) codeBtn.textContent = '获取验证码';
 }
+
 function setMode(mode) {
+  if (layer._mode === mode) return;
   layer._mode = mode;
   render();
 }
@@ -283,10 +256,10 @@ function showInfo(msg, isDev = false) {
   infoBox.style.display = '';
 }
 
-/* 获取验证码 + 60s 倒计时 */
+/* 获取验证码 + 60s 倒计时（仅手机号注册） */
 async function onSendCode() {
-  const { phoneField, agreeBox, codeBtn, errorBox, infoBox } = layer._refs;
-  const phone = phoneField.querySelector('input').value.trim();
+  const { accountField, agreeBox, codeBtn } = layer._refs;
+  const phone = accountField.querySelector('input').value.trim();
   if (!agreeBox.querySelector('input').checked) {
     return showError('请先阅读并勾选同意《用户协议》和《社区内容守则》');
   }
@@ -294,8 +267,6 @@ async function onSendCode() {
     return showError('请输入正确的手机号');
   }
   codeBtn.disabled = true;
-  errorBox.style.display = 'none';
-  infoBox.style.display = 'none';
   try {
     const r = await sendPhoneCode(phone);
     if (r.dev && r.code) {
@@ -329,36 +300,33 @@ function startCountdown(btn, secs) {
 }
 
 async function submitForm() {
-  const { emailField, nameField, pwdField, phoneField, codeField, agreeBox, submit } = layer._refs;
+  const { accountField, pwdField, emailField, codeField, agreeBox, submit } = layer._refs;
+  const account = accountField.querySelector('input').value.trim();
+  const password = pwdField.querySelector('input').value;
   const agreed = agreeBox.querySelector('input').checked;
 
   submit.disabled = true;
   try {
     let user;
-    if (layer._tab === 'phone') {
-      if (!agreed) return showError('请先阅读并勾选同意《用户协议》和《社区内容守则》');
-      const phone = phoneField.querySelector('input').value.trim();
-      const code = codeField.querySelector('input').value.trim();
-      if (!/^1[3-9]\d{9}$/.test(phone)) return showError('请输入正确的手机号');
-      if (!/^\d{6}$/.test(code)) return showError('请输入 6 位验证码');
-      submit.textContent = '登录中…';
-      user = await phoneLogin({ phone, code });
-    } else if (layer._mode === 'register') {
-      const email = emailField.querySelector('input').value.trim();
-      const loginVal = nameField.querySelector('input').value.trim();
-      const password = pwdField.querySelector('input').value;
-      if (!loginVal) return showError('请填写用户名');
+    if (layer._mode === 'register') {
+      if (!account) return showError('请填写账号');
       if (!password) return showError('请填写密码');
       if (!agreed) return showError('请先阅读并勾选同意《用户协议》和《社区内容守则》');
-      submit.textContent = '注册中…';
-      user = await register({ username: loginVal, email, password });
+      if (accountIsPhone()) {
+        const code = codeField.querySelector('input').value.trim();
+        if (!/^\d{6}$/.test(code)) return showError('请输入 6 位短信验证码');
+        submit.textContent = '注册中…';
+        user = await register({ account, password, code });
+      } else {
+        const email = emailField.querySelector('input').value.trim();
+        submit.textContent = '注册中…';
+        user = await register({ account, password, email });
+      }
     } else {
-      const loginVal = nameField.querySelector('input').value.trim();
-      const password = pwdField.querySelector('input').value;
-      if (!loginVal) return showError('请填写账号');
+      if (!account) return showError('请填写账号');
       if (!password) return showError('请填写密码');
       submit.textContent = '登录中…';
-      user = await login({ login: loginVal, password });
+      user = await login({ login: account, password });
     }
     hide();
     onDone?.(user);
@@ -366,8 +334,7 @@ async function submitForm() {
     showError(e.message || '操作失败，请重试');
   } finally {
     submit.disabled = false;
-    submit.textContent = layer._tab === 'phone' ? '登录 / 注册'
-      : (layer._mode === 'register' ? '注册并登录' : '登录');
+    submit.textContent = layer._mode === 'register' ? '注册并登录' : '登录';
   }
 }
 
@@ -376,14 +343,7 @@ export function showAuthOverlay(callback) {
   onDone = callback;
   const L = buildLayer();
   L.style.display = 'flex';
-  // 重新聚焦第一个输入框（按当前 tab）
-  setTimeout(() => {
-    const first =
-      L._tab === 'phone'
-        ? L._refs.phoneField.querySelector('input')
-        : L._refs.nameField.querySelector('input');
-    first?.focus();
-  }, 30);
+  setTimeout(() => L._refs.accountField.querySelector('input').focus(), 30);
 }
 
 /** 隐藏浮层 */
