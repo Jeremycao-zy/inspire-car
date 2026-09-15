@@ -1094,6 +1094,13 @@ async function writeBangPart(buffer, parent, index, hash, ext = '.glb') {
   const name = `bang-${parent}-${index}-${hash}${ext}`;
   await fsp.mkdir(CACHE_DIR, { recursive: true });
   await fsp.writeFile(path.join(CACHE_DIR, name), buffer);
+  /* 落库（与整车模型同一条路，见上方 db.saveModel）：
+   * Railway 容器文件系统是临时的，重新部署会清空 .cache/models。
+   * 部件过去只写本地 → 部署一次就永久丢失，前端装配失败只能退回「未拆解整车」
+   * （症状：原车轮没分离 + 轮毂错位）。入库后 handleAsset 能自动回源，不再丢。 */
+  await db
+    .saveModel(name, buffer)
+    .catch((e) => console.warn('[bang] 部件落库失败：', e.message));
   return `/api/asset/${name}`;
 }
 
@@ -1102,11 +1109,27 @@ async function writeBangPart(buffer, parent, index, hash, ext = '.glb') {
  * 再进来只剩"未拆解的整车"（空壳、轮拱是贴图）。有了这张索引，
  * 只要这台车以前拆过，就能**零额度**直接把拆好的实体车身取回来。 */
 const BANG_INDEX = path.join(CACHE_DIR, 'bang-index.json');
+/* DB 里的保留键：本地索引同样是临时盘产物，部署即丢。
+ * 用 models 表存一份；名字不是 .glb，所以不会被 handleAsset 当模型下发。 */
+const BANG_INDEX_DB_KEY = '__bang-index.json';
 
 async function readBangIndex() {
   try {
     return JSON.parse(await fsp.readFile(BANG_INDEX, 'utf8'));
   } catch {
+    /* 本地缺失（Railway 重新部署清空了 .cache）→ 从 DB 回源并回填本地，
+     * 让「这台车以前拆过就零额度取回拆解件」在重新部署后依然成立。 */
+    try {
+      const m = await db.getModel(BANG_INDEX_DB_KEY);
+      if (m?.data?.length) {
+        const idx = JSON.parse(Buffer.from(m.data).toString('utf8'));
+        await fsp.mkdir(CACHE_DIR, { recursive: true }).catch(() => {});
+        await fsp.writeFile(BANG_INDEX, JSON.stringify(idx, null, 2)).catch(() => {});
+        return idx;
+      }
+    } catch {
+      /* ignore */
+    }
     return {};
   }
 }
@@ -1117,6 +1140,9 @@ async function writeBangIndex(modelName, parts) {
   idx[modelName] = { parts, updatedAt: new Date().toISOString() };
   await fsp.mkdir(CACHE_DIR, { recursive: true });
   await fsp.writeFile(BANG_INDEX, JSON.stringify(idx, null, 2));
+  await db
+    .saveModel(BANG_INDEX_DB_KEY, Buffer.from(JSON.stringify(idx), 'utf8'))
+    .catch((e) => console.warn('[bang] 索引落库失败：', e.message));
 }
 
 /**

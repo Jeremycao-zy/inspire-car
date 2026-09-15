@@ -1433,10 +1433,11 @@ const app = {
    *
    * @param {Array<{name:string,url:string,index:number}>} parts
    * @param {{mode?:'assemble'|'spread', offsetX?:number}=} opts
-   * @returns {Promise<{total:number, body:number, wheel:number, geom:Object|null}>}
+   * @returns {Promise<{total:number, body:number, wheel:number, failed:number, geom?:Object|null}>}
+   *          total===0 且 failed>0 表示「有部件但全部载入失败」→ 调用方应引导重拆。
    */
   async applyBangParts(parts, { mode = 'assemble', offsetX = 3 } = {}) {
-    const empty = { total: 0, body: 0, wheel: 0 };
+    const empty = { total: 0, body: 0, wheel: 0, failed: 0 };
     if (!Array.isArray(parts) || !parts.length) return empty;
 
     // 预设展示车不参与 BANG 拆解。原因：
@@ -1454,15 +1455,27 @@ const app = {
     clearBangParts();
 
     const loaded = [];
+    let failed = 0;
     for (const p of parts) {
-      try {
-        const { group } = await loadGLB(p.url);
-        for (const m of splitBangFile(group)) loaded.push(m);
-      } catch (e) {
-        console.warn('[bang] 部件载入失败，已跳过：', p?.name, e.message);
+      /* 部件单文件 25~33MB，弱网 / 移动端首次拉取偶发中断。
+       * 重试一次能把大部分偶发失败救回来；两次都失败才计入 failed，
+       * 由上层提示用户去面板点「重新拆解」，而不是静默退回未拆解整车。 */
+      let ok = false;
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        try {
+          const { group } = await loadGLB(p.url);
+          for (const m of splitBangFile(group)) loaded.push(m);
+          ok = true;
+        } catch (e) {
+          if (attempt === 1) {
+            failed += 1;
+            console.warn('[bang] 部件载入失败（已重试）：', p?.name, e.message);
+          }
+        }
       }
     }
-    if (!loaded.length) return empty;
+    // 一个都没装上：把 failed 带出去，让上层能提示「重新拆解」而不是静默失败
+    if (!loaded.length) return { ...empty, failed };
 
     // 手动导入的散件：彼此坐标系无关，仍按一字排开摆在车旁
     if (mode === 'spread') {
@@ -2511,9 +2524,19 @@ async function restoreBangForPlan() {
   }
   const sig = parts.map((p) => p?.url).join('|');
   if (sig && sig !== bangMountedSig) {
-    await app
-      .applyBangParts(parts)
-      .catch((e) => console.warn('[bang] 恢复拆解部件失败：', e.message));
+    const r = await app.applyBangParts(parts).catch((e) => {
+      console.warn('[bang] 恢复拆解部件失败：', e.message);
+      return null;
+    });
+    /* 有部件、却一个都没装上（部件文件丢失 / 弱网加载失败）：
+     * 场景会退回「未拆解整车」——原车轮还在、轮位退回估算，看起来像"轮毂坏了"。
+     * 这里明确记一条；面板状态行同时会显示「还没有拆解产物 → 点重新拆解」引导用户恢复。 */
+    if (r && r.total === 0 && r.failed) {
+      console.warn(
+        `[bang] ${r.failed} 个拆解部件全部载入失败，已退回未拆解整车；` +
+          '请在面板「车身 → 拆解部件」点「重新拆解」恢复（恢复后产物会入库，不再丢）'
+      );
+    }
   }
   panel?.syncBang?.();
 }
@@ -2564,8 +2587,9 @@ async function loadPlanCar() {
         console.warn('[plan] 恢复自定义轮毂失败：', e.message);
       });
     }
-    // 方案自带 / 服务端索引的拆解产物按原坐标装配回整车（零额度）
-    await restoreBangForPlan();
+    // 注意：这里**不要**再调 restoreBangForPlan。
+    // 上方已装配过（且必须早于轮毂还原，否则清拆解物会把刚还原的自定义轮毂打回程序化）；
+    // 重复调用在「部件加载失败」路径上没有 sig 去重兜底，会让 25~33MB 的部件全部重下一遍。
   }
 
   app.fitCamera();
