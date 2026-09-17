@@ -82,33 +82,31 @@ function el(tag, props = {}, ...children) {
 }
 
 /** 灵感车库「风火轮风格」玩具卡背 logo SVG（替代原 Hot Wheels logo） */
+/** 卡片头部品牌字样：只保留文字（原火焰图形已按用户要求移除） */
 function inspireLogoSVG() {
   return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感改装 INSPIRE CAR">
     <defs>
-      <linearGradient id="hwFlame" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#e60012"/>
-        <stop offset=".45" stop-color="#ff6a00"/>
+      <linearGradient id="brandWord" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#ff3d3d"/>
+        <stop offset=".5" stop-color="#ff6a00"/>
         <stop offset="1" stop-color="#ffd700"/>
       </linearGradient>
-      <filter id="hwShadow">
-        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".28"/>
-      </filter>
     </defs>
-    <path d="M12,52 C12,52 25,12 70,18 C95,21 115,35 140,32 C170,28 185,10 208,20 C200,40 180,55 140,56 C100,57 60,60 25,58 C18,57 12,52 12,52 Z"
-          fill="url(#hwFlame)" filter="url(#hwShadow)" stroke="#fff" stroke-width="2"/>
-    <path d="M30,48 C40,25 80,28 110,38 C130,44 150,38 175,32" fill="none" stroke="#fff7b3" stroke-width="3" stroke-linecap="round" opacity=".9"/>
-    <text x="108" y="43" text-anchor="middle" font-size="24" font-weight="900" fill="#fff"
-          stroke="#a30e0e" stroke-width=".6" style="font-style:italic">灵感改装</text>
-    <text x="108" y="60" text-anchor="middle" font-size="8" font-weight="800" fill="#1b2a44" letter-spacing="3">INSPIRE CAR</text>
+    <text x="110" y="44" text-anchor="middle" font-size="32" font-weight="900"
+          fill="url(#brandWord)" stroke="#fff" stroke-width="5" paint-order="stroke"
+          style="font-style:italic;letter-spacing:2px;font-family:'PingFang SC','Microsoft YaHei',sans-serif">灵感改装</text>
+    <rect x="38" y="52" width="144" height="2.5" rx="1.25" fill="url(#brandWord)" opacity=".85"/>
+    <text x="110" y="66" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" letter-spacing="5"
+          style="font-family:'Share Tech Mono','Menlo',monospace">INSPIRE CAR</text>
   </svg>`;
 }
 
-/** 背卡车型剪影（侧视跑车轮廓） */
-function carSilhouetteSVG() {
-  return `<svg viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M18,58 C14,58 12,55 12,51 C12,46 16,42 22,40 L38,37 C44,30 55,24 70,22 L95,20 C105,18 118,18 130,22 L150,28 C165,32 175,38 182,45 L188,48 C193,50 196,54 195,58 C194,62 189,64 182,64 L168,64 C164,68 156,70 148,68 C140,70 132,68 128,64 L68,64 C64,68 56,70 48,68 C40,68 32,66 28,62 L22,62 C20,62 18,60 18,58 Z"
-          fill="currentColor"/>
-  </svg>`;
+/** 卡片展示名：优先用户/系统设置过的方案名（「未命名方案」视为未定制），
+ *  其次 AI 识别出的车辆名称，最后兜底「未命名方案」 */
+function planDisplayName(plan) {
+  const t = plan?.title;
+  if (t && t !== '未命名方案') return t;
+  return plan?.params?.realSpecs?.fullName || t || '未命名方案';
 }
 
 function formatDate(ts) {
@@ -507,8 +505,8 @@ function createCard(plan, onClick, onDelete) {
   // 顶部零售吊牌挂孔
   const hangHole = el('div', { class: 'garage-card__hang-hole' });
 
-  // 背卡印刷车型剪影（放在车型文字背后作装饰）
-  const silhouette = el('div', { class: 'garage-card__silhouette', html: carSilhouetteSVG() });
+  // 背卡水印字样（原车型剪影已按用户要求移除，换成 INSPIRE CAR 字样装饰）
+  const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
 
   // 透明塑料泡壳：绝对定位在 blister-zone 内，不再压住下方文字
   const shell = el(
@@ -539,9 +537,9 @@ function createCard(plan, onClick, onDelete) {
     el(
       'div',
       { class: 'garage-card__model' },
-      el('h3', { class: 'garage-card__title' }, plan.title || '未命名方案'),
+      el('h3', { class: 'garage-card__title' }, planDisplayName(plan)),
       plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null,
-      silhouette
+      watermark
     ),
     el(
       'div',
@@ -740,7 +738,7 @@ export function mountGarage({ onEnter, mount } = {}) {
   /** 删除某个方案（带二次确认），并刷新卡片网格 */
   function deletePlan(plan) {
     if (!plan) return;
-    const name = plan.title || '未命名方案';
+    const name = planDisplayName(plan);
     if (!window.confirm(`确定删除「${name}」？此操作不可撤销。`)) return;
     const plans = (readPlans() || []).filter((p) => p.id !== plan.id);
     writePlans(plans);

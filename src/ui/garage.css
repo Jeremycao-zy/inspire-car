@@ -521,26 +521,26 @@
   overflow: hidden;
 }
 
-/* 背卡印刷车型剪影 */
-.garage-card__silhouette {
+/* 背卡水印字样（原车型剪影已移除，换成 INSPIRE CAR 字样装饰） */
+.garage-card__watermark {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%) translateY(22px);
-  width: 92%;
-  max-width: 190px;
-  color: rgba(0, 240, 255, 0.18);
+  transform: translate(-50%, -50%) translateY(26px) rotate(-4deg);
+  font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em; /* 抵消 letter-spacing 尾部空隙，保证视觉居中 */
+  white-space: nowrap;
+  color: rgba(0, 240, 255, 0.2);
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
   pointer-events: none;
   z-index: 0;
-  filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.25));
+  user-select: none;
 }
-.garage-card__silhouette svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.garage-card:hover .garage-card__silhouette {
-  color: rgba(0, 240, 255, 0.28);
+.garage-card:hover .garage-card__watermark {
+  color: rgba(0, 240, 255, 0.32);
 }
 
 /* 底部信息条 */
