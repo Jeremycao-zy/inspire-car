@@ -486,7 +486,7 @@ function barcodeSVG(seed, w = 220, h = 30) {
     const bw = 1 + (rnd % 4);
     rnd = (rnd * 1103515245 + 12345) >>> 0;
     const gap = 1 + (rnd % 4);
-    bars.push(`<rect x="${x}" y="0" width="${bw}" height="${h}" fill="#14141a"/>`);
+    bars.push(`<rect x="${x}" y="0" width="${bw}" height="${h}" fill="#7e6cae"/>`);
     x += bw + gap;
   }
   return `<svg class="garage-card__barcode" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${bars.join('')}</svg>`;
@@ -518,8 +518,12 @@ function createCard(plan, onClick, onDelete, index = 0) {
     '×'
   );
 
-  // 顶部零售吊牌挂孔
-  const hangHole = el('div', { class: 'garage-card__hang-hole' });
+  // 顶部零售吊牌：梯形挂耳 + 横向圆角开槽（对齐收藏卡设计稿，不再是单个圆孔）
+  const hangHole = el(
+    'div',
+    { class: 'garage-card__hang-tab' },
+    el('div', { class: 'garage-card__hang-hole' })
+  );
 
   // 背卡水印字样（黑色收藏卡上的银色装饰字）
   const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
@@ -548,7 +552,12 @@ function createCard(plan, onClick, onDelete, index = 0) {
       { class: 'garage-card__brand' },
       el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
       el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
-      el('div', { class: 'garage-card__brand-cn' }, '灵感改装')
+      el(
+        'div',
+        { class: 'garage-card__brand-cn-row' },
+        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
+        el('div', { class: 'garage-card__no' }, no)
+      )
     ),
     blisterZone,
     el(
@@ -576,11 +585,8 @@ function createCard(plan, onClick, onDelete, index = 0) {
     )
   );
 
-  // 收藏编号圆牌（银色，右上角，如 001）
-  const badge = el('div', { class: 'garage-card__no' }, no);
-
-  // 整包 = 吊牌孔 + 背卡 + 编号牌 + 删除按钮（全部放在 pack 内，跟随 3D 联动）
-  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing, badge, del);
+  // 整包 = 吊牌挂耳 + 背卡 + 删除按钮（编号圆牌已内嵌到品牌区行内，跟随 3D 联动）
+  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing, del);
 
   const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
 
