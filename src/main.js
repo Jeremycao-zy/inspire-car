@@ -2895,7 +2895,7 @@ window.addEventListener('auth:change', (e) => {
   }
 });
 
-/* 品牌启动页淡出：最少展示 2.4s，让 logo + 字母闪动动画完整播放 */
+/* 品牌启动页淡出：最少展示 2.4s，让字母波浪动画完整播放（logo 已改为静态常亮，无动画） */
 const brandLoadingStart = Date.now();
 function hideBrandLoading() {
   const el = document.getElementById('brand-loading');
