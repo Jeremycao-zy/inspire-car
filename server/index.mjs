@@ -746,7 +746,8 @@ async function runHyper3D({ kind, images, body, taskTitle, emit, fail, isClosed 
     const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
     const name = `${kind}-${ts}-${crypto.randomBytes(3).toString('hex')}.glb`;
     await fsp.writeFile(path.join(CACHE_DIR, name), glb.buffer);
-    await db.saveModel(name, glb.buffer); // SQL 模式落库，重新部署后本地缺失可回源
+    // SQL 模式落库（回源缓存）。失败只告警——生成已成功，绝不能因落库问题判失败
+    await db.saveModel(name, glb.buffer).catch((e) => console.warn('[model] 整车落库失败（已跳过）：', e.message));
 
     // 写历史索引 + 额度计数（仅成功生成计入消耗）
     const usage = bumpUsage();

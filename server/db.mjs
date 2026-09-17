@@ -534,11 +534,39 @@ export async function removeWheel(uid, id) {
 
 /* ------------------------- 模型文件（GLB） ------------------------- */
 
+/** SQL 库里 GLB 缓存的最大保留条数（整车 + BANG 部件都算，1 辆车约 6 条）。
+ *  只进不出的落库曾把 Railway Postgres 磁盘写满（No space left on device）。 */
+const MODEL_DB_RETENTION = Math.max(4, parseInt(process.env.MODEL_DB_RETENTION || '12', 10) || 12);
+/** 小体积索引文件，永不清理 */
+const MODEL_DB_KEEP_FOREVER = '__bang-index.json';
+
+/**
+ * 只保留最近 keep 条模型缓存（按 created_at），删除更旧的，防止 Postgres 磁盘被 GLB 写满。
+ * 删掉的只是「重新部署后回源用的缓存」——最旧的方案本来也得重新生成才有部件。
+ * @returns {Promise<number>} 删除的条数
+ */
+export async function pruneModels(keep = MODEL_DB_RETENTION) {
+  if (dbMode !== 'sql') return 0;
+  const r = await pool.query(
+    `DELETE FROM models
+      WHERE name <> $2
+        AND name NOT IN (
+          SELECT name FROM models WHERE name <> $2
+          ORDER BY created_at DESC LIMIT $1
+        )`,
+    [keep, MODEL_DB_KEEP_FOREVER]
+  );
+  return r.rowCount || 0;
+}
+
 /**
  * 把生成的 GLB 字节持久化到数据库。
  *   · SQL 模式：真正落库（INSERT ... ON CONFLICT DO UPDATE 幂等），
  *     这样 Railway 重新部署把 .cache 清空后，本地缺失的模型能从 DB 取回。
  *   · JSON 模式：no-op——本地 .cache/models 已经是真源，无需重复存。
+ *
+ * 韧性约定（重要）：落库只是「回源缓存」，写库失败绝不能让一次已经成功的生成被判失败——
+ * 磁盘满时先 pruneModels 腾空间重试一次，仍失败则告警跳过。
  *
  * @param {string} name   文件名（含 .glb），作为主键
  * @param {Buffer} buffer GLB 二进制
@@ -546,11 +574,23 @@ export async function removeWheel(uid, id) {
 export async function saveModel(name, buffer) {
   if (dbMode !== 'sql') return;
   if (!name || !Buffer.isBuffer(buffer) || buffer.length < 12) return;
-  await pool.query(
-    `INSERT INTO models (name, data, created_at) VALUES ($1,$2,now())
-       ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, created_at = now()`,
-    [String(name), buffer]
-  );
+  const q = `INSERT INTO models (name, data, created_at) VALUES ($1,$2,now())
+       ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, created_at = now()`;
+  try {
+    await pool.query(q, [String(name), buffer]);
+  } catch {
+    try {
+      await pruneModels(); // 大概率是磁盘满：清最旧的缓存腾出空间再试一次
+      await pool.query(q, [String(name), buffer]);
+    } catch (e2) {
+      console.warn('[db] 模型落库失败（已跳过，不影响生成结果）：', e2?.message || e2);
+      return;
+    }
+  }
+  try {
+    const pruned = await pruneModels();
+    if (pruned > 0) console.log(`[db] 模型缓存超出保留额度（${MODEL_DB_RETENTION}），已清理 ${pruned} 条最旧记录`);
+  } catch {}
 }
 
 /**
