@@ -1876,6 +1876,12 @@ function persistRealSpecsToPlan() {
   currentPlan.params.carLength = app.params.carLength;
   currentPlan.params.carWidth = app.params.carWidth;
   currentPlan.params.carHeight = app.params.carHeight;
+  // 方案名未定制（空 / 默认「未命名方案」）时直接采用 AI 识别出的车辆名称，
+  // 让车库卡片标题显示真实车型（如「奔驰 SL350」）
+  const carName = app.params.realSpecs?.fullName;
+  if (carName && (!currentPlan.title || currentPlan.title === '未命名方案')) {
+    currentPlan.title = carName;
+  }
   try {
     garage?.upsertPlan?.({ ...currentPlan, updatedAt: Date.now() });
   } catch (e) {
