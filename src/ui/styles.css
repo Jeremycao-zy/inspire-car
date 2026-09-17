@@ -56,18 +56,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 24px;
 }
 
-.brand-loading__logo {
-  width: 84px;
-  height: 84px;
-  object-fit: contain;
-  /* 静态常亮：无入场/呼吸动画，直接呈现；仅保留稳定的霓虹辉光基底。
-     用户反馈手机上呼吸闪动不是想要的效果，故去掉动画只保持常亮。 */
-  opacity: 1;
-  filter: brightness(0) invert(1) drop-shadow(0 0 22px rgba(0, 240, 255, 0.6));
-}
+/* logo 已移除：开屏只保留文字，文字居中呈现 */
 
 .brand-loading__text {
   font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
@@ -77,6 +70,7 @@
   color: rgba(255, 255, 255, 0.35);
   text-transform: uppercase;
   white-space: nowrap;
+  text-align: center;
   user-select: none;
 }
 
