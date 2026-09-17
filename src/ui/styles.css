@@ -63,16 +63,10 @@
   width: 84px;
   height: 84px;
   object-fit: contain;
-  /* 基底辉光 = 呼吸动画的起点值，保证「入场结束 → 呼吸开始」无缝衔接 */
-  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
-  /* ① logoIn：平滑入场（淡入 + 轻微放大），避免图片一解码就"啪"地弹出来
-     ② logoPulse：霓虹呼吸。**光效起伏保持明显**（辉光 10px→30px、透明度 0.62→1），
-        但只保留单一转向点 + 近似正弦缓动，去掉旧版 0/35/50/65/100 分段造成的
-        "冲到顶—平住—再落下"的跳跃感 —— 这是"不丝滑"的根因，不是光效本身。 */
-  animation:
-    logoIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
-    logoPulse 2.6s cubic-bezier(0.45, 0, 0.55, 1) 0.6s infinite;
-  will-change: opacity, transform, filter;
+  /* 静态常亮：无入场/呼吸动画，直接呈现；仅保留稳定的霓虹辉光基底。
+     用户反馈手机上呼吸闪动不是想要的效果，故去掉动画只保持常亮。 */
+  opacity: 1;
+  filter: brightness(0) invert(1) drop-shadow(0 0 22px rgba(0, 240, 255, 0.6));
 }
 
 .brand-loading__text {
@@ -100,33 +94,7 @@
   animation: none !important;
 }
 
-/* logo 入场：淡入 + 轻微放大，结束值（opacity 0.62）正好等于 logoPulse 的起点值，
-   两段动画衔接处不会跳变。 */
-@keyframes logoIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-  100% {
-    opacity: 0.62;
-    transform: scale(1);
-  }
-}
-
-/* logo 呼吸：光效幅度保持明显（辉光 10px→30px、透明度 0.62→1），
-   但只保留 0%/50%/100% 单一转向点 + 近似正弦缓动。
-   旧版 0/35/50/65/100 五个关键帧会让 CSS 在**每段之间各自套用缓动**，
-   产生"冲到顶 → 平住 → 再落下"的停顿跳变 —— 那才是"不丝滑"的来源。 */
-@keyframes logoPulse {
-  0%, 100% {
-    opacity: 0.62;
-    filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
-  }
-  50% {
-    opacity: 1;
-    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1));
-  }
-}
+/* logo 入场/呼吸动画已移除（用户要求开屏 logo 静态常亮、无闪动），相关 keyframes 已删除。 */
 
 /* 文字：还原原本方案（逐字波浪 + 霓虹辉光起伏） */
 @keyframes letterPulse {
