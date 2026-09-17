@@ -473,7 +473,28 @@ function startPreview(container) {
 
 /* ---------------------------- 卡片 ---------------------------- */
 
-function createCard(plan, onClick, onDelete) {
+/** 由方案 id 确定性生成条形码 SVG（黑白竖条，纯装饰） */
+function barcodeSVG(seed, w = 220, h = 30) {
+  let s = 0;
+  const str = String(seed || 'inspire');
+  for (let i = 0; i < str.length; i++) s = (s * 31 + str.charCodeAt(i)) >>> 0;
+  let rnd = s || 1;
+  const bars = [];
+  let x = 0;
+  while (x < w - 2) {
+    rnd = (rnd * 1103515245 + 12345) >>> 0;
+    const bw = 1 + (rnd % 4);
+    rnd = (rnd * 1103515245 + 12345) >>> 0;
+    const gap = 1 + (rnd % 4);
+    bars.push(`<rect x="${x}" y="0" width="${bw}" height="${h}" fill="#14141a"/>`);
+    x += bw + gap;
+  }
+  return `<svg class="garage-card__barcode" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${bars.join('')}</svg>`;
+}
+
+function createCard(plan, onClick, onDelete, index = 0) {
+  const no = String((index ?? 0) + 1).padStart(3, '0');
+
   // 缩略图容器：实时 3D 预览（动态旋转）画布由 PreviewEngine 挂载，最终嵌在塑料泡壳里
   const thumb = el('div', { class: 'garage-card__thumb' });
 
@@ -481,11 +502,6 @@ function createCard(plan, onClick, onDelete) {
     // WebGL 不可用时退化成占位提示
     thumb.appendChild(el('div', { class: 'garage-card__placeholder' }, '3D 预览不可用'));
   }
-
-  // 收藏系列标签（风火轮风格右上角小徽章）
-  const badge = plan.tags?.[0]
-    ? el('span', { class: 'garage-card__badge' }, plan.tags[0])
-    : null;
 
   // 删除按钮（收藏卡左上角，随卡片 3D 浮动）
   const del = el(
@@ -505,7 +521,7 @@ function createCard(plan, onClick, onDelete) {
   // 顶部零售吊牌挂孔
   const hangHole = el('div', { class: 'garage-card__hang-hole' });
 
-  // 背卡水印字样（原车型剪影已按用户要求移除，换成 INSPIRE CAR 字样装饰）
+  // 背卡水印字样（黑色收藏卡上的银色装饰字）
   const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
 
   // 透明塑料泡壳：绝对定位在 blister-zone 内，不再压住下方文字
@@ -523,15 +539,16 @@ function createCard(plan, onClick, onDelete) {
   // 泡壳占位区：在背卡流式布局中占据固定高度，避免与文字重叠
   const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
 
-  // 背卡：品牌 logo + 泡壳占位区 + 车型信息 + 底部元数据
+  // 背卡（哑光黑收藏卡）：品牌字标 + 泡壳 + 车型信息 + 收藏编号/条形码 + 底部信息
   const backing = el(
     'div',
     { class: 'garage-card__backing' },
     el(
       'div',
       { class: 'garage-card__brand' },
-      el('div', { class: 'garage-card__logo-wrap', html: inspireLogoSVG() }),
-      el('div', { class: 'garage-card__series' }, 'COLLECTOR EDITION · 收藏版')
+      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
+      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
+      el('div', { class: 'garage-card__brand-cn' }, '灵感改装')
     ),
     blisterZone,
     el(
@@ -543,13 +560,26 @@ function createCard(plan, onClick, onDelete) {
     ),
     el(
       'div',
+      { class: 'garage-card__meta' },
+      el('span', { class: 'garage-card__meta-edition' }, "COLLECTOR'S EDITION"),
+      el('span', { class: 'garage-card__meta-no' }, `${index + 1}/64`)
+    ),
+    el('div', {
+      class: 'garage-card__barcode-wrap',
+      html: barcodeSVG(plan.id || plan.title || 'inspire'),
+    }),
+    el(
+      'div',
       { class: 'garage-card__footer' },
       el('span', { class: 'garage-card__footer-live' }, '● 实时 3D'),
       el('span', { class: 'garage-card__footer-action' }, '进入改装 →')
     )
   );
 
-  // 整包 = 吊牌孔 + 背卡 + 徽章 + 删除按钮（全部放在 pack 内，跟随 3D 联动）
+  // 收藏编号圆牌（银色，右上角，如 001）
+  const badge = el('div', { class: 'garage-card__no' }, no);
+
+  // 整包 = 吊牌孔 + 背卡 + 编号牌 + 删除按钮（全部放在 pack 内，跟随 3D 联动）
   const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing, badge, del);
 
   const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
@@ -729,7 +759,7 @@ export function mountGarage({ onEnter, mount } = {}) {
     grid.innerHTML = '';
     const plans = getPlans();
     if (plans.length) {
-      for (const p of plans) grid.appendChild(createCard(p, (pl) => onEnter?.(pl), deletePlan));
+      plans.forEach((p, i) => grid.appendChild(createCard(p, (pl) => onEnter?.(pl), deletePlan, i)));
     } else {
       grid.appendChild(createEmptyState(() => onEnter?.(null)));
     }
