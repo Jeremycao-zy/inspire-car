@@ -746,7 +746,9 @@ export function mountGarage({ onEnter, mount } = {}) {
     renderGrid();
   }
 
-  /** 进入车库时若已登录，从服务端拉取并合并方案（跨设备同步） */
+  /** 进入车库时若已登录，从服务端拉取并合并方案（跨设备同步）。
+   *  同时把「本地有、服务端没有」的方案回传服务端——覆盖「未登录时在本机建了方案、
+   *  之后才登录」的情况，让换设备也能看到（服务端 upsert 按 id 幂等，不会重复）。 */
   async function syncPlansFromServer() {
     const u = currentUser();
     if (!u?.id) return;
@@ -756,6 +758,11 @@ export function mountGarage({ onEnter, mount } = {}) {
       const data = await r.json();
       const remote = data?.plans || [];
       const local = readPlans() || [];
+      const remoteIds = new Set(remote.map((p) => p?.id));
+      // 回传本地独有方案（best-effort，失败忽略）
+      for (const p of local) {
+        if (p?.id && !remoteIds.has(p.id)) pushPlanToServer(p);
+      }
       const merged = mergePlans(local, remote);
       writePlans(merged);
       renderGrid();
