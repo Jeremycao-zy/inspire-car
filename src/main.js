@@ -2358,6 +2358,7 @@ let tunerStarted = false;
 let currentPlan = null; // 当前在第二层编辑的方案（含 id / title / params）
 let garage = null; // 第一层「灵感车库」实例
 let photoGuide = null; // 拍照引导层实例
+let studioActive = false; // 当前是否处于工作室视图（visibilitychange 兜底恢复用）
 let currentCarUrl = null; // 当前已载入的车模 URL，用于判断切换方案时是否需要重新载车
 let carAnchors = null; // 车身旁空间锚点系统（工作室内常驻，tunerStarted 守卫下只建一次）
 
@@ -2687,9 +2688,10 @@ async function enterTuner(plan, opts = {}) {
   if (!plan.bangParts) plan.bangParts = [];
 
   currentPlan = plan;
+  studioActive = true;
 
-  const garageEl = document.getElementById('garage');
-  if (garageEl) garageEl.classList.add('hidden');
+  // 用 hide() 真正停掉车库预览渲染循环（原 classList 只藏 DOM，WebGL 后台空转）
+  garage?.hide?.();
   // 工作台进入可见态：恢复查看器渲染循环（车库可见时已暂停，见下方 returnToGarage）。
   viewer.resume();
 
@@ -2772,8 +2774,9 @@ function returnToGarage() {
     garage?.upsertPlan(rec);
     currentPlan = rec;
   }
-  const garageEl = document.getElementById('garage');
-  if (garageEl) garageEl.classList.remove('hidden');
+  studioActive = false;
+  // show()：恢复车库预览循环 + 刷卡片（进工作室时 hide() 曾暂停它）
+  garage?.show?.();
   // 离开工作台回到车库：隐藏画布仍在后台渲染会持续占 GPU，移动端易触发页面重载。
   // 停掉工作台查看器循环，车库侧预览按需渲染（previewEngine 脏标记机制）即可。
   viewer.pause();
@@ -2801,7 +2804,9 @@ function showPhotoGuide(existingPlan = null) {
     photoGuide.destroy();
     photoGuide = null;
   }
-  if (garage?.root) garage.root.classList.add('hidden');
+  // 必须用 hide()：classList 只藏 DOM，车库 hero 预览的 WebGL 循环还在后台空转，
+  // iOS 打开相机时内存叠加会直接被系统杀进程（表现为“一拍照就闪退”）。
+  garage?.hide?.();
 
   photoGuide = mountPhotoGuide({
     onModeled({ url, mode, files }) {
@@ -2822,6 +2827,25 @@ function showPhotoGuide(existingPlan = null) {
     },
   });
 }
+
+// 页面进后台兜底（iOS 拍照 / 切 App 必触发 visibilitychange）：
+// WebGL 渲染循环与 GPU 资源若继续占内存，系统内存吃紧会直接杀 WebContent——
+// 表现为「一拍照就闪退，重进才能拍」。统一在 hidden 时停掉所有渲染循环，
+// 回到前台再按当前视图恢复（工作室 / 车库 / 拍照引导层）。
+document.addEventListener('visibilitychange', () => {
+  try {
+    if (document.hidden) {
+      garage?.pause?.();
+      viewer?.pause?.();
+    } else if (studioActive) {
+      viewer?.resume?.();
+    } else if (!photoGuide) {
+      garage?.resume?.();
+    }
+  } catch (e) {
+    console.warn('[lifecycle] 视图暂停/恢复失败（忽略）:', e?.message || e);
+  }
+});
 
 // 第一层入口：灵感车库（白色科技车库风）。选择方案 / 新建 → 进入 TUNING STUDIO。
 // 门禁：未登录先弹登录浮层，登录成功后再挂载车库；注销/令牌失效回到浮层。

@@ -809,6 +809,17 @@ export function mountGarage({ onEnter, mount } = {}) {
       warehouse?.resume();
       warehouse?.refresh?.();
     },
+    // 仅暂停/恢复渲染循环，不改变视图可见性——供「页面进后台」（拍照/切 App）兜底使用
+    pause() {
+      preview?.pause();
+      aiOrb?.pause();
+      warehouse?.pause();
+    },
+    resume() {
+      preview?.resume();
+      aiOrb?.resume();
+      warehouse?.resume();
+    },
     refresh() {
       renderGrid();
     },
