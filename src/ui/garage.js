@@ -473,22 +473,31 @@ function startPreview(container) {
 
 /* ---------------------------- 卡片 ---------------------------- */
 
-/** 由方案 id 确定性生成条形码 SVG（黑白竖条，纯装饰） */
+/** 由方案 id 确定性生成条形码 SVG（真实条码：静区 + 宽窄相间条 + 首尾守卫条，纯装饰） */
 function barcodeSVG(seed, w = 220, h = 30) {
   let s = 0;
   const str = String(seed || 'inspire');
   for (let i = 0; i < str.length; i++) s = (s * 31 + str.charCodeAt(i)) >>> 0;
   let rnd = s || 1;
+  const next = () => {
+    rnd = (rnd * 1103515245 + 12345) >>> 0;
+    return rnd / 4294967296;
+  };
   const bars = [];
-  let x = 0;
-  while (x < w - 2) {
-    rnd = (rnd * 1103515245 + 12345) >>> 0;
-    const bw = 1 + (rnd % 4);
-    rnd = (rnd * 1103515245 + 12345) >>> 0;
-    const gap = 1 + (rnd % 4);
-    bars.push(`<rect x="${x}" y="0" width="${bw}" height="${h}" fill="#7e6cae"/>`);
-    x += bw + gap;
+  let x = 4; // 左静区
+  const bar = (bw) => {
+    bars.push(`<rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="#a48fd0"/>`);
+  };
+  // 首守卫条：细-粗-细（通高）
+  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5); x += 4.5;
+  // 数据区：窄条(1.5~3)与宽条(3.5~7.5)随机交错，间隙同样宽窄可变
+  while (x < w - 28) {
+    const bw = next() < 0.55 ? 1.5 + next() * 1.5 : 3.5 + next() * 4;
+    bar(bw);
+    x += bw + 1.5 + next() * 3.5;
   }
+  // 尾守卫条：细-粗-细
+  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5);
   return `<svg class="garage-card__barcode" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${bars.join('')}</svg>`;
 }
 

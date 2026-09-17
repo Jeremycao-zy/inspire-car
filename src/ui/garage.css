@@ -644,51 +644,51 @@
   width: 100%;
   height: 100%;
   border-radius: 26px 26px 34px 34px;
-  /* 中性透明 PET 塑料：白色高光 + 极淡灰底，去青紫冷光 */
+  /* 黑紫渐变底色 + 紫白高光：茶色透明塑料壳质感（车模仍可透出） */
   background:
-    /* 锐利左上角高光（白） */
-    radial-gradient(120% 80% at 16% 10%, rgba(255, 255, 255, 0.34) 0%, transparent 26%),
-    /* 右下角柔反光（白） */
-    radial-gradient(100% 100% at 88% 90%, rgba(255, 255, 255, 0.12) 0%, transparent 30%),
+    /* 锐利左上角高光（紫白） */
+    radial-gradient(120% 80% at 16% 10%, rgba(224, 205, 252, 0.4) 0%, transparent 26%),
+    /* 右下角紫反光 */
+    radial-gradient(100% 100% at 88% 90%, rgba(130, 96, 190, 0.3) 0%, transparent 30%),
     /* 中心微隆起的光晕 */
-    radial-gradient(90% 70% at 50% 55%, rgba(255, 255, 255, 0.06) 0%, transparent 60%),
+    radial-gradient(90% 70% at 50% 55%, rgba(88, 62, 140, 0.28) 0%, transparent 60%),
     /* 吸塑成型表面微细条纹 */
     repeating-linear-gradient(
       96deg,
-      rgba(255, 255, 255, 0.04) 0px,
-      rgba(255, 255, 255, 0.04) 1px,
+      rgba(255, 255, 255, 0.03) 0px,
+      rgba(255, 255, 255, 0.03) 1px,
       transparent 1px,
       transparent 4px
     ),
-    /* PET 透明中性底 */
-    linear-gradient(170deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0.12) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.55);
+    /* 黑紫渐变塑料底 */
+    linear-gradient(170deg, rgba(52, 37, 86, 0.88) 0%, rgba(22, 15, 40, 0.92) 50%, rgba(70, 48, 118, 0.88) 100%);
+  border: 1px solid rgba(186, 158, 238, 0.45);
   box-shadow:
     /* 外层悬浮投影 */
     0 14px 38px rgba(0, 0, 0, 0.45),
     0 8px 18px rgba(0, 0, 0, 0.35),
     /* 顶层边缘光 */
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    /* 塑料厚度感：内侧中性阴影 */
-    inset 0 -5px 14px rgba(255, 255, 255, 0.14),
-    inset 0 0 24px rgba(255, 255, 255, 0.16),
-    inset 0 0 8px rgba(255, 255, 255, 0.35);
+    inset 0 1px 0 rgba(240, 228, 255, 0.5),
+    /* 塑料厚度感：内侧紫阴影 */
+    inset 0 -5px 14px rgba(120, 86, 180, 0.28),
+    inset 0 0 24px rgba(96, 66, 152, 0.3),
+    inset 0 0 8px rgba(200, 176, 245, 0.22);
   backdrop-filter: blur(5px);
   overflow: hidden;
   transform-style: preserve-3d;
 }
 
-/* 泡壳密封压边：中性银白双层压纹 */
+/* 泡壳密封压边：紫色双层压纹 */
 .garage-card__shell::before {
   content: '';
   position: absolute;
   inset: 7px;
   border-radius: 20px 20px 26px 26px;
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  border: 1.5px solid rgba(186, 158, 238, 0.42);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.3),
-    inset 0 0 12px rgba(255, 255, 255, 0.2);
+    inset 0 0 0 1px rgba(130, 96, 190, 0.3),
+    0 0 0 1px rgba(130, 96, 190, 0.35),
+    inset 0 0 12px rgba(150, 115, 210, 0.25);
   z-index: 3;
   pointer-events: none;
 }
@@ -733,7 +733,7 @@
   letter-spacing: 0.04em;
 }
 
-/* 泡壳顶部强光（白） */
+/* 泡壳顶部强光（紫白） */
 .garage-card__blister-highlight {
   position: absolute;
   top: 0;
@@ -743,36 +743,36 @@
   border-radius: 26px 26px 0 0;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.4) 0%,
-    rgba(255, 255, 255, 0.12) 45%,
-    rgba(255, 255, 255, 0.02) 72%,
+    rgba(228, 210, 255, 0.32) 0%,
+    rgba(160, 125, 220, 0.14) 45%,
+    rgba(120, 88, 180, 0.03) 72%,
     transparent 100%
   );
   z-index: 2;
   pointer-events: none;
 }
 
-/* 泡壳边缘强反光带（白） */
+/* 泡壳边缘强反光带（紫） */
 .garage-card__blister-rim {
   position: absolute;
   inset: 0;
   border-radius: 26px 26px 34px 34px;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-    inset 0 0 14px rgba(255, 255, 255, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.4);
+    inset 0 0 0 1px rgba(206, 180, 250, 0.75),
+    inset 0 0 14px rgba(140, 105, 200, 0.4),
+    0 0 0 1px rgba(140, 105, 200, 0.35);
   background: linear-gradient(
     165deg,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 255, 255, 0) 30%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.18) 100%
+    rgba(180, 148, 235, 0.26) 0%,
+    rgba(140, 105, 200, 0) 30%,
+    rgba(140, 105, 200, 0) 60%,
+    rgba(150, 112, 215, 0.22) 100%
   );
   z-index: 3;
   pointer-events: none;
 }
 
-/* 泡壳内部折射 / 二次反射（中性白） */
+/* 泡壳内部折射 / 二次反射（紫） */
 .garage-card__blister-refraction {
   position: absolute;
   top: 0;
@@ -781,9 +781,9 @@
   bottom: 0;
   border-radius: 26px 26px 34px 34px;
   background:
-    radial-gradient(120% 120% at 20% 16%, rgba(255, 255, 255, 0.4) 0%, transparent 32%),
-    radial-gradient(100% 100% at 86% 78%, rgba(255, 255, 255, 0.26) 0%, transparent 28%),
-    radial-gradient(60% 40% at 72% 22%, rgba(255, 255, 255, 0.18) 0%, transparent 45%);
+    radial-gradient(120% 120% at 20% 16%, rgba(200, 172, 248, 0.32) 0%, transparent 32%),
+    radial-gradient(100% 100% at 86% 78%, rgba(120, 88, 185, 0.3) 0%, transparent 28%),
+    radial-gradient(60% 40% at 72% 22%, rgba(150, 118, 215, 0.2) 0%, transparent 45%);
   z-index: 2;
   pointer-events: none;
   opacity: 0.92;
@@ -793,7 +793,7 @@
   opacity: 1;
 }
 
-/* 可移动眩光层（白色高光） */
+/* 可移动眩光层（紫白高光） */
 .garage-card__blister-glare {
   position: absolute;
   top: -24%;
@@ -802,10 +802,10 @@
   height: 92%;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0) 26%,
-    rgba(255, 255, 255, 0.5) 46%,
-    rgba(255, 255, 255, 0.25) 54%,
-    rgba(255, 255, 255, 0) 70%
+    rgba(200, 172, 248, 0) 26%,
+    rgba(214, 192, 252, 0.42) 46%,
+    rgba(240, 230, 255, 0.22) 54%,
+    rgba(200, 172, 248, 0) 70%
   );
   transform: rotate(26deg);
   z-index: 5;
