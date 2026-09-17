@@ -1953,7 +1953,7 @@ const server = http.createServer(async (req, res) => {
     const tk = resolveToken();
     const hk = hyper3d.resolveToken();
     const fk = fal.resolveToken();
-    sendJson(res, 200, {
+    const health = {
       ok: true,
       dbMode: db.dbMode,
       // 顶层字段保留混元状态，保证旧客户端兼容；新客户端应优先读 engines[engine]
@@ -1987,7 +1987,20 @@ const server = http.createServer(async (req, res) => {
       hint: tk.token
         ? '已配置凭证，将真实调用混元 3D'
         : '未配置凭证，当前为离线演示模式',
-    });
+    };
+    // 只读诊断（排查"模型丢失"）：?diag=1 时附上 models/plans 表概况。
+    // 仅当明确带 diag 参数才跑，且不影响正常健康检查。
+    if (u.searchParams.get('diag') === '1') {
+      try {
+        health.diag = await db.diagAsset(
+          u.searchParams.get('model') || undefined,
+          u.searchParams.get('plan') || undefined
+        );
+      } catch (e) {
+        health.diagError = e?.message || String(e);
+      }
+    }
+    sendJson(res, 200, health);
     return;
   }
 

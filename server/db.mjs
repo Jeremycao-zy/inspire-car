@@ -615,6 +615,53 @@ export async function modelExists(name) {
   return r.rowCount > 0;
 }
 
+/**
+ * 只读诊断（排查"模型丢失"用）：返回 models 表概况、指定模型是否存在、
+ * 最近若干条记录，以及指定方案是否仍存在并引用了哪个模型名。
+ * 仅 SQL 模式有意义；JSON 模式返回 { mode:'json' }。
+ * @param {string} [modelName]  要查是否存在的 GLB 文件名
+ * @param {string} [planId]      要查的方案 id（跨用户按主键查）
+ */
+export async function diagAsset(modelName, planId) {
+  if (dbMode !== 'sql') return { mode: 'json' };
+  const out = { mode: 'sql', retention: MODEL_DB_RETENTION };
+  const agg = await pool.query(
+    'SELECT count(*)::int AS c, coalesce(sum(octet_length(data)),0)::bigint AS b FROM models'
+  );
+  out.modelCount = Number(agg.rows[0].c);
+  out.totalBytes = Number(agg.rows[0].b);
+  if (modelName) {
+    const m = await pool.query(
+      'SELECT name, created_at, octet_length(data) AS bytes FROM models WHERE name=$1',
+      [String(modelName)]
+    );
+    out.target = m.rows[0]
+      ? { name: m.rows[0].name, createdAt: iso(m.rows[0].created_at), bytes: Number(m.rows[0].bytes) }
+      : null;
+  }
+  const recent = await pool.query(
+    'SELECT name, created_at, octet_length(data) AS bytes FROM models WHERE name <> $1 ORDER BY created_at DESC LIMIT 15',
+    [MODEL_DB_KEEP_FOREVER]
+  );
+  out.recent = recent.rows.map((r) => ({
+    name: r.name,
+    createdAt: iso(r.created_at),
+    bytes: Number(r.bytes),
+  }));
+  if (planId) {
+    const p = await pool.query('SELECT owner, data FROM plans WHERE id=$1', [String(planId)]);
+    const row = p.rows[0];
+    out.plan = row
+      ? {
+          owner: row.owner,
+          model:
+            (row.data && (row.data.model || row.data.bodyUrl || row.data.bodyModelUrl)) || null,
+        }
+      : null;
+  }
+  return out;
+}
+
 /* ------------------------- 整车方案（按账号） ------------------------- */
 
 function planFileFor(uid) {
