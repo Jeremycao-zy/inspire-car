@@ -535,14 +535,31 @@ export async function removeWheel(uid, id) {
 /* ------------------------- 模型文件（GLB） ------------------------- */
 
 /** SQL 库里 GLB 缓存的最大保留条数（整车 + BANG 部件都算，1 辆车约 6 条）。
- *  只进不出的落库曾把 Railway Postgres 磁盘写满（No space left on device）。 */
-const MODEL_DB_RETENTION = Math.max(4, parseInt(process.env.MODEL_DB_RETENTION || '12', 10) || 12);
+ *  只进不出的落库曾把 Railway Postgres 磁盘写满（No space left on device）。
+ *  注意：被任一方案引用的模型（见 pruneModels 的 protect 子查询）永不在此额度内被清，
+ *  所以"保存过的车"不会因为生成了几台新车就消失——这是防丢失的主防线。 */
+const MODEL_DB_RETENTION = Math.max(4, parseInt(process.env.MODEL_DB_RETENTION || '24', 10) || 24);
 /** 小体积索引文件，永不清理 */
 const MODEL_DB_KEEP_FOREVER = '__bang-index.json';
 
 /**
+ * 从方案对象里取出它引用的 GLB 文件名（basename，兼容 '/api/asset/xxx.glb' 与 'xxx.glb'）。
+ * 方案可能用 model / bodyUrl / bodyModelUrl 任一字段指向整车 GLB。
+ * @returns {string|null}
+ */
+function modelNameOfPlan(plan) {
+  const ref = plan && (plan.model || plan.bodyUrl || plan.bodyModelUrl);
+  if (!ref || typeof ref !== 'string') return null;
+  const base = ref.split('/').pop();
+  return base && base.toLowerCase().endsWith('.glb') ? base : null;
+}
+
+/**
  * 只保留最近 keep 条模型缓存（按 created_at），删除更旧的，防止 Postgres 磁盘被 GLB 写满。
  * 删掉的只是「重新部署后回源用的缓存」——最旧的方案本来也得重新生成才有部件。
+ *
+ * 关键保护：任一方案（plans 表 data->model/bodyUrl/bodyModelUrl）引用的模型**永不在此额度内被清**，
+ * 这样用户"保存过的车"不会因为之后又生成几台新车而被 LRU 挤掉导致打开时 404「模型丢失」。
  * @returns {Promise<number>} 删除的条数
  */
 export async function pruneModels(keep = MODEL_DB_RETENTION) {
@@ -553,6 +570,14 @@ export async function pruneModels(keep = MODEL_DB_RETENTION) {
         AND name NOT IN (
           SELECT name FROM models WHERE name <> $2
           ORDER BY created_at DESC LIMIT $1
+        )
+        AND name NOT IN (
+          SELECT DISTINCT substring(
+            COALESCE(data->>'model', data->>'bodyUrl', data->>'bodyModelUrl') FROM '[^/]+$'
+          ) AS nm
+          FROM plans
+          WHERE (data->>'model' IS NOT NULL OR data->>'bodyUrl' IS NOT NULL OR data->>'bodyModelUrl' IS NOT NULL)
+            AND substring(COALESCE(data->>'model', data->>'bodyUrl', data->>'bodyModelUrl') FROM '[^/]+$') LIKE '%.glb'
         )`,
     [keep, MODEL_DB_KEEP_FOREVER]
   );
@@ -710,6 +735,19 @@ export async function upsertPlan(uid, plan) {
        ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
       [String(plan.id), uid, plan]
     );
+    // 方案引用的整车 GLB：把它的 created_at 刷到最新，既让它留在 LRU 窗口内，
+    // 也确保 pruneModels 的 protect 子查询覆盖它——双保险防「保存的车消失」。
+    const mname = modelNameOfPlan(plan);
+    if (mname) {
+      try {
+        await pool.query(
+          `UPDATE models SET created_at = now() WHERE name = $1`,
+          [mname]
+        );
+      } catch {
+        /* 模型可能尚未落库（生成失败），忽略即可 */
+      }
+    }
     return plan;
   }
   const list = readPlansJson(uid);
