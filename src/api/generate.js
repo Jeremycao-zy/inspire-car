@@ -282,7 +282,7 @@ export async function health() {
 /**
  * 识别用最佳图选择：按角度优先级挑信息量最大的那张。
  * 角度优先级（来自 photoGuide.js 的 ANGLES id）：
- *   side(正侧方) > frontRight/rearLeft(45°) > front/rear(正前/正后) > 兜底 list[0]。
+ *   side(正侧方) > frontRight/rearRight(45°) > front/rear(正前/正后) > 兜底 list[0]。
  * 无 angleId 标签的普通 File（非引导上传）回退 list[0]，保持原行为。
  * @param {FileList|File[]|null} files
  * @returns {File|null}

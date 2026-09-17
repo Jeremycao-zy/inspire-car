@@ -163,14 +163,15 @@ function shoot(azDeg, file) {
   console.log('wrote', file);
 }
 
-// 最终 5 个机位：正面、侧前、正侧、正后、侧后
+// 最终 6 个机位：正面、侧前、正侧、正后、侧后（左）、侧后（右）
 // 已核对模型朝向：+X 为车头，-X 为车尾，+Z 为车左侧，-Z 为车右侧
 const shots = [
   [0, 'front.png'],      // 正面：车头正对镜头
   [-45, 'front-right.png'], // 侧前：车头 + 右侧车身
   [90, 'side.png'],      // 正侧：纯侧面，车头朝右
   [180, 'rear.png'],     // 正后：车尾正对镜头
-  [225, 'rear-left.png'], // 侧后：车尾 + 左侧车身
+  [225, 'rear-left.png'], // 侧后（左）：车尾 + 左侧车身
+  [135, 'rear-right.png'], // 侧后（右）：车尾 + 右侧车身
 ];
 for (const [az, f] of shots) shoot(az, path.join(OUT, f));
 
