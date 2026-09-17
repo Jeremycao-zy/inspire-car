@@ -83,10 +83,10 @@ const ANGLES = [
     img: '/guides/rear.png',
   },
   {
-    id: 'rearLeft',
+    id: 'rearRight',
     title: '侧后',
-    desc: '从车尾左后方 45° 拍摄，同时露出车尾与左侧车身。',
-    img: '/guides/rear-left.png',
+    desc: '从车尾右后方 45° 拍摄，同时露出车尾与右侧车身。',
+    img: '/guides/rear-right.png',
   },
 ];
 
