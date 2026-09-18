@@ -485,8 +485,21 @@ function barcodeSVG(seed, w = 220, h = 30) {
   };
   const bars = [];
   let x = 4; // 左静区
+  // 粉 → 紫 → 青 三段渐变（按条的位置横向取色），对齐设计稿的霓虹条码
+  const colorAt = (t) => {
+    const lerp = (a, b, k) => a + (b - a) * k;
+    let r, g, b;
+    if (t < 0.5) {
+      const k = t / 0.5;
+      r = lerp(255, 168, k); g = lerp(48, 92, k); b = lerp(214, 255, k);
+    } else {
+      const k = (t - 0.5) / 0.5;
+      r = lerp(168, 62, k); g = lerp(92, 228, k); b = lerp(255, 255, k);
+    }
+    return `rgb(${r | 0},${g | 0},${b | 0})`;
+  };
   const bar = (bw) => {
-    bars.push(`<rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="#a48fd0"/>`);
+    bars.push(`<rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="${colorAt(x / w)}"/>`);
   };
   // 首守卫条：细-粗-细（通高）
   bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5); x += 4.5;
@@ -561,6 +574,7 @@ function createCard(plan, onClick, onDelete, index = 0) {
       { class: 'garage-card__brand' },
       el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
       el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
+      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
       el(
         'div',
         { class: 'garage-card__brand-cn-row' },
@@ -579,7 +593,6 @@ function createCard(plan, onClick, onDelete, index = 0) {
     el(
       'div',
       { class: 'garage-card__meta' },
-      el('span', { class: 'garage-card__meta-edition' }, "COLLECTOR'S EDITION"),
       el('span', { class: 'garage-card__meta-no' }, `${index + 1}/64`)
     ),
     el('div', {
