@@ -357,17 +357,7 @@
   position: relative;
   border-radius: 18px;
   /* 哑光黑收藏卡：中性深灰渐变 + 顶部微弱高光，去霓虹冷光 */
-  background:
-    /* 左上角品红辉光 */
-    radial-gradient(90% 60% at 12% 0%, rgba(255, 60, 200, 0.32) 0%, transparent 55%),
-    /* 右上角紫辉光 */
-    radial-gradient(80% 55% at 92% 4%, rgba(150, 70, 255, 0.3) 0%, transparent 55%),
-    /* 中部深紫雾 */
-    radial-gradient(120% 60% at 50% 34%, rgba(96, 42, 165, 0.32) 0%, transparent 60%),
-    /* 底部青色地平线光 */
-    radial-gradient(90% 40% at 50% 100%, rgba(40, 180, 255, 0.16) 0%, transparent 62%),
-    /* 主渐变：品紫 → 暗紫 → 深夜蓝 */
-    linear-gradient(180deg, #4a1566 0%, #2c1050 34%, #170b33 62%, #0a1224 100%);
+  /* 卡面背景已移至 .garage-card__backing（便于对挂孔做真挖空 mask）；pack 只保留边框/投影 */
   border: 1px solid rgba(190, 110, 240, 0.35);
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.55),
@@ -411,25 +401,10 @@
   transform: translateZ(-36px) scale(1.06);
 }
 
-/* 顶部零售吊牌：黑色梯形挂耳 + 欧标不规则挂孔（宽槽+顶部梯形凸台，由 SVG evenodd 挖空透出卡面） */
-.garage-card__hang-tab {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  width: 104px;
-  height: 26px;
-  pointer-events: none;
-}
-.garage-card__hang-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+/* 顶部欧标挂孔：已改为 .garage-card__backing 的 mask 真挖空（无独立挂耳元素） */
 
 /* 背卡装饰：霓虹网格线（赛博朋克透视网格的平面近似，品红竖线 + 紫横线） */
-.garage-card__pack::before {
+.garage-card__backing::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -452,7 +427,9 @@
   opacity: 0.75;
 }
 
-/* 背卡：哑光黑收藏卡本体（卡面微光由 pack 承担，此处只做内容层） */
+/* 背卡：霓虹网格收藏卡本体。
+   欧标挂孔 = 对整张卡面做 mask 真挖空：孔形 SVG（不透明=抠掉）与全幅遮罩按 intersect 合成，
+   挂孔区域完全透明，透出页面背景 —— 模拟真实车模挂牌的吊孔。 */
 .garage-card__backing {
   position: relative;
   z-index: 1;
@@ -461,6 +438,33 @@
   min-height: 470px;
   padding: 30px 16px 16px;
   color: #f4f4f6;
+  /* 卡面背景（品紫 → 暗紫 → 深夜蓝 + 辉光） */
+  background:
+    /* 左上角品红辉光 */
+    radial-gradient(90% 60% at 12% 0%, rgba(255, 60, 200, 0.32) 0%, transparent 55%),
+    /* 右上角紫辉光 */
+    radial-gradient(80% 55% at 92% 4%, rgba(150, 70, 255, 0.3) 0%, transparent 55%),
+    /* 中部深紫雾 */
+    radial-gradient(120% 60% at 50% 34%, rgba(96, 42, 165, 0.32) 0%, transparent 60%),
+    /* 底部青色地平线光 */
+    radial-gradient(90% 40% at 50% 100%, rgba(40, 180, 255, 0.16) 0%, transparent 62%),
+    /* 主渐变：品紫 → 暗紫 → 深夜蓝 */
+    linear-gradient(180deg, #4a1566 0%, #2c1050 34%, #170b33 62%, #0a1224 100%);
+  /* 欧标挂孔真挖空（宽圆角槽 + 顶部梯形凸台，顶部居中 104×26） */
+  -webkit-mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' d='M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000);
+  -webkit-mask-position: top center, 0 0;
+  -webkit-mask-size: 104px 26px, 100% 100%;
+  -webkit-mask-repeat: no-repeat, no-repeat;
+  -webkit-mask-composite: source-in;
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' d='M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000);
+  mask-position: top center, 0 0;
+  mask-size: 104px 26px, 100% 100%;
+  mask-repeat: no-repeat, no-repeat;
+  mask-composite: intersect;
 }
 
 /* 品牌字标区：INSPIRE（白斜体拉字距）/ CAR（超大白青渐变斜体）/ 粉青双色斜条 / 灵感改装 + 001 圆牌 */
@@ -970,16 +974,15 @@
   .garage-card__backing {
     min-height: 440px;
     padding-top: 26px;
+    /* 窄屏挂孔同步缩小 */
+    -webkit-mask-size: 92px 24px, 100% 100%;
+    mask-size: 92px 24px, 100% 100%;
   }
   .garage-card__brand-en2 {
     font-size: 48px;
   }
   .garage-card__blister-zone {
     height: 156px;
-  }
-  .garage-card__hang-tab {
-    width: 92px;
-    height: 24px;
   }
   .garage-card__no {
     width: 24px;

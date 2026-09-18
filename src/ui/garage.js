@@ -540,19 +540,7 @@ function createCard(plan, onClick, onDelete, index = 0) {
     '×'
   );
 
-  // 顶部零售吊牌：黑色梯形挂耳 + 欧标不规则挂孔（宽圆角槽 + 顶部梯形凸台，SVG evenodd 挖空透出卡面）
-  const HANG_TAB_SVG = `
-<svg class="garage-card__hang-svg" viewBox="0 0 104 26" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <linearGradient id="hangTabG" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#101013"/>
-      <stop offset="1" stop-color="#060608"/>
-    </linearGradient>
-  </defs>
-  <path fill-rule="evenodd" fill="url(#hangTabG)" d="M14 0 H90 L104 26 H0 Z M36 12 H46 L49 5 Q49 3.5 51 3.5 H53 Q55 3.5 55 5 L58 12 H68 A5 5 0 0 1 68 22 H36 A5 5 0 0 1 36 12 Z"/>
-  <path fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1" vector-effect="non-scaling-stroke" d="M36 12 H46 L49 5 Q49 3.5 51 3.5 H53 Q55 3.5 55 5 L58 12 H68 A5 5 0 0 1 68 22 H36 A5 5 0 0 1 36 12 Z"/>
-</svg>`;
-  const hangHole = el('div', { class: 'garage-card__hang-tab', html: HANG_TAB_SVG });
+  // 欧标挂孔不再用独立挂耳：卡面经 CSS mask 真挖空（见 garage.css 的 .garage-card__backing）
 
   // 背卡水印字样（黑色收藏卡上的银色装饰字）
   const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
@@ -614,8 +602,8 @@ function createCard(plan, onClick, onDelete, index = 0) {
     )
   );
 
-  // 整包 = 吊牌挂耳 + 背卡 + 删除按钮（编号圆牌已内嵌到品牌区行内，跟随 3D 联动）
-  const pack = el('div', { class: 'garage-card__pack' }, hangHole, backing, del);
+  // 整包 = 背卡（卡面 mask 自带欧标挂孔挖空）+ 删除按钮
+  const pack = el('div', { class: 'garage-card__pack' }, backing, del);
 
   const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
 
