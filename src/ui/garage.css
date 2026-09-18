@@ -411,7 +411,7 @@
   transform: translateZ(-36px) scale(1.06);
 }
 
-/* 顶部零售吊牌：黑色梯形挂耳 + 横向圆角开槽（对齐最新设计稿的黑色欧标挂孔） */
+/* 顶部零售吊牌：黑色梯形挂耳 + 欧标不规则挂孔（宽槽+顶部梯形凸台，由 SVG evenodd 挖空透出卡面） */
 .garage-card__hang-tab {
   position: absolute;
   top: 0;
@@ -420,23 +420,12 @@
   z-index: 6;
   width: 104px;
   height: 26px;
-  background: linear-gradient(180deg, #101013 0%, #060608 100%);
-  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   pointer-events: none;
 }
-.garage-card__hang-hole {
-  width: 64px;
-  height: 15px;
-  border-radius: 8px;
-  background: #060608;
-  box-shadow:
-    inset 0 2px 4px rgba(0, 0, 0, 0.9),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.07),
-    0 1px 0 rgba(255, 255, 255, 0.06);
-  margin-top: 5px;
+.garage-card__hang-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* 背卡装饰：霓虹网格线（赛博朋克透视网格的平面近似，品红竖线 + 紫横线） */
@@ -991,9 +980,6 @@
   .garage-card__hang-tab {
     width: 92px;
     height: 24px;
-  }
-  .garage-card__hang-hole {
-    width: 56px;
   }
   .garage-card__no {
     width: 24px;
