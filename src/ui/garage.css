@@ -457,14 +457,14 @@
   -webkit-mask-position: top center, 0 0;
   -webkit-mask-size: 104px 26px, 100% 100%;
   -webkit-mask-repeat: no-repeat, no-repeat;
-  -webkit-mask-composite: source-in;
+  -webkit-mask-composite: xor;
   mask-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' d='M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
     linear-gradient(#000, #000);
   mask-position: top center, 0 0;
   mask-size: 104px 26px, 100% 100%;
   mask-repeat: no-repeat, no-repeat;
-  mask-composite: intersect;
+  mask-composite: exclude;
 }
 
 /* 品牌字标区：INSPIRE（白斜体拉字距）/ CAR（超大白青渐变斜体）/ 粉青双色斜条 / 灵感改装 + 001 圆牌 */
