@@ -106,3 +106,26 @@ railway domain
 
 - Railway 免费层 $5/月额度，超出按量计费；生成一次 3D 约 $0.4~$0.75（看引擎），注意监控。
 - 不配 key 时永久 DEMO，不消耗任何额度，适合先验证网站可用性。
+
+## 模型存储：卷模式（MODEL_VOLUME=1）——治本 GLB 写满 Postgres 磁盘
+
+**背景**：免费层 Postgres 卷只有 500MB，而生成 GLB 曾整文件（单个 12–44MB）以 BYTEA 塞进
+`models` 表 → 磁盘 99% 满 → PG 拒连 → 应用启动崩溃循环 → 公网 502。
+现在支持「卷模式」：GLB 文件以 `/app/.cache` 持久卷为真源，DB 只存元数据。
+
+### 开启步骤（一次性）
+1. **先重启 Postgres**：Postgres 服务 → ⋯ → Restart（磁盘满可能让它假死，先救活）。
+2. **给应用挂卷**：inspire-car 服务 → Settings → Volumes → Attach Volume →
+   Mount Path 填 `/app/.cache`（保存会自动触发一次重新部署）。
+3. **开启开关**：inspire-car → Variables → 新增 `MODEL_VOLUME` = `1`。
+4. 等自动部署完成，看 Deploy Logs 应出现：
+   `[db] 卷模式迁移完成：N 个模型写入持久卷 … Postgres 磁盘空间已释放`
+   —— 库里的大对象被搬到卷上并 TRUNCATE 清空，postgres-volume 用量会暴跌，
+   `/api/health` 的 `dbMode` 变回 `sql`（持久化恢复）。
+
+### 行为变化
+- `MODEL_VOLUME=1`：新模型只写卷上文件，DB 只登记元数据；旧 BYTEA 在启动时自动迁移。
+- 未开启（默认）：维持旧的 BYTEA 回源缓存，但新增**字节预算兜底**
+  （`MODEL_DB_MAX_MB`，默认 400MB，超限从最旧的非保护记录开始删），
+  即使不开卷模式也不会再把 Postgres 磁盘写满导致 502。
+- `MODEL_DB_RETENTION`（默认 24 条）不变；方案引用的模型仍受保护不被 LRU 清掉。

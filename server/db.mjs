@@ -61,6 +61,14 @@ export async function initDb() {
     pool = new Pool({ connectionString: url, ssl, max: 10 });
     await pool.query('SELECT 1'); // 探活
     await migrate();
+    // 卷模式：启动即迁移（库里 GLB 大对象 → .cache 持久卷），失败不阻塞启动
+    if (MODEL_VOLUME) {
+      try {
+        await hydrateModelsToVolume();
+      } catch (e) {
+        console.warn('[db] 卷模式迁移失败（不影响启动，下次重试）：', e?.message || e);
+      }
+    }
     dbMode = 'sql';
     return { mode: 'sql' };
   } catch (err) {
@@ -149,6 +157,8 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  // 卷模式（MODEL_VOLUME=1）下 DB 只存元数据，data 允许为 NULL（幂等，重复部署不报错）
+  await pool.query('ALTER TABLE models ALTER COLUMN data DROP NOT NULL');
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS plans (
@@ -555,6 +565,14 @@ export async function removeWheel(uid, id) {
 const MODEL_DB_RETENTION = Math.max(4, parseInt(process.env.MODEL_DB_RETENTION || '24', 10) || 24);
 /** 小体积索引文件，永不清理 */
 const MODEL_DB_KEEP_FOREVER = '__bang-index.json';
+/** 卷模式（MODEL_VOLUME=1）：GLB 文件以 .cache 持久卷为真源，DB 只存元数据（data=NULL）。
+ *  免费层 Postgres 卷仅 500MB，而单个 GLB 12–44MB，把大对象塞库里必然写满磁盘 → 连接失败 → 502。
+ *  开启前需给应用服务挂载持久卷到 /app/.cache（Railway 控制台 Settings → Volumes）。 */
+const MODEL_VOLUME = process.env.MODEL_VOLUME === '1';
+/** 字节预算（非卷模式的兜底防线）：models 表总字节数超过此值时，从最旧的非保护记录开始删。
+ *  现有"条数 LRU"在「方案引用的模型永不驱逐」下会无上限增长，字节预算补上这个洞。 */
+const MODEL_DB_MAX_BYTES =
+  Math.max(64, parseInt(process.env.MODEL_DB_MAX_MB || '400', 10) || 400) * 1024 * 1024;
 
 /**
  * 从方案对象里取出它引用的 GLB 文件名（basename，兼容 '/api/asset/xxx.glb' 与 'xxx.glb'）。
@@ -576,8 +594,20 @@ function modelNameOfPlan(plan) {
  * 这样用户"保存过的车"不会因为之后又生成几台新车而被 LRU 挤掉导致打开时 404「模型丢失」。
  * @returns {Promise<number>} 删除的条数
  */
+/** 删除卷上的模型文件（卷模式用）；索引等非 GLB 文件不动 */
+function unlinkModelFile(name) {
+  try {
+    const safe = path.basename(String(name));
+    if (!safe || safe === MODEL_DB_KEEP_FOREVER) return;
+    if (safe.toLowerCase().endsWith('.glb')) fs.unlinkSync(path.join(MODELS_DIR, safe));
+  } catch {
+    /* 文件可能已不存在，忽略 */
+  }
+}
+
 export async function pruneModels(keep = MODEL_DB_RETENTION) {
   if (dbMode !== 'sql') return 0;
+  // —— 1) 条数 LRU：只保留最近 keep 条非保护记录（原有逻辑）——
   const r = await pool.query(
     `DELETE FROM models
       WHERE name <> $2
@@ -592,10 +622,51 @@ export async function pruneModels(keep = MODEL_DB_RETENTION) {
           FROM plans
           WHERE (data->>'model' IS NOT NULL OR data->>'bodyUrl' IS NOT NULL OR data->>'bodyModelUrl' IS NOT NULL)
             AND substring(COALESCE(data->>'model', data->>'bodyUrl', data->>'bodyModelUrl') FROM '[^/]+$') LIKE '%.glb'
-        )`,
+        )
+      RETURNING name`,
     [keep, MODEL_DB_KEEP_FOREVER]
   );
-  return r.rowCount || 0;
+  let n = r.rowCount || 0;
+  if (MODEL_VOLUME) for (const row of r.rows) unlinkModelFile(row.name);
+  // —— 2) 字节预算兜底：条数 LRU 挡不住「方案引用的模型永不驱逐」的无上限增长，
+  //      500MB 小卷会被写满 → PG 拒连 → 502。超预算时从最旧的非保护记录开始删。——
+  try {
+    const agg = await pool.query(
+      'SELECT coalesce(sum(octet_length(data)),0)::bigint AS b FROM models'
+    );
+    let total = Number(agg.rows[0].b);
+    if (total > MODEL_DB_MAX_BYTES) {
+      const old = await pool.query(
+        `SELECT name, octet_length(data) AS bytes FROM models
+          WHERE name <> $1
+            AND name NOT IN (
+              SELECT DISTINCT substring(
+                COALESCE(data->>'model', data->>'bodyUrl', data->>'bodyModelUrl') FROM '[^/]+$'
+              ) AS nm
+              FROM plans
+              WHERE (data->>'model' IS NOT NULL OR data->>'bodyUrl' IS NOT NULL OR data->>'bodyModelUrl' IS NOT NULL)
+                AND substring(COALESCE(data->>'model', data->>'bodyUrl', data->>'bodyModelUrl') FROM '[^/]+$') LIKE '%.glb'
+            )
+          ORDER BY created_at ASC`,
+        [MODEL_DB_KEEP_FOREVER]
+      );
+      for (const row of old.rows) {
+        if (total <= MODEL_DB_MAX_BYTES) break;
+        const d = await pool.query('DELETE FROM models WHERE name=$1 RETURNING name', [row.name]);
+        if (d.rowCount > 0) {
+          total -= Number(row.bytes) || 0;
+          n++;
+          if (MODEL_VOLUME) unlinkModelFile(row.name);
+        }
+      }
+      console.log(
+        `[db] models 总量超出字节预算（${Math.round(MODEL_DB_MAX_BYTES / 1048576)}MB），已清理最旧记录，现删 ${n} 条`
+      );
+    }
+  } catch (e) {
+    console.warn('[db] 字节预算清理失败（不影响主流程）：', e?.message || e);
+  }
+  return n;
 }
 
 /**
@@ -613,6 +684,20 @@ export async function pruneModels(keep = MODEL_DB_RETENTION) {
 export async function saveModel(name, buffer) {
   if (dbMode !== 'sql') return;
   if (!name || !Buffer.isBuffer(buffer) || buffer.length < 12) return;
+  // 卷模式：文件已由调用方写入 .cache 持久卷（真源），DB 只登记元数据，不再吃 GLB 大对象。
+  // 这样免费层 500MB 的 Postgres 卷永远不会被车模写满。
+  if (MODEL_VOLUME) {
+    try {
+      await pool.query(
+        `INSERT INTO models (name, data, created_at) VALUES ($1, NULL, now())
+         ON CONFLICT (name) DO UPDATE SET created_at = now()`,
+        [String(name)]
+      );
+    } catch {
+      /* 元数据登记失败不影响生成结果 */
+    }
+    return;
+  }
   const q = `INSERT INTO models (name, data, created_at) VALUES ($1,$2,now())
        ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, created_at = now()`;
   try {
@@ -652,6 +737,57 @@ export async function modelExists(name) {
   if (!name) return false;
   const r = await pool.query('SELECT 1 FROM models WHERE name=$1', [String(name)]);
   return r.rowCount > 0;
+}
+
+/**
+ * 卷模式一次性迁移：把库里的 GLB 大对象搬到 .cache 持久卷，然后清空表内大对象。
+ * 用 TRUNCATE+重插元数据而不是逐行置 NULL——PG 的 DELETE/UPDATE 不归还磁盘空间，
+ * VACUUM FULL 又需要约等于表大小的临时空间（99% 满的盘上必然失败），
+ * 只有 TRUNCATE 能瞬时把空间还给文件系统。
+ * 安全阀：只有「所有行都成功落盘」才执行 TRUNCATE；任何写盘失败都保留库内原数据并告警，
+ * 下次启动自动重试（幂等：卷上已存在的文件直接跳过）。
+ * @returns {Promise<{skipped?:boolean, rows?:number, written?:number, existing?:number, failed?:number, truncated?:boolean}>}
+ */
+export async function hydrateModelsToVolume() {
+  if (dbMode !== 'sql' || !MODEL_VOLUME) return { skipped: true };
+  const r = await pool.query(
+    'SELECT name, data FROM models WHERE data IS NOT NULL ORDER BY created_at ASC'
+  );
+  if (r.rowCount === 0) return { rows: 0, written: 0, existing: 0, truncated: false };
+  fs.mkdirSync(MODELS_DIR, { recursive: true });
+  let written = 0;
+  let existing = 0;
+  let failed = 0;
+  for (const row of r.rows) {
+    const safe = path.basename(String(row.name));
+    const file = path.join(MODELS_DIR, safe);
+    try {
+      if (fs.existsSync(file)) {
+        existing++;
+      } else {
+        fs.writeFileSync(file, row.data);
+        written++;
+      }
+    } catch (e) {
+      failed++;
+      console.warn('[db] 模型迁移写盘失败（保留库内数据，下次启动重试）：', safe, e?.message || e);
+    }
+  }
+  if (failed > 0) {
+    return { rows: r.rowCount, written, existing, failed, truncated: false };
+  }
+  // 单条 simple query 内多语句 = 同一隐式事务；TRUNCATE 瞬时归还磁盘空间
+  await pool.query(`
+    CREATE TEMP TABLE _model_meta ON COMMIT DROP AS
+      SELECT name, created_at FROM models;
+    TRUNCATE models;
+    INSERT INTO models (name, data, created_at)
+      SELECT name, NULL, created_at FROM _model_meta;
+  `);
+  console.log(
+    `[db] 卷模式迁移完成：${written} 个模型写入持久卷，${existing} 个已存在；models 表大对象已清空，Postgres 磁盘空间已释放`
+  );
+  return { rows: r.rowCount, written, existing, truncated: true };
 }
 
 /**
