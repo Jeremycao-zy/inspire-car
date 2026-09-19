@@ -450,21 +450,25 @@
     radial-gradient(90% 40% at 50% 100%, rgba(40, 180, 255, 0.16) 0%, transparent 62%),
     /* 主渐变：品紫 → 暗紫 → 深夜蓝 */
     linear-gradient(180deg, #4a1566 0%, #2c1050 34%, #170b33 62%, #0a1224 100%);
-  /* 欧标挂孔真挖空（宽圆角槽 + 顶部梯形凸台，顶部居中 104×26） */
+  /* 欧标挂孔真挖空（宽圆角槽 + 顶部梯形凸台，顶部居中 104×26）。
+     4 层 mask 默认 add 并集，拼出「整卡 − 挂孔」的不透明区域：
+     ① 顶部中央条带(104×26, evenodd=矩形挖孔) ②左侧整条 ③右侧整条 ④条带以下整幅 */
   -webkit-mask-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' d='M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' fill-rule='evenodd' d='M0 0H104V26H0Z M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
     linear-gradient(#000, #000);
-  -webkit-mask-position: top center, 0 0;
-  -webkit-mask-size: 104px 26px, 100% 100%;
-  -webkit-mask-repeat: no-repeat, no-repeat;
-  -webkit-mask-composite: xor;
+  -webkit-mask-position: top center, left top, right top, 0 26px;
+  -webkit-mask-size: 104px 26px, calc(50% - 52px) 100%, calc(50% - 52px) 100%, 100% calc(100% - 26px);
+  -webkit-mask-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
   mask-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' d='M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' fill-rule='evenodd' d='M0 0H104V26H0Z M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
     linear-gradient(#000, #000);
-  mask-position: top center, 0 0;
-  mask-size: 104px 26px, 100% 100%;
-  mask-repeat: no-repeat, no-repeat;
-  mask-composite: exclude;
+  mask-position: top center, left top, right top, 0 26px;
+  mask-size: 104px 26px, calc(50% - 52px) 100%, calc(50% - 52px) 100%, 100% calc(100% - 26px);
+  mask-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
 }
 
 /* 品牌字标区：INSPIRE（白斜体拉字距）/ CAR（超大白青渐变斜体）/ 粉青双色斜条 / 灵感改装 + 001 圆牌 */
@@ -974,9 +978,11 @@
   .garage-card__backing {
     min-height: 440px;
     padding-top: 26px;
-    /* 窄屏挂孔同步缩小 */
-    -webkit-mask-size: 92px 24px, 100% 100%;
-    mask-size: 92px 24px, 100% 100%;
+    /* 窄屏挂孔同步缩小（92×24），4 层 mask 尺寸同步 */
+    -webkit-mask-position: top center, left top, right top, 0 24px;
+    -webkit-mask-size: 92px 24px, calc(50% - 46px) 100%, calc(50% - 46px) 100%, 100% calc(100% - 24px);
+    mask-position: top center, left top, right top, 0 24px;
+    mask-size: 92px 24px, calc(50% - 46px) 100%, calc(50% - 46px) 100%, 100% calc(100% - 24px);
   }
   .garage-card__brand-en2 {
     font-size: 48px;
