@@ -351,10 +351,13 @@
   position: relative;
   cursor: pointer;
   perspective: 1200px;
+  /* 等高：填满网格拉伸后的单元格，配合下方 pack/backing 的 height:100% 链 */
+  height: 100%;
 }
 
 .garage-card__pack {
   position: relative;
+  height: 100%;
   border-radius: 18px;
   /* 哑光黑收藏卡：中性深灰渐变 + 顶部微弱高光，去霓虹冷光 */
   /* 卡面背景已移至 .garage-card__backing（便于对挂孔做真挖空 mask）；pack 只保留边框/投影 */
@@ -435,6 +438,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 470px;
   padding: 30px 16px 16px;
   color: #f4f4f6;
