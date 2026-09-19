@@ -48,18 +48,32 @@ export async function initDb() {
       note: 'DATABASE_URL 未设置，使用本地 JSON 文件存储（仅开发可用，Railway 上数据不持久）',
     };
   }
-  const pgMod = await import('pg');
-  const Pool = pgMod.Pool || (pgMod.default && pgMod.default.Pool);
-  if (!Pool) throw new Error('pg 模块未导出 Pool，请确认已 npm install pg');
-  // Railway / 多数云 Postgres 连接串带 sslmode=require；统一关闭证书校验（连接已加密）。
-  const ssl = /sslmode=require|ssl=true|sslmode=no-verify/i.test(url) || url.startsWith('postgres://')
-    ? { rejectUnauthorized: false }
-    : false;
-  pool = new Pool({ connectionString: url, ssl, max: 10 });
-  await pool.query('SELECT 1'); // 探活
-  await migrate();
-  dbMode = 'sql';
-  return { mode: 'sql' };
+  // 有 DATABASE_URL：优先走 PostgreSQL；但连接失败必须**优雅回退**到 JSON 模式，
+  // 绝不能让 DB 抖动把整个服务打挂 —— 否则 Railway 会崩溃重启循环 → 公网持久 502。
+  try {
+    const pgMod = await import('pg');
+    const Pool = pgMod.Pool || (pgMod.default && pgMod.default.Pool);
+    if (!Pool) throw new Error('pg 模块未导出 Pool，请确认已 npm install pg');
+    // Railway / 多数云 Postgres 连接串带 sslmode=require；统一关闭证书校验（连接已加密）。
+    const ssl = /sslmode=require|ssl=true|sslmode=no-verify/i.test(url) || url.startsWith('postgres://')
+      ? { rejectUnauthorized: false }
+      : false;
+    pool = new Pool({ connectionString: url, ssl, max: 10 });
+    await pool.query('SELECT 1'); // 探活
+    await migrate();
+    dbMode = 'sql';
+    return { mode: 'sql' };
+  } catch (err) {
+    // 连接失败：清空池、回退 JSON 模式，服务照常启动（数据落容器本地，不持久，但站点不挂）
+    pool = null;
+    dbMode = 'json';
+    ensureJsonDirs();
+    console.warn(
+      '\n  ⚠️  PostgreSQL 连接失败，已回退到本地 JSON 文件存储（服务继续运行，但数据不持久）：\n' +
+      '      ' + (err && err.message ? err.message : String(err)) + '\n'
+    );
+    return { mode: 'json', note: 'DATABASE_URL 存在但连接失败，已回退 JSON 模式' };
+  }
 }
 
 /** 关闭连接池（进程退出时用） */
