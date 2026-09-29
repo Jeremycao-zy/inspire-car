@@ -43,6 +43,7 @@ import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
 import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
+import { loading3D } from './ui/loading3d.js';
 import './ui/styles.css';
 
 /** 文件指纹：同一张照片反复选择时 name/size/lastModified 一致，用于额度用尽后的去重拦截 */
@@ -756,9 +757,12 @@ function classifyPart(group, carLength = 0) {
 /* ---------------------------- 加载遮罩 ---------------------------- */
 
 const overlayText = document.getElementById('overlay-text');
+const overlayLoading3D = document.getElementById('model-loading-3d');
 function showOverlay(text) {
   overlayText.textContent = text;
   overlay.classList.add('show');
+  // 重复进度更新不会重建场景；若 WebGL 不可用，原有 spinner 会自动保留。
+  loading3D.mount(overlayLoading3D);
 }
 // 进入工作室时的「整车装载」上锁计数：>0 时 hideOverlay 不真正揭开遮罩，
 // 避免 loadCarFromUrl 内部在车还没摆好时就提前把遮罩关掉、露出空白车身。
@@ -766,6 +770,7 @@ let overlayLock = 0;
 function hideOverlay() {
   if (overlayLock > 0) return;
   overlay.classList.remove('show');
+  loading3D.dispose(overlayLoading3D);
 }
 document.addEventListener('glb:progress', (e) => {
   // 防御：进度事件只「刷新」已经打开的加载遮罩（整车/轮毂显式加载时），
@@ -773,22 +778,14 @@ document.addEventListener('glb:progress', (e) => {
   if (!overlay.classList.contains('show')) return;
   const pct = Math.min(100, Math.max(0, Number(e.detail.pct) || 0));
   overlayText.textContent = `加载模型 ${pct}%`;
-
-  // 进度越高，遮罩里的轮毂图标旋转越快，让用户感知「加载正在冲刺」
-  if (overlayIcon) {
-    const ratio = pct / 100;
-    // 0% -> 2.8s / 100% -> 0.42s
-    const spinDur = Math.max(0.42, 2.8 * (1 - ratio * 0.85));
-    overlayIcon.style.setProperty('--jg-spin-dur', `${spinDur.toFixed(3)}s`);
-  }
+  loading3D.updateProgress(pct / 100, overlayLoading3D);
 });
 
 /* ---------------------------- 品牌标识 ---------------------------- */
 
 // 两处：3D 视口右下角水印 / 加载遮罩居中。
 // 侧栏顶部品牌板块按需求已移除，不再挂载。
-const brands = mountBrandAll({ stage, overlay });
-const overlayIcon = brands.overlay?.querySelector('.jg-brand__icon');
+mountBrandAll({ stage, overlay });
 
 /* ---------------------------- App ---------------------------- */
 

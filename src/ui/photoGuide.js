@@ -7,6 +7,7 @@
 
 import { generateModel, GenerateError } from '../api/generate.js';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
+import { loading3D } from './loading3d.js';
 import './photoGuide.css';
 
 /** 建模等待时的改装知识小贴士（自动轮播 + 可手动点切下一条） */
@@ -263,11 +264,16 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     )
   );
 
-  // 进度/错误覆盖层（简约版：保留转圈 + 改装知识 + 进度条/小车logo引导 + 微文案）
+  // 进度/错误覆盖层（程序化 3D 组装动画 + 改装知识 + 进度条/小车 logo 引导）
   const progressMarker = el('img', { class: 'photo-guide__bar-marker', src: logoMarkUrl, alt: '' });
   const progressFill = el('div', { class: 'photo-guide__bar-fill' }, progressMarker);
   const overlayIcon = el('div', { class: 'photo-guide__overlay-icon' });
-  const overlaySpinner = el('div', { class: 'photo-guide__overlay-spinner' });
+  const overlayAnimationHost = el('div', {
+    class: 'loading3d-host loading3d-host--compact',
+    'aria-label': '车辆三维组装进度动画',
+  });
+  const overlaySpinner = el('div', { class: 'photo-guide__overlay-spinner', 'aria-hidden': true });
+  overlayIcon.appendChild(overlayAnimationHost);
   overlayIcon.appendChild(overlaySpinner);
   // 过程标题/错误提示：平时隐藏，仅在错误时显示
   const overlayTitle = el('h3', { class: 'photo-guide__overlay-title is-hidden' }, '正在建模…');
@@ -406,7 +412,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     startBtn.textContent = generating ? '建模中…' : '开始建模';
   }
 
-  // ---------- 建模等待期：改装知识轮播 + 霓虹圆环加载 ----------
+  // ---------- 建模等待期：改装知识轮播 + 科幻 3D 组装动画 ----------
   let tipIndex = 0;
   let tipTimer = null;
 
@@ -484,14 +490,17 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   function showOverlay(stage, progress, message) {
     overlay.classList.remove('hidden');
     const isDone = stage === 'done';
-    // 完成用 logo 闪动，加载中用霓虹圆环（不再用漏斗 ⏳ / 星星 ✨）
+    // 完成时释放 WebGL 并切换为品牌 logo；处理中复用唯一的轻量 3D 组装场景。
     if (isDone) {
+      loading3D.dispose(overlayAnimationHost);
       overlayIcon.innerHTML = `<img class="photo-guide__overlay-icon--done" src="${logoMarkUrl}" alt="INSPIRE CAR">`;
       stopTips();
     } else {
-      if (!overlayIcon.querySelector('.photo-guide__overlay-spinner')) {
-        overlayIcon.innerHTML = '<div class="photo-guide__overlay-spinner"></div>';
+      if (!overlayIcon.contains(overlayAnimationHost)) {
+        overlayIcon.replaceChildren(overlayAnimationHost, overlaySpinner);
       }
+      loading3D.mount(overlayAnimationHost, { compact: true, progress });
+      loading3D.updateProgress(progress, overlayAnimationHost);
       if (!tipTimer) startTips();
     }
     // 简约版：不显示大标题/详细说明，进程信息以微文案形式挂在进度条下方
@@ -505,7 +514,8 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   function hideOverlay() {
     overlay.classList.add('hidden');
     stopTips();
-    overlayIcon.innerHTML = '<div class="photo-guide__overlay-spinner"></div>';
+    loading3D.dispose(overlayAnimationHost);
+    overlayIcon.replaceChildren(overlayAnimationHost, overlaySpinner);
     overlayTips.innerHTML = '';
     overlayCaption.textContent = '';
     overlayCaption.classList.remove('is-hidden');
@@ -532,6 +542,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     }
 
     stopTips();
+    loading3D.dispose(overlayAnimationHost);
     overlayTips.innerHTML = '';
     overlayIcon.textContent = '⚠️';
     overlayTitle.classList.remove('is-hidden');
@@ -607,6 +618,8 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   return {
     root,
     destroy() {
+      stopTips();
+      loading3D.dispose(overlayAnimationHost);
       // 清理 blob URL
       for (const thumb of Object.values(thumbsById)) {
         if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);
