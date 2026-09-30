@@ -203,10 +203,13 @@ export async function phoneLogin({ phone, code }) {
 export function consumeOAuthCallback() {
   try {
     const url = new URL(window.location.href);
-    const token = url.searchParams.get('oauth_token');
+    // 兼容两种回跳来源：网站第三方 OAuth 用 oauth_token；
+    // 微信小程序 <web-view> 承载 3D 编辑器时统一传 token（两边都支持，别再各写各的）
+    const token = url.searchParams.get('oauth_token') || url.searchParams.get('token');
     if (!token) return false;
     writeToken(token);
     url.searchParams.delete('oauth_token');
+    url.searchParams.delete('token');
     window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
     return true;
   } catch {
