@@ -336,6 +336,35 @@
   text-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
 }
 
+/* ---------------- 社区（首页独立主功能板块） ---------------- */
+
+.garage-community {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 28px 32px 56px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 240, 255, 0.12);
+}
+.garage-community__sub {
+  max-width: 1180px;
+  margin: 0 auto 14px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.garage-community__inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid rgba(0, 240, 255, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(177, 74, 237, 0.06), rgba(0, 240, 255, 0.04));
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
 .garage-grid {
   max-width: 1180px;
   margin: 0 auto;

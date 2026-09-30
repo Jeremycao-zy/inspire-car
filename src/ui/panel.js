@@ -801,17 +801,10 @@ export function createPanel(app, mount) {
     tabsBar.appendChild(btn);
     tabBodies[id] = el('div', { class: 'tab-body' });
   }
-  // 社区视图（论坛 + 资讯自动更新）挂到「社区」Tab 对应的 body 上。
-  const community = createCommunity({ mount: tabBodies.community });
   function setTab(id) {
     for (const k of Object.keys(tabBodies)) {
       tabBodies[k].classList.toggle('hidden', k !== id);
       tabButtons[k].classList.toggle('active', k === id);
-    }
-    // 社区 Tab：进入时启动数据加载 / 资讯轮询，切走时停掉轮询
-    if (community) {
-      if (id === 'community') community.activate();
-      else community.deactivate();
     }
   }
 

@@ -19,6 +19,7 @@ import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import { mountAiOrb } from './aiOrb.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
+import { createCommunity } from './community.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 
@@ -650,6 +651,7 @@ export function mountGarage({ onEnter, mount } = {}) {
   let preview = null;
   let aiOrb = null;
   let warehouse = null;
+  let community = null;
 
   /* 顶部品牌栏 */
   const u = currentUser();
@@ -740,6 +742,21 @@ export function mountGarage({ onEnter, mount } = {}) {
   root.appendChild(header);
   root.appendChild(hero);
   root.appendChild(body);
+
+  /* 社区：独立于 TUNING STUDIO 的首页主功能板块（论坛 + 资讯自动更新）。
+   * 不再挂在侧栏 Tab 里，而是作为车库首页的一大功能模块出现。
+   * 生命周期挂在车库 show()/hide() 上：进入车库自动加载、离开（进工作室）停掉轮询。 */
+  const communityMount = el('div', { class: 'garage-community__inner' });
+  const communitySection = el(
+    'section',
+    { class: 'garage-community' },
+    el('h2', { class: 'garage-section-title' }, '社区 · COMMUNITY'),
+    el('p', { class: 'garage-community__sub' }, '改装交流 · 每日资讯 · 赛事与活动'),
+    communityMount
+  );
+  root.appendChild(communitySection);
+  community = createCommunity({ mount: communityMount });
+  community.activate(); // 首页首屏即加载论坛列表
 
   /* 轮毂仓库：账户持久拥有的轮毂，以全息 3D 轮毂呈现，可悬空选装到任意车。
    * 首页点「装到当前车」时还没进工作台，先把目标轮毂暂存到 sessionStorage，
@@ -842,6 +859,7 @@ export function mountGarage({ onEnter, mount } = {}) {
     aiOrb = null;
     warehouse?.dispose();
     warehouse = null;
+    community?.deactivate(); // 停掉资讯轮询，避免离开页面后仍在定时请求
     previewEngine.clear();
     previewEngine.disposeRenderer();
     // 车模源解析缓存也要一起释放：单份 GLB 解析后 30~48MB，留着会让内存只增不减
@@ -858,6 +876,7 @@ export function mountGarage({ onEnter, mount } = {}) {
       preview?.pause();
       aiOrb?.pause();
       warehouse?.pause();
+      community?.deactivate();
     },
     show() {
       root.classList.remove('hidden');
@@ -866,17 +885,20 @@ export function mountGarage({ onEnter, mount } = {}) {
       aiOrb?.resume();
       warehouse?.resume();
       warehouse?.refresh?.();
+      community?.activate();
     },
     // 仅暂停/恢复渲染循环，不改变视图可见性——供「页面进后台」（拍照/切 App）兜底使用
     pause() {
       preview?.pause();
       aiOrb?.pause();
       warehouse?.pause();
+      community?.deactivate();
     },
     resume() {
       preview?.resume();
       aiOrb?.resume();
       warehouse?.resume();
+      community?.activate();
     },
     refresh() {
       renderGrid();
