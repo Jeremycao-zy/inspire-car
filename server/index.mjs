@@ -34,6 +34,7 @@ import * as specs from './specs.js';
 import * as higen from './higen3d.mjs';
 import * as auth from './auth.mjs';
 import * as oauth from './oauth.mjs';
+import * as wechatMini from './wechatMini.mjs';
 import * as db from './db.mjs';
 import * as wheels from './wheels.mjs';
 import { handleChat } from './chat.mjs';
@@ -1797,6 +1798,46 @@ async function handleAuthPhoneLogin(req, res) {
   sendJson(res, 200, { token: r.token, user: r.user });
 }
 
+/**
+ * POST /api/auth/wechat/mini
+ * 入参：{ code }  —— code 来自小程序 wx.login()
+ * 出参：{ token, user }  或 { ok:false, error, code }
+ *
+ * 流程：code → 微信 jscode2session 换 openid/unionid → 复用 auth.loginOrRegisterByOAuth
+ * 找/建账号并签发本站 JWT（与网站/苹果登录共用账号体系）。
+ * 配置缺失 / 微信返回错误 / 网络异常 一律被捕获，返回带明确信息的 { ok:false }，
+ * 绝不 500、绝不让接口失败导致进程崩溃。
+ */
+async function handleAuthWechatMini(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, error: e.message, code: 'bad_body' });
+    return;
+  }
+  const code = body && body.code ? String(body.code).trim() : '';
+  if (!code) {
+    sendJson(res, 400, { ok: false, error: '缺少 code 参数（需来自 wx.login）', code: 'bad_code' });
+    return;
+  }
+  try {
+    const info = await wechatMini.exchangeMiniCode(code);
+    // 优先用 unionid 关联「网站/小程序」同一用户；无 unionid（未绑定开放平台）时回退 openid。
+    const providerUserId = info.unionid || info.openid;
+    const r = await auth.loginOrRegisterByOAuth({ provider: 'wechat', providerUserId });
+    if (!r.ok) {
+      sendJson(res, 200, { ok: false, error: r.error, code: r.code });
+      return;
+    }
+    sendJson(res, 200, { token: r.token, user: r.user });
+  } catch (e) {
+    // 任意外部依赖失败都 fail-soft：明确信息 + 固定 code，HTTP 仍为 200（非 5xx）。
+    console.error('[wechat-mini] 登录失败：', e?.message || e);
+    sendJson(res, 200, { ok: false, error: e?.message || '小程序登录失败', code: e?.code || 'wechat_mini_error' });
+  }
+}
+
 /* ------------------------- 第三方 OAuth 登录（微信 / 苹果） ------------------------- */
 
 /** API 源（微信/苹果回跳的 redirect_uri 必须指向本 API 的可达地址） */
@@ -2139,6 +2180,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (u.pathname === '/api/auth/phone-login' && req.method === 'POST') {
     await handleAuthPhoneLogin(req, res);
+    return;
+  }
+  if (u.pathname === '/api/auth/wechat/mini' && req.method === 'POST') {
+    await handleAuthWechatMini(req, res);
     return;
   }
 

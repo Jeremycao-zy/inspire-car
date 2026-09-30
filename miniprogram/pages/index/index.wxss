@@ -1,0 +1,10 @@
+.hero {
+  margin-top: 40rpx;
+  padding: 24rpx 0;
+}
+.hero-desc {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #aab4c0;
+}

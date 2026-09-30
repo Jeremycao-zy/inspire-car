@@ -1,0 +1,14 @@
+.svc-btn {
+  margin-top: 24rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  border-radius: 44rpx;
+  font-size: 28rpx;
+  color: #ff30d6;
+  border: 2rpx solid rgba(255, 48, 214, 0.5);
+  background: rgba(255, 48, 214, 0.06);
+}
+.svc-btn:active {
+  background: rgba(255, 48, 214, 0.14);
+}

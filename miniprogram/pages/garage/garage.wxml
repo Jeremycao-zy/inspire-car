@@ -1,0 +1,36 @@
+<view class="screen">
+  <view class="brand-title" style="font-size:40rpx;">我的车库</view>
+  <view class="brand-sub">你保存的改装方案</view>
+
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="empty">
+    <view class="empty-emoji">⏳</view>
+    <view>加载中…</view>
+  </view>
+
+  <!-- 错误态（网络/鉴权失败） -->
+  <view wx:elif="{{error}}" class="empty">
+    <view class="empty-emoji">⚠️</view>
+    <view>{{error}}</view>
+    <view class="btn-ghost" bindtap="retry">重试</view>
+  </view>
+
+  <!-- 空态 -->
+  <view wx:elif="{{plans.length === 0}}" class="empty">
+    <view class="empty-emoji">🚗</view>
+    <view>还没有方案，去首页开始你的第一次改装</view>
+    <view class="btn-ghost" bindtap="goHome">去改装</view>
+  </view>
+
+  <!-- 列表 -->
+  <view wx:else>
+    <view class="plan-card" wx:for="{{plans}}" wx:key="id" data-id="{{item.id}}" bindtap="openPlan">
+      <image class="plan-cover" src="{{item.cover || placeholder}}" mode="aspectFill" />
+      <view class="plan-info">
+        <view class="plan-title">{{item.title}}</view>
+        <view class="plan-desc">{{item.desc}}</view>
+      </view>
+      <view class="plan-arrow">›</view>
+    </view>
+  </view>
+</view>
