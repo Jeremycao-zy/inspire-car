@@ -2219,6 +2219,122 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* ---------- 社区：论坛 + 资讯 ---------- */
+  if (u.pathname === '/api/forum/topics' && req.method === 'GET') {
+    try {
+      const category = u.searchParams.get('category') || undefined;
+      const page = Number(u.searchParams.get('page') || 1);
+      sendJson(res, 200, await db.listTopics({ category, page }));
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname === '/api/forum/topics' && req.method === 'POST') {
+    try {
+      const uid = await authUid(req);
+      if (!uid) {
+        sendJson(res, 401, { error: '请先登录' });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        sendJson(res, 400, { error: e.message });
+        return;
+      }
+      const topic = await db.createTopic({
+        uid,
+        title: body?.title,
+        body: body?.body,
+        category: body?.category,
+      });
+      sendJson(res, 201, { ok: true, topic });
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname.startsWith('/api/forum/topics/') && req.method === 'GET') {
+    try {
+      const id = decodeURIComponent(u.pathname.slice('/api/forum/topics/'.length));
+      const topic = await db.getTopic(id);
+      if (!topic) {
+        sendJson(res, 404, { error: '主题不存在' });
+        return;
+      }
+      sendJson(res, 200, { ok: true, topic });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname === '/api/forum/replies' && req.method === 'POST') {
+    try {
+      const uid = await authUid(req);
+      if (!uid) {
+        sendJson(res, 401, { error: '请先登录' });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        sendJson(res, 400, { error: e.message });
+        return;
+      }
+      const reply = await db.createReply({
+        uid,
+        topicId: body?.topicId,
+        body: body?.body,
+      });
+      sendJson(res, 201, { ok: true, reply });
+    } catch (e) {
+      const code = /不存在/.test(e.message) ? 404 : 400;
+      sendJson(res, code, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname === '/api/news' && req.method === 'GET') {
+    try {
+      const category = u.searchParams.get('category') || undefined;
+      sendJson(res, 200, { news: await db.listNews({ category }) });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname === '/api/news' && req.method === 'POST') {
+    try {
+      const uid = await authUid(req);
+      if (!uid) {
+        sendJson(res, 401, { error: '请先登录' });
+        return;
+      }
+      const adminUids = (process.env.ADMIN_UIDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!adminUids.includes(uid)) {
+        sendJson(res, 403, { error: '无权限发布资讯（需管理员）' });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        sendJson(res, 400, { error: e.message });
+        return;
+      }
+      const news = await db.createNews(body || {});
+      sendJson(res, 201, { ok: true, news });
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+    return;
+  }
+
   sendJson(res, 404, { error: 'not found' });
 });
 

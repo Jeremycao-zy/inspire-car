@@ -13,6 +13,7 @@
 import { ET_REF } from '../tuning/wheelRig.js';
 import { createColorWheel } from './colorWheel.js';
 import { renderMyWheels } from './myWheels.js';
+import { createCommunity } from './community.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -789,6 +790,7 @@ export function createPanel(app, mount) {
     ['wheels', '轮毂'],
     ['paint', '车漆'],
     ['scene', '场景'],
+    ['community', '社区'],
   ];
   const tabBodies = {};
   const tabButtons = {};
@@ -799,10 +801,17 @@ export function createPanel(app, mount) {
     tabsBar.appendChild(btn);
     tabBodies[id] = el('div', { class: 'tab-body' });
   }
+  // 社区视图（论坛 + 资讯自动更新）挂到「社区」Tab 对应的 body 上。
+  const community = createCommunity({ mount: tabBodies.community });
   function setTab(id) {
     for (const k of Object.keys(tabBodies)) {
       tabBodies[k].classList.toggle('hidden', k !== id);
       tabButtons[k].classList.toggle('active', k === id);
+    }
+    // 社区 Tab：进入时启动数据加载 / 资讯轮询，切走时停掉轮询
+    if (community) {
+      if (id === 'community') community.activate();
+      else community.deactivate();
     }
   }
 
