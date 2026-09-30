@@ -43,6 +43,11 @@ export async function initDb() {
   if (!url) {
     dbMode = 'json';
     ensureJsonDirs();
+    try {
+      await seedNewsIfEmpty();
+    } catch (e) {
+      console.warn('[db] 资讯种子数据写入失败（可忽略）：', e?.message || e);
+    }
     return {
       mode: 'json',
       note: 'DATABASE_URL 未设置，使用本地 JSON 文件存储（仅开发可用，Railway 上数据不持久）',
@@ -70,6 +75,11 @@ export async function initDb() {
       }
     }
     dbMode = 'sql';
+    try {
+      await seedNewsIfEmpty();
+    } catch (e) {
+      console.warn('[db] 资讯种子数据写入失败（可忽略）：', e?.message || e);
+    }
     return { mode: 'sql' };
   } catch (err) {
     // 连接失败：清空池、回退 JSON 模式，服务照常启动（数据落容器本地，不持久，但站点不挂）
@@ -171,6 +181,52 @@ async function migrate() {
     )
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS plans_owner ON plans (owner)');
+
+  // 社区模块：论坛主题 / 论坛回复 / 资讯（自动更新内容）
+  // category 约定：
+  //   forum_topics.category ∈ { chat(改装交流), help(求助), show(展示) }
+  //   news.category          ∈ { news(改装资讯), race(赛事), event(活动) }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS forum_topics (
+      id          SERIAL PRIMARY KEY,
+      uid         TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'chat',
+      reply_count INT  NOT NULL DEFAULT 0,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    'CREATE INDEX IF NOT EXISTS forum_topics_created ON forum_topics (created_at DESC)'
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS forum_replies (
+      id          SERIAL PRIMARY KEY,
+      topic_id    INT NOT NULL,
+      uid         TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    'CREATE INDEX IF NOT EXISTS forum_replies_topic ON forum_replies (topic_id)'
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS news (
+      id           SERIAL PRIMARY KEY,
+      title        TEXT NOT NULL,
+      summary      TEXT NOT NULL DEFAULT '',
+      body         TEXT NOT NULL DEFAULT '',
+      category     TEXT NOT NULL DEFAULT 'news',
+      cover        TEXT NOT NULL DEFAULT '',
+      source       TEXT NOT NULL DEFAULT '',
+      published_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    'CREATE INDEX IF NOT EXISTS news_published ON news (published_at DESC)'
+  );
 }
 
 /* ------------------------- JSON 回退存储 ------------------------- */
@@ -180,7 +236,12 @@ const WHEELS_DIR = path.join(ROOT, '.cache', 'wheels');
 const MODELS_DIR = path.join(ROOT, '.cache', 'models');
 const PLANS_DIR = path.join(ROOT, '.cache', 'plans');
 const OT_DIR = path.join(ROOT, '.cache', 'otp');
+const FORUM_DIR = path.join(ROOT, '.cache', 'forum');
+const NEWS_DIR = path.join(ROOT, '.cache', 'news');
 const USERS_FILE = path.join(USERS_DIR, 'users.json');
+const FORUM_TOPICS_FILE = path.join(FORUM_DIR, 'topics.json');
+const FORUM_REPLIES_FILE = path.join(FORUM_DIR, 'replies.json');
+const NEWS_FILE = path.join(NEWS_DIR, 'news.json');
 
 function ensureJsonDirs() {
   try {
@@ -189,6 +250,8 @@ function ensureJsonDirs() {
     fs.mkdirSync(MODELS_DIR, { recursive: true });
     fs.mkdirSync(PLANS_DIR, { recursive: true });
     fs.mkdirSync(OT_DIR, { recursive: true });
+    fs.mkdirSync(FORUM_DIR, { recursive: true });
+    fs.mkdirSync(NEWS_DIR, { recursive: true });
   } catch {
     /* ignore */
   }
@@ -918,4 +981,443 @@ export async function deletePlan(uid, id) {
   const list = readPlansJson(uid).filter((p) => p.id !== id);
   writePlansJson(uid, list);
   return list;
+}
+
+/* ------------------------- 社区：论坛 + 资讯 ------------------------- */
+
+/* ---- JSON 回退读写（与 plans 等保持同一风格） ---- */
+
+function readForumTopicsJson() {
+  try {
+    const list = JSON.parse(fs.readFileSync(FORUM_TOPICS_FILE, 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function writeForumTopicsJson(list) {
+  fs.mkdirSync(FORUM_DIR, { recursive: true });
+  fs.writeFileSync(FORUM_TOPICS_FILE, JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+function readForumRepliesJson() {
+  try {
+    const list = JSON.parse(fs.readFileSync(FORUM_REPLIES_FILE, 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function writeForumRepliesJson(list) {
+  fs.mkdirSync(FORUM_DIR, { recursive: true });
+  fs.writeFileSync(FORUM_REPLIES_FILE, JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+function readNewsJson() {
+  try {
+    const list = JSON.parse(fs.readFileSync(NEWS_FILE, 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function writeNewsJson(list) {
+  fs.mkdirSync(NEWS_DIR, { recursive: true });
+  fs.writeFileSync(NEWS_FILE, JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+
+/** 给一条主题补上作者用户名（JSON 模式靠 findUserById，SQL 模式靠 JOIN） */
+function withTopicAuthor(t) {
+  return { ...t, username: t.username || '匿名' };
+}
+
+/**
+ * 论坛主题列表（按 created_at DESC），附带作者用户名。
+ * @param {{category?:string, page?:number, pageSize?:number}} opts
+ * @returns {Promise<{total:number, page:number, pageSize:number, topics:object[]}>}
+ */
+export async function listTopics({ category, page = 1, pageSize = 20 } = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
+  if (dbMode === 'sql') {
+    const where = category ? 'WHERE t.category=$1' : '';
+    const params = category ? [String(category)] : [];
+    const countR = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM forum_topics t ${where}`,
+      params
+    );
+    const total = countR.rows[0].c;
+    const offset = (safePage - 1) * safeSize;
+    const rows = await pool.query(
+      `SELECT t.id, t.uid, t.title, t.body, t.category, t.reply_count, t.created_at, u.username
+       FROM forum_topics t LEFT JOIN users u ON u.id = t.uid
+       ${where}
+       ORDER BY t.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, safeSize, offset]
+    );
+    const topics = rows.rows.map((r) => ({
+      id: Number(r.id),
+      uid: r.uid,
+      username: r.username || '匿名',
+      title: r.title,
+      body: r.body,
+      category: r.category,
+      replyCount: Number(r.reply_count || 0),
+      createdAt: iso(r.created_at),
+    }));
+    return { total, page: safePage, pageSize: safeSize, topics };
+  }
+  // JSON 模式
+  const all = readForumTopicsJson();
+  const filtered = category ? all.filter((t) => t.category === category) : all;
+  const sorted = filtered
+    .slice()
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const total = sorted.length;
+  const start = (safePage - 1) * safeSize;
+  const topics = await Promise.all(
+    sorted.slice(start, start + safeSize).map(async (t) => {
+      const user = await findUserById(t.uid);
+      return { ...t, username: user?.username || '匿名' };
+    })
+  );
+  return { total, page: safePage, pageSize: safeSize, topics };
+}
+
+/**
+ * 创建论坛主题。
+ * @param {{uid:string, title:string, body:string, category?:string}} record
+ * @returns {Promise<object>} 新建的主题（含 id / username / createdAt）
+ */
+export async function createTopic({ uid, title, body, category = 'chat' } = {}) {
+  uid = String(uid || '');
+  title = String(title || '').trim();
+  body = String(body || '').trim();
+  category = String(category || 'chat');
+  if (!uid) throw new Error('未登录');
+  if (!title) throw new Error('标题不能为空');
+  if (!body) throw new Error('正文不能为空');
+  if (dbMode === 'sql') {
+    const r = await pool.query(
+      `INSERT INTO forum_topics (uid, title, body, category)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, uid, title, body, category, reply_count, created_at`,
+      [uid, title, body, category]
+    );
+    const row = r.rows[0];
+    const user = await findUserById(uid);
+    return {
+      id: Number(row.id),
+      uid: row.uid,
+      username: user?.username || '匿名',
+      title: row.title,
+      body: row.body,
+      category: row.category,
+      replyCount: Number(row.reply_count || 0),
+      createdAt: iso(row.created_at),
+    };
+  }
+  const topics = readForumTopicsJson();
+  const id = topics.reduce((m, t) => Math.max(m, Number(t.id) || 0), 0) + 1;
+  const topic = {
+    id,
+    uid,
+    title,
+    body,
+    category,
+    replyCount: 0,
+    createdAt: new Date().toISOString(),
+  };
+  topics.unshift(topic);
+  writeForumTopicsJson(topics);
+  const user = await findUserById(uid);
+  return { ...topic, username: user?.username || '匿名' };
+}
+
+/**
+ * 取单个主题详情 + 其下所有回复（按 created_at ASC）。
+ * @param {number|string} id
+ * @returns {Promise<object|null>}
+ */
+export async function getTopic(id) {
+  id = Number(id);
+  if (!id) return null;
+  if (dbMode === 'sql') {
+    const tr = await pool.query(
+      `SELECT t.id, t.uid, t.title, t.body, t.category, t.reply_count, t.created_at, u.username
+       FROM forum_topics t LEFT JOIN users u ON u.id = t.uid
+       WHERE t.id=$1`,
+      [id]
+    );
+    const trow = tr.rows[0];
+    if (!trow) return null;
+    const rr = await pool.query(
+      `SELECT r.id, r.topic_id, r.uid, r.body, r.created_at, u.username
+       FROM forum_replies r LEFT JOIN users u ON u.id = r.uid
+       WHERE r.topic_id=$1 ORDER BY r.created_at ASC`,
+      [id]
+    );
+    const replies = rr.rows.map((r) => ({
+      id: Number(r.id),
+      topicId: Number(r.topic_id),
+      uid: r.uid,
+      username: r.username || '匿名',
+      body: r.body,
+      createdAt: iso(r.created_at),
+    }));
+    return {
+      id: Number(trow.id),
+      uid: trow.uid,
+      username: trow.username || '匿名',
+      title: trow.title,
+      body: trow.body,
+      category: trow.category,
+      replyCount: Number(trow.reply_count || 0),
+      createdAt: iso(trow.created_at),
+      replies,
+    };
+  }
+  const topics = readForumTopicsJson();
+  const raw = topics.find((t) => Number(t.id) === id);
+  if (!raw) return null;
+  const user = await findUserById(raw.uid);
+  const repliesRaw = readForumRepliesJson()
+    .filter((r) => Number(r.topicId) === id)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const replies = await Promise.all(
+    repliesRaw.map(async (r) => {
+      const ru = await findUserById(r.uid);
+      return {
+        id: r.id,
+        topicId: r.topicId,
+        uid: r.uid,
+        username: ru?.username || '匿名',
+        body: r.body,
+        createdAt: r.createdAt,
+      };
+    })
+  );
+  return {
+    id: raw.id,
+    uid: raw.uid,
+    username: user?.username || '匿名',
+    title: raw.title,
+    body: raw.body,
+    category: raw.category,
+    replyCount: raw.replyCount || 0,
+    createdAt: raw.createdAt,
+    replies,
+  };
+}
+
+/**
+ * 创建一条回复，并让主题的 reply_count +1。
+ * @param {{uid:string, topicId:number|string, body:string}} record
+ * @returns {Promise<object>} 新建的回复
+ */
+export async function createReply({ uid, topicId, body } = {}) {
+  uid = String(uid || '');
+  topicId = Number(topicId);
+  body = String(body || '').trim();
+  if (!uid) throw new Error('未登录');
+  if (!topicId) throw new Error('主题不存在');
+  if (!body) throw new Error('评论内容不能为空');
+  if (dbMode === 'sql') {
+    const chk = await pool.query('SELECT 1 FROM forum_topics WHERE id=$1', [topicId]);
+    if (chk.rowCount === 0) throw new Error('主题不存在');
+    const r = await pool.query(
+      `INSERT INTO forum_replies (topic_id, uid, body)
+       VALUES ($1, $2, $3)
+       RETURNING id, topic_id, uid, body, created_at`,
+      [topicId, uid, body]
+    );
+    await pool.query('UPDATE forum_topics SET reply_count = reply_count + 1 WHERE id=$1', [
+      topicId,
+    ]);
+    const row = r.rows[0];
+    const user = await findUserById(uid);
+    return {
+      id: Number(row.id),
+      topicId: Number(row.topic_id),
+      uid: row.uid,
+      username: user?.username || '匿名',
+      body: row.body,
+      createdAt: iso(row.created_at),
+    };
+  }
+  const topics = readForumTopicsJson();
+  const topic = topics.find((t) => Number(t.id) === topicId);
+  if (!topic) throw new Error('主题不存在');
+  const replies = readForumRepliesJson();
+  const id = replies.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
+  const reply = {
+    id,
+    topicId,
+    uid,
+    body,
+    createdAt: new Date().toISOString(),
+  };
+  replies.unshift(reply);
+  writeForumRepliesJson(replies);
+  topic.replyCount = (topic.replyCount || 0) + 1;
+  writeForumTopicsJson(topics);
+  const user = await findUserById(uid);
+  return { ...reply, username: user?.username || '匿名' };
+}
+
+/**
+ * 资讯列表（按 published_at DESC）。
+ * @param {{category?:string}} opts
+ * @returns {Promise<object[]>}
+ */
+export async function listNews({ category } = {}) {
+  if (dbMode === 'sql') {
+    const where = category ? 'WHERE category=$1' : '';
+    const params = category ? [String(category)] : [];
+    const r = await pool.query(
+      `SELECT id, title, summary, body, category, cover, source, published_at
+       FROM news ${where} ORDER BY published_at DESC`,
+      params
+    );
+    return r.rows.map((row) => ({
+      id: Number(row.id),
+      title: row.title,
+      summary: row.summary,
+      body: row.body,
+      category: row.category,
+      cover: row.cover || '',
+      source: row.source || '',
+      publishedAt: iso(row.published_at),
+    }));
+  }
+  const all = readNewsJson();
+  const filtered = category ? all.filter((n) => n.category === category) : all;
+  return filtered
+    .slice()
+    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)));
+}
+
+/**
+ * 创建一条资讯（后台发布用，管理员鉴权在路由层做）。
+ * @param {object} record { title, summary?, body?, category?, cover?, source?, publishedAt? }
+ * @returns {Promise<object>} 新建的资讯
+ */
+export async function createNews(record = {}) {
+  const title = String(record.title || '').trim();
+  const summary = String(record.summary || '').trim();
+  const body = String(record.body || '').trim();
+  const category = String(record.category || 'news');
+  const cover = String(record.cover || '');
+  const source = String(record.source || '灵感改装编辑部');
+  if (!title) throw new Error('标题不能为空');
+  const publishedAt = record.publishedAt
+    ? new Date(record.publishedAt).toISOString()
+    : new Date().toISOString();
+  if (dbMode === 'sql') {
+    const r = await pool.query(
+      `INSERT INTO news (title, summary, body, category, cover, source, published_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, title, summary, body, category, cover, source, published_at`,
+      [title, summary, body, category, cover, source, publishedAt]
+    );
+    const row = r.rows[0];
+    return {
+      id: Number(row.id),
+      title: row.title,
+      summary: row.summary,
+      body: row.body,
+      category: row.category,
+      cover: row.cover || '',
+      source: row.source || '',
+      publishedAt: iso(row.published_at),
+    };
+  }
+  const news = readNewsJson();
+  const id = news.reduce((m, n) => Math.max(m, Number(n.id) || 0), 0) + 1;
+  const item = { id, title, summary, body, category, cover, source, publishedAt };
+  news.unshift(item);
+  writeNewsJson(news);
+  return item;
+}
+
+/** 构建 5 条示例资讯（2 改装资讯 / 2 赛事 / 1 活动），时间错开最近几天 */
+function buildNewsSeed() {
+  const now = Date.now();
+  const H = 3600 * 1000;
+  const D = 24 * H;
+  return [
+    {
+      title: '宽体套件怎么选？碳纤维与玻璃钢的取舍',
+      summary:
+        '从重量、成本、修复难度三方面对比两类宽体材质，帮你按预算与用途做决定。',
+      body:
+        '碳纤维宽体轻、强度高、质感好，但价格昂贵且碰撞后几乎无法无损修复；玻璃钢（FRP）便宜、可局部修补，但偏重、韧性一般。日常街道走 Glass Fiber 足够，赛道取向再上碳纤。',
+      category: 'news',
+      source: '灵感改装编辑部',
+      cover: '',
+      publishedAt: new Date(now - 6 * H).toISOString(),
+    },
+    {
+      title: '避震改装入门：绞牙与气动怎么选',
+      summary: '想降低车身又不想每天“搓底盘”？一文讲清绞牙与气动的适用场景。',
+      body:
+        '绞牙避震可调高度与阻尼，支撑性好、适合下场；气动（Air Suspension）按按钮升降，姿态玩家最爱，但成本高、维护多。先想清楚用途再掏钱。',
+      category: 'news',
+      source: '灵感改装编辑部',
+      cover: '',
+      publishedAt: new Date(now - 1.5 * D).toISOString(),
+    },
+    {
+      title: '2026 场地赛首站落幕，本土车队表现亮眼',
+      summary: '新赛季开门红：本土私人车队包揽小组前二，圈速较去年提升明显。',
+      body:
+        '周末的场地赛首站中，多支本土私人车队凭借自研 ECU 调校与轻量化方案杀入前列。下一站移师南方赛道，期待更多国产改装件登场。',
+      category: 'race',
+      source: '赛道前线',
+      cover: '',
+      publishedAt: new Date(now - 2.5 * D).toISOString(),
+    },
+    {
+      title: '漂移锦标赛新赛季规则解读',
+      summary: '判罚尺度收紧、双人追走权重上调，车手与技师都得重新适应。',
+      body:
+        '新赛季漂移锦标赛对“单走失误”扣分更狠，双人追走环节占比提升到 60%。这意味着容错率更低，对车辆一致性与车手心理都是新考验。',
+      category: 'race',
+      source: '赛道前线',
+      cover: '',
+      publishedAt: new Date(now - 3.5 * D).toISOString(),
+    },
+    {
+      title: '城市改装文化节下周开幕，免费进场',
+      summary: '为期三天的线下改装盛会，云集宽体、低趴、JDM 与电动改装阵营。',
+      body:
+        '下周起连续三天，城市滨江广场将举办改装文化节，设置静态展示、DIY 工坊与夜场灯光秀。入场免费，现场还有资深技师答疑，欢迎带上你的爱车。',
+      category: 'event',
+      source: '灵感改装编辑部',
+      cover: '',
+      publishedAt: new Date(now - 4.5 * D).toISOString(),
+    },
+  ];
+}
+
+/**
+ * 若资讯表为空，幂等插入示例数据（开发期零数据也能跑通）。
+ * SQL 与 JSON 两种模式都会处理；已存在数据则跳过。
+ */
+export async function seedNewsIfEmpty() {
+  if (dbMode === 'sql') {
+    const r = await pool.query('SELECT COUNT(*)::int AS c FROM news');
+    if (r.rows[0].c > 0) return;
+    for (const n of buildNewsSeed()) {
+      await pool.query(
+        `INSERT INTO news (title, summary, body, category, cover, source, published_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [n.title, n.summary, n.body, n.category, n.cover || '', n.source, n.publishedAt]
+      );
+    }
+    return;
+  }
+  const news = readNewsJson();
+  if (news.length > 0) return;
+  const seeded = buildNewsSeed().map((n, i) => ({ id: i + 1, ...n }));
+  writeNewsJson(seeded);
 }

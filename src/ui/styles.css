@@ -1822,3 +1822,335 @@ input[type='range'] {
     white-space: normal;
   }
 }
+
+/* ============================================================
+   社区模块（论坛 + 资讯）— 霓虹赛博风，复用既有 --neon-* 变量
+   ============================================================ */
+
+.cm-hidden { display: none !important; }
+
+.community {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 28px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* 子切换：论坛 / 资讯 */
+.cm-subtabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--panel-2, #171430);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.cm-subtab {
+  flex: 1;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 8px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.cm-subtab:hover { color: var(--text); }
+.cm-subtab.active {
+  color: #061018;
+  background: linear-gradient(100deg, var(--neon-cyan), var(--neon-purple));
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+}
+
+.cm-section { display: flex; flex-direction: column; gap: 10px; }
+
+.cm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cm-toolbar__title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+}
+.cm-news__updated { font-size: 11px; color: var(--text-dim); }
+.cm-news__stamp { color: var(--neon-cyan); font-variant-numeric: tabular-nums; }
+
+/* 按钮 */
+.cm-btn-primary {
+  appearance: none;
+  border: 1px solid var(--neon-cyan);
+  background: linear-gradient(100deg, rgba(0, 240, 255, 0.18), rgba(177, 74, 237, 0.18));
+  color: var(--neon-cyan);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.05s ease;
+}
+.cm-btn-primary:hover { box-shadow: 0 0 14px rgba(0, 240, 255, 0.5); }
+.cm-btn-primary:active { transform: translateY(1px); }
+.cm-btn-primary:disabled { opacity: 0.5; cursor: default; }
+.cm-btn-ghost {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.cm-btn-ghost:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* 筛选 chip */
+.cm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cm-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel-2, #171430);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cm-chip:hover { color: var(--text); border-color: var(--text-dim); }
+.cm-chip.active {
+  color: #061018;
+  background: linear-gradient(100deg, var(--neon-cyan), var(--neon-purple));
+  border-color: transparent;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
+}
+
+/* 列表与卡片 */
+.cm-list { display: flex; flex-direction: column; gap: 9px; }
+.cm-card {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
+.cm-card:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.18);
+}
+.cm-topic__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 7px;
+  line-height: 1.35;
+}
+.cm-topic__meta, .cm-reply__meta, .cm-news__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.cm-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.cm-tag--chat { color: var(--neon-cyan); }
+.cm-tag--help { color: var(--neon-pink); }
+.cm-tag--show { color: var(--neon-purple); }
+.cm-tag--news { color: var(--neon-cyan); }
+.cm-tag--race { color: var(--neon-pink); }
+.cm-tag--event { color: var(--neon-purple); }
+.cm-meta__author { color: var(--text); font-weight: 600; }
+.cm-meta__reply { margin-left: auto; }
+
+/* 详情 */
+.cm-detail__inner { display: flex; flex-direction: column; gap: 12px; }
+.cm-back {
+  align-self: flex-start;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--neon-cyan);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.cm-back:hover { text-shadow: 0 0 10px rgba(0, 240, 255, 0.5); }
+.cm-detail__title {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--text);
+}
+.cm-detail__body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--panel-2, #171430);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.cm-replies__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.cm-reply {
+  border-top: 1px solid var(--line);
+  padding: 9px 2px;
+}
+.cm-reply__body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+/* 评论框 */
+.cm-comment { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+.cm-comment__err, .cm-modal__err { color: var(--err); font-size: 12px; min-height: 14px; }
+
+/* 资讯卡片 */
+.cm-news__cover {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin-bottom: 9px;
+  border: 1px solid var(--line);
+}
+.cm-news__cat {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  margin-bottom: 7px;
+}
+.cm-news__title {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+.cm-news__summary {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* 空态 / 加载 */
+.cm-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 26px 10px;
+}
+.cm-empty--sm { padding: 14px 8px; font-size: 12px; }
+.cm-loading { opacity: 0.55; pointer-events: none; }
+
+/* 表单控件 */
+.cm-input, .cm-select, .cm-textarea {
+  width: 100%;
+  background: var(--panel-2, #171430);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  padding: 9px 11px;
+  font-family: inherit;
+}
+.cm-input:focus, .cm-select:focus, .cm-textarea:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.2);
+}
+.cm-textarea { resize: vertical; line-height: 1.55; }
+.cm-select { appearance: none; cursor: pointer; }
+
+/* 模态框 */
+.cm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 4, 12, 0.72);
+  backdrop-filter: blur(3px);
+  padding: 20px;
+}
+.cm-modal {
+  width: min(480px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--panel, #12101f);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 10px;
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+.cm-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.cm-modal__title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+.cm-modal__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cm-modal__close:hover { color: var(--neon-pink); }
+.cm-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.cm-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
