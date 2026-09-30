@@ -1029,6 +1029,9 @@ function withTopicAuthor(t) {
   return { ...t, username: t.username || '匿名' };
 }
 
+/** 论坛主题分类白名单：改装交流 / 求助 / 展示（与前端 FORUM_CATS 一致） */
+const FORUM_TOPIC_CATS = ['chat', 'help', 'show'];
+
 /**
  * 论坛主题列表（按 created_at DESC），附带作者用户名。
  * @param {{category?:string, page?:number, pageSize?:number}} opts
@@ -1093,6 +1096,9 @@ export async function createTopic({ uid, title, body, category = 'chat' } = {}) 
   title = String(title || '').trim();
   body = String(body || '').trim();
   category = String(category || 'chat');
+  // 白名单校验：仅允许 改装交流(chat) / 求助(help) / 展示(show)，
+  // 与前端 FORUM_CATS、forumCatLabel 保持一致；越界值直接 400，不落库。
+  if (!FORUM_TOPIC_CATS.includes(category)) throw new Error('非法的帖子分类');
   if (!uid) throw new Error('未登录');
   if (!title) throw new Error('标题不能为空');
   if (!body) throw new Error('正文不能为空');
