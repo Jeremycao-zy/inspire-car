@@ -1,0 +1,17 @@
+{
+  "description": "灵感改装 INSPIRE CAR 微信小程序（原生壳 + web-view 承载 3D 编辑器）",
+  "appid": "touristappid",
+  "projectname": "inspire-car-mini",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "libVersion": "latest",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false,
+    "newFeature": true,
+    "bigPackageSizeSupport": true
+  }
+}

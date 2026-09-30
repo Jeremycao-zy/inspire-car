@@ -1,0 +1,45 @@
+.plan-card {
+  display: flex;
+  align-items: center;
+  margin-top: 24rpx;
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: #121722;
+  border: 2rpx solid rgba(62, 228, 255, 0.18);
+}
+.plan-card:active {
+  background: #161d2b;
+}
+.plan-cover {
+  width: 160rpx;
+  height: 120rpx;
+  border-radius: 16rpx;
+  background: #0b0e13;
+  flex-shrink: 0;
+}
+.plan-info {
+  flex: 1;
+  margin-left: 24rpx;
+  overflow: hidden;
+}
+.plan-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #e8edf3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-desc {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #7b8794;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-arrow {
+  font-size: 48rpx;
+  color: #3ee4ff;
+  margin-left: 16rpx;
+}

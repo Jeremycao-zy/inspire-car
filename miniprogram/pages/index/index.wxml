@@ -1,0 +1,24 @@
+<view class="screen">
+  <view class="hero">
+    <view class="brand-title">灵感改装</view>
+    <view class="brand-sub">INSPIRE CAR · TUNING STUDIO</view>
+  </view>
+
+  <view class="hero-desc">
+    上传爱车照片，AI 一键生成 3D 车模，在 TUNING STUDIO 里换轮毂、调车漆、调姿态。
+  </view>
+
+  <view class="cta" bindtap="goEditor">开始改装</view>
+
+  <view class="neon-line"></view>
+
+  <view class="card" bindtap="goUpload">
+    <view class="card-title">上传照片 · AI 生成 3D 车模</view>
+    <view class="card-sub">拍一张爱车，秒变可改装的 3D 模型</view>
+  </view>
+
+  <view class="card" bindtap="goGarage">
+    <view class="card-title">我的车库</view>
+    <view class="card-sub">{{ loggedIn ? '查看你保存的改装方案' : '登录后自动同步你的方案' }}</view>
+  </view>
+</view>
