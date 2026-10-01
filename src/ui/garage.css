@@ -336,33 +336,123 @@
   text-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
 }
 
-/* ---------------- 社区（首页独立主功能板块） ---------------- */
+/* ---------------- 顶层分页导航（车库 / 轮毂 / 论坛 / 资讯） ---------------- */
 
-.garage-community {
+/* 吸顶：滚到任何位置都能一键切页；背景要实心，否则滚动内容会透过导航 */
+.garage-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 24px;
+  /* 深空紫黑实底 + 霓虹分隔线，与车库整体 synthwave 基调一致 */
+  background: linear-gradient(180deg, rgba(11, 8, 32, 0.98) 0%, rgba(10, 10, 20, 0.94) 100%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.22);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(255, 46, 151, 0.18);
+}
+
+.garage-nav__item {
+  appearance: none;
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  background: rgba(0, 240, 255, 0.05);
+  color: var(--text-dim, #9aa7c7);
+  cursor: pointer;
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease,
+    background 0.18s ease, transform 0.12s ease;
+}
+
+.garage-nav__item:hover {
+  color: #eafcff;
+  border-color: rgba(0, 240, 255, 0.55);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+/* 激活态：青→粉霓虹描边 + 底部发光下划线，明显但不刺眼 */
+.garage-nav__item.active {
+  color: #eafcff;
+  border-color: rgba(255, 46, 151, 0.6);
+  background: linear-gradient(100deg, rgba(255, 46, 151, 0.2) 0%, rgba(0, 240, 255, 0.18) 100%);
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.35),
+    0 0 30px rgba(255, 46, 151, 0.22),
+    inset 0 -2px 0 var(--neon-cyan, #00f0ff);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55);
+}
+
+/* ---------------- 分页容器 ---------------- */
+
+.garage-page {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  padding: 28px 32px 56px;
-  margin-top: 8px;
-  border-top: 1px solid rgba(0, 240, 255, 0.12);
+  width: 100%;
+  padding: 22px 32px 56px;
 }
-.garage-community__sub {
-  max-width: 1180px;
-  margin: 0 auto 14px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--text-faint);
+
+/* 顶层分页互斥显示：非当前页整体隐藏（惰性挂载的容器在没有内容时也不占位） */
+.garage-page.hidden {
+  display: none;
 }
-.garage-community__inner {
+
+.garage-page__head {
   max-width: 1180px;
-  margin: 0 auto;
+  margin: 0 auto 20px;
+  padding: 18px 22px;
   border: 1px solid rgba(0, 240, 255, 0.14);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(177, 74, 237, 0.06), rgba(0, 240, 255, 0.04));
+  background: linear-gradient(180deg, rgba(177, 74, 237, 0.08), rgba(0, 240, 255, 0.04));
   box-shadow:
     0 14px 40px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  overflow: hidden;
+}
+
+.garage-page__title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #eafcff;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 0 30px rgba(255, 46, 151, 0.28);
+}
+
+.garage-page__sub {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint, #6f8299);
+}
+
+/* 模块正文挂载点：与 .garage-grid 同一条 1180px 内容对齐线 */
+.garage-page__mount {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* 分页头已给标题：隐藏模块自带的重复标题，避免同一页出现两个同名标题。
+   论坛/资讯的工具栏里还有「发帖」按钮与「最近更新」时间戳，保留不隐藏。 */
+.garage-page--wheels .gw-head,
+.garage-page--forum .cm-toolbar__title,
+.garage-page--news .cm-toolbar__title {
+  display: none;
+}
+
+/* 标题隐藏后工具栏右侧元素（发帖按钮 / 更新时间）仍右对齐 */
+.garage-page--forum .cm-toolbar,
+.garage-page--news .cm-toolbar {
+  justify-content: flex-end;
 }
 
 .garage-grid {
@@ -1007,6 +1097,27 @@
   }
   .garage-grid {
     grid-template-columns: 1fr;
+  }
+  /* 窄屏：导航收缩间距，4 项仍保持一行平级（不改成下拉，避免多一次点击） */
+  .garage-nav {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .garage-nav__item {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .garage-page {
+    padding: 16px 18px 40px;
+  }
+  .garage-page__head {
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  .garage-page__title {
+    font-size: 18px;
   }
   .garage-card__backing {
     min-height: 440px;

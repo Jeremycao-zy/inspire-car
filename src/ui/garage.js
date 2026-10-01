@@ -19,7 +19,7 @@ import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import { mountAiOrb } from './aiOrb.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
-import { createCommunity } from './community.js';
+import { createForum, createNews } from './community.js';
 import './garage.css';
 import logoMarkUrl from '../assets/logo-mark-neon.png';
 
@@ -650,8 +650,12 @@ export function mountGarage({ onEnter, mount } = {}) {
 
   let preview = null;
   let aiOrb = null;
+  // 轮毂仓库 / 论坛 / 资讯均为「首次切到该页才创建」的惰性实例（见 ensure* 函数）
   let warehouse = null;
-  let community = null;
+  let forumApi = null;
+  let newsApi = null;
+  // 当前所在的顶层分页：garage | wheels | forum | news（null = 尚未 setPage）
+  let currentPage = null;
 
   /* 顶部品牌栏 */
   const u = currentUser();
@@ -739,39 +743,166 @@ export function mountGarage({ onEnter, mount } = {}) {
     grid
   );
 
-  root.appendChild(header);
-  root.appendChild(hero);
-  root.appendChild(body);
+  /* ---- 顶层导航：车库 / 轮毂 / 论坛 / 资讯 四个平级分页 ----
+   * 用户要的是「并行的二级页面」，不是把功能全堆在一个长首页里往下滑，
+   * 所以这里做 sticky 吸顶导航 + 4 个互斥显示的页面容器。 */
+  const PAGES = [
+    { id: 'garage', label: '车库' },
+    { id: 'wheels', label: '轮毂' },
+    { id: 'forum', label: '论坛' },
+    { id: 'news', label: '资讯' },
+  ];
+  const navItems = new Map();
+  const nav = el('nav', { class: 'garage-nav', 'aria-label': '车库分页导航' });
+  for (const p of PAGES) {
+    const btn = el(
+      'button',
+      {
+        class: 'garage-nav__item',
+        type: 'button',
+        'data-page': p.id,
+        'aria-selected': 'false',
+        onClick: () => setPage(p.id),
+      },
+      p.label
+    );
+    navItems.set(p.id, btn);
+    nav.appendChild(btn);
+  }
 
-  /* 社区：独立于 TUNING STUDIO 的首页主功能板块（论坛 + 资讯自动更新）。
-   * 不再挂在侧栏 Tab 里，而是作为车库首页的一大功能模块出现。
-   * 生命周期挂在车库 show()/hide() 上：进入车库自动加载、离开（进工作室）停掉轮询。 */
-  const communityMount = el('div', { class: 'garage-community__inner' });
-  const communitySection = el(
-    'section',
-    { class: 'garage-community' },
-    el('h2', { class: 'garage-section-title' }, '社区 · COMMUNITY'),
-    el('p', { class: 'garage-community__sub' }, '改装交流 · 每日资讯 · 赛事与活动'),
-    communityMount
+  /* 4 个页面容器：车库页装 hero + 方案网格，其余三页的正文惰性挂载 */
+  const pageGarage = el('section', { class: 'garage-page garage-page--garage', 'data-page': 'garage' });
+  const pageWheels = el('section', { class: 'garage-page garage-page--wheels hidden', 'data-page': 'wheels' });
+  const pageForum = el('section', { class: 'garage-page garage-page--forum hidden', 'data-page': 'forum' });
+  const pageNews = el('section', { class: 'garage-page garage-page--news hidden', 'data-page': 'news' });
+  const pages = { garage: pageGarage, wheels: pageWheels, forum: pageForum, news: pageNews };
+  pageGarage.appendChild(hero);
+  pageGarage.appendChild(body);
+
+  // 分页头：轮毂 / 论坛 / 资讯三页自带模块内的重复标题由 garage.css 隐藏，
+  // 避免出现两个同名标题（论坛/资讯的工具栏里还有发帖按钮与更新时间戳，保留）。
+  pageWheels.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '轮毂仓库'),
+      el('p', { class: 'garage-page__sub' }, '已拥有的轮毂，随时悬空选装到任意车')
+    )
   );
-  root.appendChild(communitySection);
-  community = createCommunity({ mount: communityMount });
-  community.activate(); // 首页首屏即加载论坛列表
+  pageForum.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '论坛'),
+      el('p', { class: 'garage-page__sub' }, '改装交流 · 求助 · 作品展示')
+    )
+  );
+  pageNews.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '资讯'),
+      el('p', { class: 'garage-page__sub' }, '改装资讯 · 赛事 · 活动，每 30 秒自动更新')
+    )
+  );
+  const forumMount = el('div', { class: 'garage-page__mount' });
+  const newsMount = el('div', { class: 'garage-page__mount' });
+  pageForum.appendChild(forumMount);
+  pageNews.appendChild(newsMount);
+
+  /**
+   * 切到指定分页：互斥显隐 + 驱动各页的 WebGL / 轮询生命周期。
+   * @param {'garage'|'wheels'|'forum'|'news'} id
+   */
+  function setPage(id) {
+    const target = pages[id] ? id : 'garage';
+    if (currentPage === target) return;
+    leavePage(currentPage);
+    currentPage = target;
+    for (const [pid, node] of Object.entries(pages)) {
+      node.classList.toggle('hidden', pid !== target);
+    }
+    for (const [pid, btn] of navItems) {
+      const on = pid === target;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    enterPage(target);
+  }
+
+  /** 离开某页：停掉该页专属的渲染循环 / 轮询 */
+  function leavePage(id) {
+    if (id === 'garage') preview?.pause();
+    else if (id === 'wheels') warehouse?.pause();
+    else if (id === 'forum') forumApi?.deactivate();
+    else if (id === 'news') newsApi?.deactivate(); // 必须停掉 30s 资讯轮询
+  }
+
+  /** 进入某页：惰性创建（首次）+ 恢复该页的渲染循环 / 数据加载 */
+  function enterPage(id) {
+    if (id === 'garage') {
+      renderGrid();
+      preview?.resume();
+      return;
+    }
+    if (id === 'wheels') {
+      ensureWarehouse();
+      warehouse?.resume();
+      warehouse?.refresh?.();
+      return;
+    }
+    if (id === 'forum') {
+      ensureForum().activate();
+      return;
+    }
+    if (id === 'news') {
+      ensureNews().activate();
+    }
+  }
+
+  root.appendChild(header);
+  root.appendChild(nav);
+  root.appendChild(pageGarage);
+  root.appendChild(pageWheels);
+  root.appendChild(pageForum);
+  root.appendChild(pageNews);
 
   /* 轮毂仓库：账户持久拥有的轮毂，以全息 3D 轮毂呈现，可悬空选装到任意车。
    * 首页点「装到当前车」时还没进工作台，先把目标轮毂暂存到 sessionStorage，
-   * 进入工作台载车后由 main.js 的 loadPlanCar 落地到当前方案。 */
-  warehouse = mountWheelWarehouse({
-    onEquip(url) {
-      try {
-        sessionStorage.setItem('pending-wheel-url', url);
-      } catch (e) {
-        /* ignore */
-      }
-      onEnter?.(null);
-    },
-  });
-  root.appendChild(warehouse.el);
+   * 进入工作台载车后由 main.js 的 loadPlanCar 落地到当前方案。
+   *
+   * ⚠️ 惰性挂载：mountWheelWarehouse 内部 requestAnimationFrame(startHolo)
+   * 立刻建 WebGL 全息，若此时容器还是 display:none，canvas 的 clientWidth/Height
+   * 为 0，WebGL 会以 0×0 初始化导致黑屏。所以必须等首次切到「轮毂」页（容器可见）
+   * 再 mount，顺带也避免同时存在多个 WebGL 上下文（iOS Safari 有硬上限）。 */
+  function ensureWarehouse() {
+    if (warehouse) return warehouse;
+    warehouse = mountWheelWarehouse({
+      onEquip(url) {
+        try {
+          sessionStorage.setItem('pending-wheel-url', url);
+        } catch (e) {
+          /* ignore */
+        }
+        onEnter?.(null);
+      },
+    });
+    pageWheels.appendChild(warehouse.el);
+    return warehouse;
+  }
+
+  /* 论坛 / 资讯：同样惰性创建——首次切到该页时才建 DOM 与拉数据，
+   * 避免进入车库就同时在后台跑两个模块（资讯轮询会一直打 /api/news）。 */
+  function ensureForum() {
+    if (forumApi) return forumApi;
+    forumApi = createForum({ mount: forumMount });
+    return forumApi;
+  }
+  function ensureNews() {
+    if (newsApi) return newsApi;
+    newsApi = createNews({ mount: newsMount });
+    return newsApi;
+  }
 
   // 页脚：协议常驻入口。用户注册时勾选过，但仍需随时可回查——
   // 只放在注册弹窗里、之后无法查看，发生争议时难以证明用户有合理机会阅读。
@@ -841,7 +972,8 @@ export function mountGarage({ onEnter, mount } = {}) {
     }
   }
 
-  renderGrid();
+  // 默认落在「车库」页：setPage 会走一遍 enterPage（首次渲染网格 + 同步导航态）
+  setPage('garage');
   syncPlansFromServer();
 
   // DOM 就绪后启动预览（需要拿到 clientWidth/Height）
@@ -859,7 +991,11 @@ export function mountGarage({ onEnter, mount } = {}) {
     aiOrb = null;
     warehouse?.dispose();
     warehouse = null;
-    community?.deactivate(); // 停掉资讯轮询，避免离开页面后仍在定时请求
+    // 停掉论坛/资讯的生命周期（资讯的 30s 轮询必须清掉，否则离开页面仍在请求）
+    forumApi?.deactivate();
+    newsApi?.deactivate();
+    forumApi = null;
+    newsApi = null;
     previewEngine.clear();
     previewEngine.disposeRenderer();
     // 车模源解析缓存也要一起释放：单份 GLB 解析后 30~48MB，留着会让内存只增不减
@@ -869,39 +1005,51 @@ export function mountGarage({ onEnter, mount } = {}) {
   }
   _activeCleanup = dispose;
 
+  /* 停掉所有分页相关的渲染循环与轮询（离开车库 / 页面进后台） */
+  function stopPageLoops() {
+    preview?.pause();
+    aiOrb?.pause();
+    warehouse?.pause();
+    forumApi?.deactivate();
+    newsApi?.deactivate();
+  }
+
+  /* 只恢复「当前所在页」——避免离开车库后资讯还在每 30s 打 /api/news */
+  function startPageLoops() {
+    aiOrb?.resume();
+    if (currentPage === 'garage') {
+      renderGrid();
+      preview?.resume();
+      return;
+    }
+    if (currentPage === 'wheels') {
+      warehouse?.resume();
+      warehouse?.refresh?.();
+      return;
+    }
+    if (currentPage === 'forum') forumApi?.activate();
+    else if (currentPage === 'news') newsApi?.activate();
+  }
+
   return {
     root,
     hide() {
       root.classList.add('hidden');
-      preview?.pause();
-      aiOrb?.pause();
-      warehouse?.pause();
-      community?.deactivate();
+      stopPageLoops();
     },
     show() {
       root.classList.remove('hidden');
-      renderGrid();
-      preview?.resume();
-      aiOrb?.resume();
-      warehouse?.resume();
-      warehouse?.refresh?.();
-      community?.activate();
+      startPageLoops();
     },
     // 仅暂停/恢复渲染循环，不改变视图可见性——供「页面进后台」（拍照/切 App）兜底使用
     pause() {
-      preview?.pause();
-      aiOrb?.pause();
-      warehouse?.pause();
-      community?.deactivate();
+      stopPageLoops();
     },
     resume() {
-      preview?.resume();
-      aiOrb?.resume();
-      warehouse?.resume();
-      community?.activate();
+      startPageLoops();
     },
     refresh() {
-      renderGrid();
+      if (currentPage === 'garage') renderGrid();
     },
     upsertPlan(plan) {
       upsertPlan(plan);
