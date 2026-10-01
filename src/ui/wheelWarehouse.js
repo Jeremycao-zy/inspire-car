@@ -112,6 +112,13 @@ export function mountWheelWarehouse({ onEquip } = {}) {
   }
   requestAnimationFrame(startHolo);
 
+  // 生成成功后 main.js 会广播 mywheel:added，让已经挂载/可见的仓库即时刷新，
+  // 不必等用户重新切到「轮毂」分页才看到新轮毂（修复健壮性缺口）。
+  function onWheelAdded() {
+    refresh();
+  }
+  window.addEventListener('mywheel:added', onWheelAdded);
+
   return {
     el: section,
     refresh,
@@ -122,6 +129,7 @@ export function mountWheelWarehouse({ onEquip } = {}) {
       holo?.resume();
     },
     dispose() {
+      window.removeEventListener('mywheel:added', onWheelAdded);
       if (holo) {
         holo.dispose();
         holo = null;

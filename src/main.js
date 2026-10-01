@@ -1757,7 +1757,9 @@ const app = {
 
 const KIND_META = {
   car: { label: '整车', demoUrl: PRESET_CAR_URL },
-  wheel: { label: '轮毂', demoUrl: '/models/wheel.glb' },
+  // 注意：/models/wheel.glb 在仓库里并不存在（只有 rim-*.glb），用真实存在的
+  // 盘状轮毂资产兜底，否则「改用轮毂演示模型」按钮会 404。
+  wheel: { label: '轮毂', demoUrl: '/models/rim-default.glb' },
 };
 
 /** 取该类型对应的上传区控件 */
@@ -1832,6 +1834,24 @@ async function applyResult(kind, url, parts) {
     try { panel?.syncAll?.(); } catch (e) { console.warn('[sync] 面板同步异常，已忽略：', e.message); }
   }
   u.setStatus('生成完成，已装载你的车' + bangNote, 'ok');
+}
+
+/**
+ * 广播「刚成功登记了一个轮毂」事件。
+ *
+ * 首页轮毂仓库（wheelWarehouse）只在「切到轮毂分页」时才 refresh 一次，
+ * 若用户生成轮毂时仓库已经挂载/可见，就不会自动刷新、看不到新轮毂。
+ * 这里广播一个自定义事件，让仓库主动 refresh，而不必等用户重新切页。
+ * （修复健壮性缺口：登记成功 → 仓库即时同步。）
+ * @param {string} url
+ * @param {string} name
+ */
+function notifyWheelAdded(url, name) {
+  try {
+    window.dispatchEvent(new CustomEvent('mywheel:added', { detail: { url, name } }));
+  } catch (e) {
+    /* 极端环境无 window，忽略 */
+  }
 }
 
 /**
@@ -2025,9 +2045,21 @@ async function runGenerate({ kind, files, images, resumeJobId, resumeKey, resume
 
     if (res.mode === 'demo') {
       // 后端处于 DEMO 模式，返回的是预置模型，必须说清楚不是用户的车
-      await (kind === 'wheel' ? app.loadWheelFromUrl(res.url) : app.loadCarFromUrl(res.url));
+      const applied = await (kind === 'wheel' ? app.loadWheelFromUrl(res.url) : app.loadCarFromUrl(res.url));
       u.setStatus(`已载入${meta.label}演示模型（不是你上传的照片生成的，未消耗额度）`, 'warn');
       u.setDetail('配置凭证后重新上传，才会真实生成你的车。');
+      // 即便 DEMO 模式也要把这次「生成」的轮毂登记进仓库——
+      // 否则用户明明在首页轮毂分页里生成了轮毂、却永远看不到它进仓库（bug 真因 A：
+      // 登记闸门只在非 demo 分支执行，demo 下整段跳过）。DEMO 返回的是预置轮毂，
+      // 形状校验通过即视为可用；被形状误杀才跳过。
+      if (kind === 'wheel' && !applied?.rejected) {
+        app.params.customWheelUrl = res.url;
+        app.params.rimPreset = 'custom';
+        await recordGeneratedWheel({ url: res.url, files, name: title || '我的轮毂' });
+        notifyWheelAdded(res.url, title || '我的轮毂');
+        u.reset?.();
+        panel?.syncMyWheels?.();
+      }
     } else {
       // res.parts：后端生成后自动 BANG 拆解的结果（没有则为 null）
       const applied = await applyResult(kind, res.url, res.parts);
@@ -2041,6 +2073,7 @@ async function runGenerate({ kind, files, images, resumeJobId, resumeKey, resume
           app.params.customWheelUrl = res.url;
           app.params.rimPreset = 'custom';
           await recordGeneratedWheel({ url: res.url, files, name: title || '我的轮毂' });
+          notifyWheelAdded(res.url, title || '我的轮毂');
         }
         u.reset?.();
         panel?.syncMyWheels?.();
