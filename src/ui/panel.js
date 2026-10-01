@@ -13,7 +13,6 @@
 import { ET_REF } from '../tuning/wheelRig.js';
 import { createColorWheel } from './colorWheel.js';
 import { renderMyWheels } from './myWheels.js';
-import { createCommunity } from './community.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -790,7 +789,6 @@ export function createPanel(app, mount) {
     ['wheels', '轮毂'],
     ['paint', '车漆'],
     ['scene', '场景'],
-    ['community', '社区'],
   ];
   const tabBodies = {};
   const tabButtons = {};

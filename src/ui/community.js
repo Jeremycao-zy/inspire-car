@@ -3,14 +3,17 @@
  *
  * 设计要点：
  *   · 纯原生 ESM + DOM，无框架，复用项目既有的 authFetch / showAuthOverlay。
+ *   · 拆成两个平级视图：createForum（论坛）与 createNews（资讯），
+ *     分别挂到车库顶层导航的「论坛」「资讯」分页里，不再有内部 subtab 切换条。
  *   · 论坛：列表 → 详情（主题 + 回复 + 评论框）；未登录发帖/评论引导登录。
- *   · 资讯：三个筛选 chip（资讯/赛事/活动）；进入即拉取，并每 30s 轮询刷新
- *     （切走或切到论坛时 clearInterval），按发布时间倒序，显示「最近更新 HH:MM」。
+ *     首次 activate 拉取一次即可（发帖/回复后主动重载），不做轮询。
+ *   · 资讯：三个筛选 chip（资讯/赛事/活动）；activate 时拉取并每 30s 轮询刷新，
+ *     deactivate 时 clearInterval，按发布时间倒序，显示「最近更新 HH:MM」。
  *   · 所有用户生成内容一律用 textContent 渲染，杜绝 XSS。
  *
- * 接入方式：panel.js 在 TUNING STUDIO 侧栏新增「社区」Tab，
- * 调用 createCommunity({ mount }) 把视图挂到对应 tab-body，并用
- * 返回的 { activate, deactivate } 在切 Tab 时启停（含轮询生命周期）。
+ * 接入方式：garage.js 的顶层分页导航在首次切到对应页时惰性调用
+ * createForum({ mount }) / createNews({ mount })，并用返回的
+ * { activate, deactivate } 在切页 / 离开车库时启停（含轮询生命周期）。
  */
 
 import { authFetch, isLoggedIn } from '../auth.js';
@@ -153,65 +156,73 @@ function buildModal({ title, bodyNodes, footerNodes }) {
 /* ----------------------------- 主入口 ----------------------------- */
 
 /**
- * 构建社区视图并挂到 mount 容器。
- * @param {{mount: HTMLElement}} opts
- * @returns {{activate:Function, deactivate:Function}}
+ * 构建社区子视图（论坛 或 资讯）并挂到 mount 容器。
+ *
+ * 两个视图共用同一份实现：view === 'forum' 时只建论坛区（无资讯区、无 subtab），
+ * view === 'news' 时只建资讯区（含分类 chip、列表、「最近更新 HH:MM」戳）。
+ *
+ * @param {{mount: HTMLElement, view: 'forum'|'news'}} opts
+ * @returns {{root: HTMLElement, activate: Function, deactivate: Function}}
  */
-export function createCommunity({ mount }) {
-  let currentSub = 'forum'; // 'forum' | 'news'
+function createCommunityView({ mount, view } = {}) {
+  const isForum = view === 'forum';
   let currentForumCat = '';
   let currentNewsCat = '';
   let newsTimer = null;
   let lastUpdated = null;
+  let forumLoaded = false; // 论坛只首次进入时拉一次，切回来不重复请求
 
-  /* ---- 顶层结构 ---- */
-  const forumBtn = el('button', { class: 'cm-subtab active', onclick: () => setSub('forum') }, '论坛');
-  const newsBtn = el('button', { class: 'cm-subtab', onclick: () => setSub('news') }, '资讯');
-  const subtabs = el('div', { class: 'cm-subtabs' }, forumBtn, newsBtn);
+  /* ---- 论坛区（仅 forum 视图构建） ---- */
+  let forumChips = null;
+  let forumListEl = null;
+  let forumDetailEl = null;
+  let forumSection = null;
 
-  /* ---- 论坛区 ---- */
-  const postBtn = el('button', { class: 'cm-btn-primary', onclick: openPostModal }, '发帖');
-  const forumChips = el('div', { class: 'cm-chips' });
-  const forumListEl = el('div', { class: 'cm-list' });
-  const forumDetailEl = el('div', { class: 'cm-detail cm-hidden' });
-  const forumSection = el(
-    'div',
-    { class: 'cm-section' },
-    el(
+  if (isForum) {
+    const postBtn = el('button', { class: 'cm-btn-primary', onclick: openPostModal }, '发帖');
+    forumChips = el('div', { class: 'cm-chips' });
+    forumListEl = el('div', { class: 'cm-list' });
+    forumDetailEl = el('div', { class: 'cm-detail cm-hidden' });
+    forumSection = el(
       'div',
-      { class: 'cm-toolbar' },
-      el('div', { class: 'cm-toolbar__title' }, '论坛'),
-      postBtn
-    ),
-    forumChips,
-    forumListEl,
-    forumDetailEl
-  );
+      { class: 'cm-section' },
+      el(
+        'div',
+        { class: 'cm-toolbar' },
+        el('div', { class: 'cm-toolbar__title' }, '论坛'),
+        postBtn
+      ),
+      forumChips,
+      forumListEl,
+      forumDetailEl
+    );
+  }
 
-  /* ---- 资讯区 ---- */
-  const newsStamp = el('span', { class: 'cm-news__stamp' }, '');
-  const newsChips = el('div', { class: 'cm-chips' });
-  const newsListEl = el('div', { class: 'cm-list' });
-  const newsSection = el(
-    'div',
-    { class: 'cm-section cm-hidden' },
-    el(
+  /* ---- 资讯区（仅 news 视图构建） ---- */
+  let newsStamp = null;
+  let newsChips = null;
+  let newsListEl = null;
+  let newsSection = null;
+
+  if (!isForum) {
+    newsStamp = el('span', { class: 'cm-news__stamp' }, '');
+    newsChips = el('div', { class: 'cm-chips' });
+    newsListEl = el('div', { class: 'cm-list' });
+    newsSection = el(
       'div',
-      { class: 'cm-toolbar' },
-      el('div', { class: 'cm-toolbar__title' }, '资讯'),
-      el('div', { class: 'cm-news__updated' }, '最近更新 ', newsStamp)
-    ),
-    newsChips,
-    newsListEl
-  );
+      { class: 'cm-section' },
+      el(
+        'div',
+        { class: 'cm-toolbar' },
+        el('div', { class: 'cm-toolbar__title' }, '资讯'),
+        el('div', { class: 'cm-news__updated' }, '最近更新 ', newsStamp)
+      ),
+      newsChips,
+      newsListEl
+    );
+  }
 
-  const root = el(
-    'div',
-    { class: 'community' },
-    subtabs,
-    forumSection,
-    newsSection
-  );
+  const root = el('div', { class: 'community' }, isForum ? forumSection : newsSection);
   mount.appendChild(root);
 
   /* ---- 筛选 chip 渲染 ---- */
@@ -251,8 +262,8 @@ export function createCommunity({ mount }) {
       newsChips.appendChild(chip);
     }
   }
-  renderForumChips();
-  renderNewsChips();
+  if (isForum) renderForumChips();
+  else renderNewsChips();
 
   /* ---- 论坛：列表 ---- */
   async function loadForum() {
@@ -515,28 +526,41 @@ export function createCommunity({ mount }) {
     }
   }
 
-  /* ---- 子视图切换 ---- */
-  function setSub(sub) {
-    currentSub = sub;
-    forumBtn.classList.toggle('active', sub === 'forum');
-    newsBtn.classList.toggle('active', sub === 'news');
-    forumSection.classList.toggle('cm-hidden', sub !== 'forum');
-    newsSection.classList.toggle('cm-hidden', sub !== 'news');
-    if (sub === 'news') {
-      startNewsPolling();
-    } else {
-      stopNewsPolling();
-      loadForum();
+  /* ---- 生命周期（由车库分页导航 setPage / hide / pause 调用） ---- */
+  function activate() {
+    if (isForum) {
+      // 首次进来拉一次就够；发帖/回复会主动重载，不做轮询
+      if (!forumLoaded) {
+        forumLoaded = true;
+        loadForum();
+      }
+      return;
     }
+    startNewsPolling();
   }
 
-  /* ---- 生命周期（由 panel 的 setTab 调用） ---- */
-  function activate() {
-    setSub(currentSub);
-  }
   function deactivate() {
+    // 论坛无定时器，空实现保留语义；资讯必须停轮询
     stopNewsPolling();
   }
 
-  return { activate, deactivate };
+  return { root, activate, deactivate };
+}
+
+/**
+ * 论坛视图（车库顶层「论坛」分页）。
+ * @param {{mount: HTMLElement}} opts
+ * @returns {{activate: Function, deactivate: Function}}
+ */
+export function createForum({ mount } = {}) {
+  return createCommunityView({ mount, view: 'forum' });
+}
+
+/**
+ * 资讯视图（车库顶层「资讯」分页，含分类 chip 与 30s 轮询）。
+ * @param {{mount: HTMLElement}} opts
+ * @returns {{activate: Function, deactivate: Function}}
+ */
+export function createNews({ mount } = {}) {
+  return createCommunityView({ mount, view: 'news' });
 }
