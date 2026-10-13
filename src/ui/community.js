@@ -446,7 +446,7 @@ function createCommunityView({ mount, view } = {}) {
     /* 评论框 */
     const ta = el('textarea', {
       class: 'cm-textarea',
-      placeholder: '写下你的评论…（登录后发表）',
+      placeholder: isLoggedIn() ? '写下你的评论…' : '写下你的评论…（登录后发表）',
       rows: '3',
     });
     const err = el('div', { class: 'cm-comment__err' });
