@@ -18,6 +18,7 @@
 
 import { authFetch, isLoggedIn } from '../auth.js';
 import { showAuthOverlay } from './auth.js';
+import { shrinkImage } from '../api/generate.js';
 
 /* ----------------------------- DOM 小工具 ----------------------------- */
 
@@ -117,6 +118,49 @@ async function apiPost(url, body) {
     /* ignore */
   }
   return { ok: res.ok, status: res.status, data };
+}
+
+/** 上传论坛媒体（图片/视频）-> {ok, status, data:{url, kind}} */
+async function apiUploadForumMedia(dataUrl, ext) {
+  const res = await authFetch('/api/forum/media', { method: 'POST', body: JSON.stringify({ dataUrl, ext }) });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    /* ignore */
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/** 读文件为 dataURL */
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+/** 取文件扩展名（归一 jpeg->jpg） */
+function mediaExtOf(name, type, fallback) {
+  const m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  if (m) return m[1] === 'jpeg' ? 'jpg' : m[1];
+  if (type && type.indexOf('/') >= 0) {
+    const e = type.split('/')[1].replace('jpeg', 'jpg');
+    if (e) return e;
+  }
+  return fallback;
+}
+
+/** 预处理待上传媒体：图片压缩（长边<=1600 JPEG），视频原样读 dataURL */
+async function prepareMediaFile(file) {
+  const isVideo = String(file.type || '').indexOf('video/') === 0;
+  if (isVideo) {
+    return { dataUrl: await readFileAsDataURL(file), type: 'video', ext: mediaExtOf(file.name, file.type, 'mp4') };
+  }
+  const dataUrl = await shrinkImage(file, 1600, 0.82);
+  return { dataUrl, type: 'image', ext: mediaExtOf(file.name, file.type, 'jpg') };
 }
 
 /** 未登录则弹登录浮层，登录成功（或已登录）后执行 then */
@@ -288,10 +332,26 @@ function createCommunityView({ mount, view } = {}) {
   function renderTopicCard(t) {
     const card = el('div', { class: 'cm-card cm-topic' });
     card.appendChild(el('div', { class: 'cm-topic__title' }, t.title || '(无标题)'));
+    const media = Array.isArray(t.media) ? t.media : [];
+    if (media.length) {
+      const strip = el('div', { class: 'cm-topic__media' });
+      media.slice(0, 3).forEach((m) => {
+        strip.appendChild(
+          m.type === 'video'
+            ? el('video', { class: 'cm-topic__media-thumb', src: m.url, muted: true, playsinline: '' })
+            : el('img', { class: 'cm-topic__media-thumb', src: m.url, alt: '', loading: 'lazy' })
+        );
+      });
+      if (media.length > 3) strip.appendChild(el('div', { class: 'cm-topic__media-more' }, `+${media.length - 3}`));
+      card.appendChild(strip);
+    }
     const meta = el('div', { class: 'cm-topic__meta' });
     meta.appendChild(el('span', { class: `cm-tag cm-tag--${t.category}` }, forumCatLabel(t.category)));
     meta.appendChild(el('span', { class: 'cm-meta__author' }, `@${t.username || '匿名'}`));
     meta.appendChild(el('span', { class: 'cm-meta__time' }, relativeTime(t.createdAt)));
+    if (t.location && Number.isFinite(Number(t.location.lat))) {
+      meta.appendChild(el('span', { class: 'cm-meta__loc' }, '📍'));
+    }
     meta.appendChild(el('span', { class: 'cm-meta__reply' }, `💬 ${t.replyCount || 0}`));
     card.appendChild(meta);
     card.addEventListener('click', () => openTopic(t.id));
@@ -334,6 +394,30 @@ function createCommunityView({ mount, view } = {}) {
     );
     const body = el('div', { class: 'cm-detail__body' }, topic.body || '');
 
+    /* 定位信息 */
+    let locBox = null;
+    if (topic.location && Number.isFinite(Number(topic.location.lat))) {
+      locBox = el(
+        'div',
+        { class: 'cm-detail__loc' },
+        `📍 发布位置 ${Number(topic.location.lat).toFixed(4)}, ${Number(topic.location.lng).toFixed(4)}`
+      );
+    }
+    /* 媒体九宫格：图片 + 视频（video 带控件，移动端可播放） */
+    let mediaBox = null;
+    const media = Array.isArray(topic.media) ? topic.media : [];
+    if (media.length) {
+      const grid = el('div', { class: 'cm-detail__media' });
+      media.forEach((m) => {
+        grid.appendChild(
+          m.type === 'video'
+            ? el('video', { class: 'cm-detail__video', src: m.url, controls: true, playsinline: '' })
+            : el('img', { class: 'cm-detail__img', src: m.url, alt: '', loading: 'lazy' })
+        );
+      });
+      mediaBox = grid;
+    }
+
     const repliesTitle = el(
       'div',
       { class: 'cm-replies__title' },
@@ -371,7 +455,7 @@ function createCommunityView({ mount, view } = {}) {
     const commentBox = el('div', { class: 'cm-comment' }, ta, err, sendBtn);
 
     forumDetailEl.appendChild(
-      el('div', { class: 'cm-detail__inner' }, back, head, body, repliesTitle, repliesBox, commentBox)
+      el('div', { class: 'cm-detail__inner' }, back, head, locBox, mediaBox, body, repliesTitle, repliesBox, commentBox)
     );
   }
 
@@ -426,6 +510,76 @@ function createCommunityView({ mount, view } = {}) {
       placeholder: '说点什么…（必填）',
       rows: '6',
     });
+
+    /* 媒体（图片/视频）：移动端点击唤起相册/相机 */
+    const picked = []; // { dataUrl, type, ext }
+    const fileInput = el('input', { type: 'file', accept: 'image/*,video/*', multiple: true, style: 'display:none' });
+    const previewBox = el('div', { class: 'cm-media-preview' });
+    const addMediaBtn = el('button', { class: 'cm-media-add', type: 'button', onclick: () => fileInput.click() }, '📷 添加图片 / 视频');
+    const mediaBox = el('div', { class: 'cm-media' }, addMediaBtn, previewBox, fileInput);
+    function renderPreviews() {
+      clear(previewBox);
+      picked.forEach((m, i) => {
+        const thumb = m.type === 'video'
+          ? el('video', { class: 'cm-media__thumb', src: m.dataUrl, muted: true, playsinline: '' })
+          : el('img', { class: 'cm-media__thumb', src: m.dataUrl, alt: '' });
+        const rm = el('button', { class: 'cm-media__rm', type: 'button', title: '移除', onclick: () => { picked.splice(i, 1); renderPreviews(); } }, '×');
+        previewBox.appendChild(el('div', { class: 'cm-media__item' }, thumb, rm));
+      });
+    }
+    fileInput.addEventListener('change', async () => {
+      const files = Array.from(fileInput.files || []);
+      for (const f of files) {
+        if (picked.length >= 9) break;
+        try {
+          const prep = await prepareMediaFile(f);
+          picked.push({ dataUrl: prep.dataUrl, type: prep.type, ext: prep.ext });
+        } catch {
+          /* 跳过读取失败的文件 */
+        }
+      }
+      fileInput.value = '';
+      renderPreviews();
+    });
+
+    /* 定位：触发位置权限 */
+    let loc = null;
+    const locBtn = el('button', { class: 'cm-loc-btn', type: 'button' }, '📍 添加位置');
+    const locText = el('span', { class: 'cm-loc-text' }, '');
+    function renderLoc() {
+      locText.textContent = '';
+      if (loc) {
+        locText.textContent = `📍 已定位 ${loc.lat.toFixed(3)}, ${loc.lng.toFixed(3)}`;
+        locBtn.textContent = '移除位置';
+      } else {
+        locBtn.textContent = '📍 添加位置';
+      }
+    }
+    locBtn.addEventListener('click', () => {
+      if (loc) {
+        loc = null;
+        renderLoc();
+        return;
+      }
+      if (!navigator.geolocation) {
+        locText.textContent = '当前设备不支持定位';
+        return;
+      }
+      locBtn.textContent = '定位中…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+          renderLoc();
+        },
+        (err) => {
+          locText.textContent = '定位失败：' + (err && err.message ? err.message : '已拒绝或不可用');
+          locBtn.textContent = '📍 重试定位';
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+    const locBox = el('div', { class: 'cm-loc' }, locBtn, locText);
+
     const errEl = el('div', { class: 'cm-modal__err' });
     const submit = el('button', { class: 'cm-btn-primary' }, '发布');
 
@@ -438,10 +592,26 @@ function createCommunityView({ mount, view } = {}) {
       }
       submit.disabled = true;
       submit.textContent = '发布中…';
+      errEl.textContent = '';
+      /* 先逐张上传媒体，拿到站内 URL */
+      const media = [];
+      for (let i = 0; i < picked.length; i++) {
+        errEl.textContent = `上传媒体 ${i + 1}/${picked.length}…`;
+        const up = await apiUploadForumMedia(picked[i].dataUrl, picked[i].ext);
+        if (!up.ok) {
+          errEl.textContent = up.data?.error || '媒体上传失败';
+          submit.disabled = false;
+          submit.textContent = '发布';
+          return;
+        }
+        media.push({ type: up.data?.kind || picked[i].type, url: up.data?.url });
+      }
       const { ok, status, data } = await apiPost('/api/forum/topics', {
         title,
         body: bodyText,
         category: catSelect.value,
+        media,
+        location: loc || undefined,
       });
       if (status === 401) {
         overlay.remove();
@@ -464,7 +634,7 @@ function createCommunityView({ mount, view } = {}) {
 
     const overlay = buildModal({
       title: '发帖',
-      bodyNodes: [titleInput, catSelect, bodyArea, errEl],
+      bodyNodes: [titleInput, catSelect, bodyArea, mediaBox, locBox, errEl],
       footerNodes: [
         el('button', { class: 'cm-btn-ghost', onclick: () => overlay.remove() }, '取消'),
         submit,

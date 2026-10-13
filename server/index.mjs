@@ -45,6 +45,7 @@ import { createStaticServer, sendFileCachable } from './static.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const CACHE_DIR = path.join(ROOT, '.cache', 'models');
+const UPLOADS_DIR = path.join(ROOT, '.cache', 'uploads', 'forum');
 const DIST_DIR = path.join(ROOT, 'dist');
 
 /** 监听地址：默认只监听回环，保持本地开发行为不变；容器/云平台需要 HOST=0.0.0.0 */
@@ -1479,6 +1480,79 @@ function appendIndex(record) {
 
 /* ------------------------- 静态资源 ------------------------- */
 
+/* ---- 论坛媒体上传（图片/视频，base64 dataURL -> 落盘）---- */
+const MEDIA_TYPES = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4',
+};
+const MEDIA_IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+const MEDIA_VID_EXT = ['mp4', 'webm', 'mov', 'm4v'];
+
+async function handleForumMediaUpload(req, res) {
+  const uid = await authUid(req);
+  if (!uid) {
+    sendJson(res, 401, { error: '请先登录' });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+    return;
+  }
+  const dataUrl = String(body?.dataUrl || '');
+  const ext = (String(body?.ext || '').toLowerCase().match(/^[a-z0-9]+$/) || [''])[0];
+  const kind = MEDIA_IMG_EXT.includes(ext) ? 'image' : MEDIA_VID_EXT.includes(ext) ? 'video' : '';
+  if (!dataUrl || !kind) {
+    sendJson(res, 400, { error: '仅支持图片(jpg/png/webp/gif)或视频(mp4/webm/mov)' });
+    return;
+  }
+  const b64 = dataUrl.includes(',') ? dataUrl.slice(dataUrl.indexOf(',') + 1) : dataUrl;
+  let buf;
+  try {
+    buf = Buffer.from(b64, 'base64');
+  } catch {
+    sendJson(res, 400, { error: 'base64 解析失败' });
+    return;
+  }
+  const MAX = kind === 'image' ? 8 * 1024 * 1024 : 30 * 1024 * 1024;
+  if (!buf.length || buf.length > MAX) {
+    sendJson(res, 400, { error: `文件过大（${kind === 'image' ? '图片' : '视频'}上限 ${Math.round(MAX / 1048576)}MB）` });
+    return;
+  }
+  await fsp.mkdir(UPLOADS_DIR, { recursive: true });
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const rand = crypto.randomBytes(4).toString('hex');
+  const name = `fm-${ts}-${rand}.${ext === 'jpeg' ? 'jpg' : ext}`;
+  await fsp.writeFile(path.join(UPLOADS_DIR, name), buf);
+  sendJson(res, 201, { ok: true, url: `/api/media/${name}`, kind });
+}
+
+/* ---- 论坛媒体服务（.cache/uploads/forum，支持 Range/缓存/CORS，视频可拖拽）---- */
+async function handleMedia(req, res, name) {
+  const safe = path.basename(name);
+  const ext = safe.toLowerCase().split('.').pop() || '';
+  const ct = MEDIA_TYPES[ext];
+  if (!ct) {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+  const file = path.join(UPLOADS_DIR, safe);
+  try {
+    const st = await fsp.stat(file);
+    await sendFileCachable(req, res, file, st, {
+      cacheControl: 'public, max-age=31536000, immutable',
+      contentType: ct,
+      cors: '*',
+    });
+  } catch {
+    sendJson(res, 404, { error: 'not found' });
+  }
+}
+
 async function handleAsset(req, res, name) {
   const safe = path.basename(name);
   // 只允许取 GLB，避免把 usage.json / index.json 当模型下发
@@ -2077,6 +2151,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (u.pathname === '/api/forum/media' && req.method === 'POST') {
+    await handleForumMediaUpload(req, res);
+    return;
+  }
+
+  if (u.pathname.startsWith('/api/media/')) {
+    await handleMedia(req, res, u.pathname.slice('/api/media/'.length));
+    return;
+  }
+
   /* ---- 轮毂仓库：账户持久化的轮毂索引 ---- */
   if (u.pathname === '/api/wheels' && req.method === 'GET') {
     const owner = wheels.resolveWheelOwner(req);
@@ -2250,6 +2334,8 @@ const server = http.createServer(async (req, res) => {
         title: body?.title,
         body: body?.body,
         category: body?.category,
+        media: body?.media,
+        location: body?.location,
       });
       sendJson(res, 201, { ok: true, topic });
     } catch (e) {

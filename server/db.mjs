@@ -194,9 +194,13 @@ async function migrate() {
       body        TEXT NOT NULL,
       category    TEXT NOT NULL DEFAULT 'chat',
       reply_count INT  NOT NULL DEFAULT 0,
+      media       TEXT,
+      location    TEXT,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await pool.query('ALTER TABLE forum_topics ADD COLUMN IF NOT EXISTS media TEXT');
+  await pool.query('ALTER TABLE forum_topics ADD COLUMN IF NOT EXISTS location TEXT');
   await pool.query(
     'CREATE INDEX IF NOT EXISTS forum_topics_created ON forum_topics (created_at DESC)'
   );
@@ -1050,7 +1054,7 @@ export async function listTopics({ category, page = 1, pageSize = 20 } = {}) {
     const total = countR.rows[0].c;
     const offset = (safePage - 1) * safeSize;
     const rows = await pool.query(
-      `SELECT t.id, t.uid, t.title, t.body, t.category, t.reply_count, t.created_at, u.username
+      `SELECT t.id, t.uid, t.title, t.body, t.category, t.media, t.location, t.reply_count, t.created_at, u.username
        FROM forum_topics t LEFT JOIN users u ON u.id = t.uid
        ${where}
        ORDER BY t.created_at DESC
@@ -1064,6 +1068,8 @@ export async function listTopics({ category, page = 1, pageSize = 20 } = {}) {
       title: r.title,
       body: r.body,
       category: r.category,
+      media: parseJsonField(r.media),
+      location: parseJsonField(r.location),
       replyCount: Number(r.reply_count || 0),
       createdAt: iso(r.created_at),
     }));
@@ -1086,16 +1092,47 @@ export async function listTopics({ category, page = 1, pageSize = 20 } = {}) {
   return { total, page: safePage, pageSize: safeSize, topics };
 }
 
+/* ---------- 论坛 媒体 / 定位 辅助 ---------- */
+function parseJsonField(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'object') return v;
+  try { return JSON.parse(v); } catch { return null; }
+}
+/** 规范化媒体数组：[{type:'image'|'video', url}]，<=9 条，url 限站内 /api/media/ */
+function normalizeMedia(media) {
+  if (!Array.isArray(media)) return [];
+  const out = [];
+  for (const m of media) {
+    if (out.length >= 9) break;
+    const type = m && m.type === 'video' ? 'video' : 'image';
+    const url = String((m && m.url) || '');
+    if (!/^\/api\/media\/[A-Za-z0-9._-]+$/.test(url)) continue;
+    out.push({ type, url });
+  }
+  return out;
+}
+/** 规范化定位 {lat,lng,accuracy?}，越界丢弃 */
+function normalizeLocation(location) {
+  const lat = Number(location && location.lat);
+  const lng = Number(location && location.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  const acc = Number(location && location.accuracy);
+  return { lat, lng, accuracy: Number.isFinite(acc) ? acc : undefined };
+}
+
 /**
  * 创建论坛主题。
- * @param {{uid:string, title:string, body:string, category?:string}} record
+ * @param {{uid:string, title:string, body:string, category?:string, media?:Array, location?:object}} record
  * @returns {Promise<object>} 新建的主题（含 id / username / createdAt）
  */
-export async function createTopic({ uid, title, body, category = 'chat' } = {}) {
+export async function createTopic({ uid, title, body, category = 'chat', media, location } = {}) {
   uid = String(uid || '');
   title = String(title || '').trim();
   body = String(body || '').trim();
   category = String(category || 'chat');
+  const mediaArr = normalizeMedia(media);
+  const loc = normalizeLocation(location);
   // 白名单校验：仅允许 改装交流(chat) / 求助(help) / 展示(show)，
   // 与前端 FORUM_CATS、forumCatLabel 保持一致；越界值直接 400，不落库。
   if (!FORUM_TOPIC_CATS.includes(category)) throw new Error('非法的帖子分类');
@@ -1104,10 +1141,10 @@ export async function createTopic({ uid, title, body, category = 'chat' } = {}) 
   if (!body) throw new Error('正文不能为空');
   if (dbMode === 'sql') {
     const r = await pool.query(
-      `INSERT INTO forum_topics (uid, title, body, category)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, uid, title, body, category, reply_count, created_at`,
-      [uid, title, body, category]
+      `INSERT INTO forum_topics (uid, title, body, category, media, location)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, uid, title, body, category, media, location, reply_count, created_at`,
+      [uid, title, body, category, mediaArr.length ? JSON.stringify(mediaArr) : null, loc ? JSON.stringify(loc) : null]
     );
     const row = r.rows[0];
     const user = await findUserById(uid);
@@ -1118,6 +1155,8 @@ export async function createTopic({ uid, title, body, category = 'chat' } = {}) 
       title: row.title,
       body: row.body,
       category: row.category,
+      media: parseJsonField(row.media),
+      location: parseJsonField(row.location),
       replyCount: Number(row.reply_count || 0),
       createdAt: iso(row.created_at),
     };
@@ -1130,6 +1169,8 @@ export async function createTopic({ uid, title, body, category = 'chat' } = {}) 
     title,
     body,
     category,
+    media: mediaArr,
+    location: loc,
     replyCount: 0,
     createdAt: new Date().toISOString(),
   };
@@ -1149,7 +1190,7 @@ export async function getTopic(id) {
   if (!id) return null;
   if (dbMode === 'sql') {
     const tr = await pool.query(
-      `SELECT t.id, t.uid, t.title, t.body, t.category, t.reply_count, t.created_at, u.username
+      `SELECT t.id, t.uid, t.title, t.body, t.category, t.media, t.location, t.reply_count, t.created_at, u.username
        FROM forum_topics t LEFT JOIN users u ON u.id = t.uid
        WHERE t.id=$1`,
       [id]
@@ -1177,6 +1218,8 @@ export async function getTopic(id) {
       title: trow.title,
       body: trow.body,
       category: trow.category,
+      media: parseJsonField(trow.media),
+      location: parseJsonField(trow.location),
       replyCount: Number(trow.reply_count || 0),
       createdAt: iso(trow.created_at),
       replies,
@@ -1209,6 +1252,8 @@ export async function getTopic(id) {
     title: raw.title,
     body: raw.body,
     category: raw.category,
+    media: raw.media,
+    location: raw.location,
     replyCount: raw.replyCount || 0,
     createdAt: raw.createdAt,
     replies,

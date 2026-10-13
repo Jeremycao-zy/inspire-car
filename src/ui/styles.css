@@ -2002,6 +2002,136 @@ input[type='range'] {
   line-height: 1.35;
   color: var(--text);
 }
+/* ---- 论坛：发帖媒体选择 + 定位 ---- */
+.cm-media { margin-top: 4px; }
+.cm-media-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px dashed rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.06);
+  color: var(--neon-cyan, #00f0ff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cm-media-add:hover { background: rgba(0, 240, 255, 0.12); }
+.cm-media-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.cm-media__item { position: relative; }
+.cm-media__thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+  background: #0c0a1e;
+}
+.cm-media__rm {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 61, 106, 0.9);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cm-loc { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cm-loc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 92, 255, 0.5);
+  background: rgba(126, 92, 255, 0.1);
+  color: #b9a6ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cm-loc-btn:hover { background: rgba(126, 92, 255, 0.18); }
+.cm-loc-text { font-size: 12px; color: var(--muted, #9a94c7); }
+
+/* ---- 论坛：列表卡媒体缩略 + 定位徽章 ---- */
+.cm-topic__media {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+.cm-topic__media-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: block;
+  background: #0c0a1e;
+}
+.cm-topic__media-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted, #9a94c7);
+  font-size: 13px;
+  font-weight: 700;
+}
+.cm-meta__loc { margin-left: 2px; }
+
+/* ---- 论坛：详情媒体九宫格 + 定位 ---- */
+.cm-detail__loc {
+  font-size: 12px;
+  color: #b9a6ff;
+  background: rgba(126, 92, 255, 0.1);
+  border: 1px solid rgba(126, 92, 255, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  margin: 10px 0;
+  display: inline-block;
+}
+.cm-detail__media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.cm-detail__img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+  background: #0c0a1e;
+}
+.cm-detail__video {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+  background: #0c0a1e;
+  max-height: 60vh;
+}
 .cm-detail__body {
   white-space: pre-wrap;
   word-break: break-word;
