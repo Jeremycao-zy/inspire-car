@@ -927,6 +927,14 @@ export function mountGarage({ onEnter, mount } = {}) {
         }
         onEnter?.(null);
       },
+      onNewWheel() {
+        try {
+          sessionStorage.removeItem('pending-wheel-url');
+        } catch (e) {
+          /* ignore */
+        }
+        onEnter?.(null);
+      },
     });
     pageWheels.appendChild(warehouse.el);
     return warehouse;
