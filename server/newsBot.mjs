@@ -1,29 +1,29 @@
 /**
  * newsBot.mjs — 每日前沿汽车资讯自动搜集 + 生成 + 更新资讯板块
  *
- * 目标：无需人工干预，每天把实时前沿汽车资讯抓取下来、改写成中文资讯，
- *       写进资讯板块（GET /api/news 已有前端每 30s 轮询消费）。
+ * 目标：无需人工干预，把实时汽车资讯抓取下来、改写成中文资讯，写进资讯板块
+ *       （GET /api/news 已有前端每 30s 轮询消费）。
  *
  * 管线：
- *   1) 抓取：Google News RSS（中文，按 改装资讯/赛事/活动 三类，每类多个查询词兜底）。
- *      抓取走「有 HTTPS_PROXY 走代理、无则直连」，兼顾本机/容器/公司网。
- *   2) 生成：优先用 LLM（复用 chat.mjs 的 getChatKey → qwen-plus 等）改写成
- *      {title, summary, body}；无 key 或 LLM 失败则退化为模板（原文标题+摘要），绝不白屏。
- *   3) 去重：① .cache/news/seen-articles.json（链接级，本机 JSON 模式持久）；
- *              ② 扫描库内既有资讯正文里的原文链接（PG/容器 .cache 易失也能挡住重复）。
+ *   1) 抓取：Carscoops RSS（汽车资讯，国内外均可直连，不被墙）。
+ *      抓取走「有 HTTPS_PROXY 用 HttpsProxyAgent、无则直连」，兼顾本机/容器/公司网。
+ *   2) 生成：用 LLM（复用 chat.mjs 的 getChatKey → qwen-plus 等）把英文资讯
+ *      改写成中文 {title, summary, body} 并按内容归类 category(news/race/event)；
+ *      无 key 或 LLM 失败则退化为模板（原文标题+摘要），绝不白屏。
+ *   3) 去重：.cache/news/seen-articles.json（链接级）+ 扫描库内既有资讯正文里的
+ *      原文链接标记（PG/容器 .cache 易失也能挡住重复）。
  *   4) 落库：db.createNews({ title, summary, body, category, source, publishedAt })。
  *
- * 调度：startScheduler() 启动一个每日定时器；冷启动时若库内最新资讯已超过 ~20h
- *       才补跑一次（避免频繁重启反复抓同一批）。
+ * 调度：每天 08:00 与 20:00（本地时间）各更新一次；冷启动（重启/部署）也会补跑一次。
  *
  * 环境变量（均可选）：
  *   NEWS_BOT_ENABLED        '0' 关闭（默认开）
- *   NEWS_BOT_INTERVAL_MS    每日间隔（默认 86400000）
- *   NEWS_BOT_PER_CATEGORY   每类每次最多入库几条（默认 4）
- *   NEWS_BOT_INITIAL_DELAY  冷启动补跑延迟 ms（默认 20000）
+ *   NEWS_BOT_PER_RUN        每次最多入库几条（默认 15）
+ *   NEWS_BOT_INITIAL_DELAY  冷启动补跑延迟 ms（默认 15000）
  */
 
 import https from 'node:https';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,22 +43,19 @@ const PROXY =
   process.env.http_proxy ||
   '';
 const ENABLED = (process.env.NEWS_BOT_ENABLED || '1') !== '0';
-const DAILY_MS = Number(process.env.NEWS_BOT_INTERVAL_MS || 24 * 60 * 60 * 1000);
-const PER_CATEGORY = Number(process.env.NEWS_BOT_PER_CATEGORY || 4);
-const INITIAL_DELAY = Number(process.env.NEWS_BOT_INITIAL_DELAY || 20000);
-const FRESH_WINDOW_MS = 20 * 60 * 60 * 1000; // 最新资讯超过 20h 才在冷启动补跑
-const LINK_MARK = '—— 原文：'; // 正文里标记原文链接，供跨重启去重（正文不在卡片上展示）
+const PER_RUN = Number(process.env.NEWS_BOT_PER_RUN || 15);
+const INITIAL_DELAY = Number(process.env.NEWS_BOT_INITIAL_DELAY || 15000);
+const LINK_MARK = '—— 原文：'; // 正文里标记原文链接，供跨重启去重（正文不在卡片上渲染）
 
-/** 三类资讯 -> Google News RSS 查询词（按序尝试，命中足够即停） */
-const FEEDS = {
-  news: ['汽车改装', '改装车 轮毂', '新能源汽车 发布'],
-  race: ['赛车赛事', 'F1 方程式', '汽车 耐力赛'],
-  event: ['车展', '新车发布会', '车友会 活动'],
-};
+/** 每日更新时点（本地小时） */
+const NEWS_SLOT_HOURS = [8, 20];
 
-/* ------------------------- 代理感知 HTTP ------------------------- */
+/** 资讯源：Carscoops（汽车资讯，国内外可达）。可继续追加 {url, source}。 */
+const SOURCE_FEEDS = [{ url: 'https://www.carscoops.com/feed', source: 'Carscoops' }];
 
-function httpRequest(method, url, { headers = {}, body = null, timeoutMs = 20000 } = {}) {
+/* ------------------------- 代理感知 HTTP（支持跳转） ------------------------- */
+
+function httpRequest(method, url, { headers = {}, body = null, timeoutMs = 25000 } = {}, depth = 0) {
   return new Promise((resolve, reject) => {
     let u;
     try {
@@ -66,9 +63,10 @@ function httpRequest(method, url, { headers = {}, body = null, timeoutMs = 20000
     } catch (e) {
       return reject(e);
     }
+    const mod = u.protocol === 'http:' ? http : https;
     const opts = {
       hostname: u.hostname,
-      port: u.port || 443,
+      port: u.port || (u.protocol === 'http:' ? 80 : 443),
       path: u.pathname + u.search,
       method,
       headers: {
@@ -78,23 +76,25 @@ function httpRequest(method, url, { headers = {}, body = null, timeoutMs = 20000
       },
     };
     if (PROXY) opts.agent = new HttpsProxyAgent(PROXY);
-    const req = https.request(opts, (res) => {
+    const req = mod.request(opts, (res) => {
       let data = '';
       res.setEncoding('utf8');
       res.on('data', (c) => {
         data += c;
       });
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && depth < 4) {
+          const next = new URL(res.headers.location, url).href;
+          return httpRequest(method, next, { headers, body, timeoutMs }, depth + 1).then(resolve, reject);
+        }
+        resolve({ status: res.statusCode, body: data });
+      });
     });
     req.on('error', reject);
     req.setTimeout(timeoutMs, () => req.destroy(new Error('request timeout')));
     if (body) req.write(body);
     req.end();
   });
-}
-
-function rssUrl(query) {
-  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`;
 }
 
 /* ------------------------- RSS 解析 ------------------------- */
@@ -145,7 +145,7 @@ export function parseRss(xml) {
     const desc = stripHtml(stripCdata(tag(b, 'description'))).slice(0, 300);
     const title = cleanTitle(rawTitle, source);
     if (!title || !link) continue;
-    items.push({ title, link, pubDate, source: source || '网络', desc });
+    items.push({ title, link, pubDate, source: source || 'Carscoops', desc });
   }
   return items;
 }
@@ -210,19 +210,20 @@ export function templateArticle(item) {
   const title = item.title.length > 22 ? `${item.title.slice(0, 22)}…` : item.title;
   const summary = (item.desc || item.title).slice(0, 70);
   const body = `${item.desc || item.title}\n\n${LINK_MARK}${item.link}`.slice(0, 500);
-  return { title, summary, body };
+  return { title, summary, body, category: 'news' };
 }
 
-/** LLM 改写成中文资讯；失败回退模板 */
+/** LLM 改写成中文资讯（含归类 news/race/event）；失败回退模板 */
 export async function generateArticle(item) {
   const ak = getChatKey();
   if (ak) {
     const system =
-      '你是资深汽车资讯编辑，为「灵感改装 / Inspire Car」撰写简体中文汽车资讯，面向改装爱好者。';
+      '你是资深汽车资讯编辑，为「灵感改装 / Inspire Car」撰写简体中文汽车资讯，面向汽车爱好者。';
     const user =
       `把下面这条汽车新闻改写成一条中文资讯。只输出一个 JSON 对象（不要多余文字/代码块），` +
       `字段：title(≤16字，吸引人，去掉来源后缀)、summary(≤60字，一句话概括)、` +
-      `body(90-150字，2-3句话讲清看点，专业易懂)。\n\n` +
+      `body(90-150字，2-3句话讲清看点，专业易懂)、` +
+      `category(三选一，按内容判断：news=改装/新车/行业资讯，race=赛事/赛车/赛道，event=车展/发布会/活动)。\n\n` +
       `原始标题：${item.title}\n来源：${item.source}\n摘要：${item.desc || '无'}`;
     try {
       const payload = JSON.stringify({
@@ -241,10 +242,12 @@ export async function generateArticle(item) {
       if (r.status >= 200 && r.status < 300) {
         const obj = extractJson(JSON.parse(r.body)?.choices?.[0]?.message?.content);
         if (obj && obj.title) {
+          const cat = ['news', 'race', 'event'].includes(obj.category) ? obj.category : 'news';
           return {
             title: String(obj.title).slice(0, 40),
             summary: String(obj.summary || '').slice(0, 120),
             body: `${String(obj.body || obj.summary || '')}\n\n${LINK_MARK}${item.link}`.slice(0, 600),
+            category: cat,
           };
         }
       }
@@ -257,73 +260,90 @@ export async function generateArticle(item) {
 
 /* ------------------------- 主流程 ------------------------- */
 
-/** 跑一轮：抓取 + 生成 + 去重 + 落库。返回 {ok, added, errors} */
+/** 跑一轮：抓取 + 生成 + 去重 + 落库。返回 {ok, added, byCategory, errors} */
 export async function runOnce() {
   if (!ENABLED) return { ok: true, skipped: true, reason: 'disabled', added: 0 };
   const seen = loadSeen();
   const existingLinks = await existingLinkSet();
   let added = 0;
+  const byCategory = {};
   const errors = [];
 
-  for (const [category, queries] of Object.entries(FEEDS)) {
-    let count = 0;
-    for (const q of queries) {
-      if (count >= PER_CATEGORY) break;
-      let items = [];
-      try {
-        const r = await httpRequest('GET', rssUrl(q), { timeoutMs: 15000 });
-        if (r.status >= 200 && r.status < 300) items = parseRss(r.body);
-        else errors.push(`${category}/${q}: HTTP ${r.status}`);
-      } catch (e) {
-        errors.push(`${category}/${q}: ${e.message}`);
+  for (const feed of SOURCE_FEEDS) {
+    if (added >= PER_RUN) break;
+    let items = [];
+    try {
+      const r = await httpRequest('GET', feed.url, { timeoutMs: 20000 });
+      if (r.status >= 200 && r.status < 300) items = parseRss(r.body);
+      else errors.push(`${feed.source}: HTTP ${r.status}`);
+    } catch (e) {
+      errors.push(`${feed.source}: ${e.message}`);
+    }
+    for (const it of items) {
+      if (added >= PER_RUN) break;
+      const key = it.link || it.title;
+      if (seen[key] || existingLinks.has(it.link)) {
+        seen[key] = Date.now();
+        continue;
       }
-      for (const it of items) {
-        if (count >= PER_CATEGORY) break;
-        const key = it.link || it.title;
-        if (seen[key] || existingLinks.has(it.link)) {
-          seen[key] = Date.now();
-          continue;
-        }
-        try {
-          const art = await generateArticle(it);
-          await db.createNews({
-            title: art.title,
-            summary: art.summary,
-            body: art.body,
-            category,
-            source: it.source || '灵感改装编辑部',
-            publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : new Date().toISOString(),
-          });
-          seen[key] = Date.now();
-          existingLinks.add(it.link);
-          count += 1;
-          added += 1;
-        } catch (e) {
-          errors.push(`create「${it.title}」: ${e.message}`);
-        }
+      try {
+        const art = await generateArticle(it);
+        await db.createNews({
+          title: art.title,
+          summary: art.summary,
+          body: art.body,
+          category: art.category,
+          source: it.source || feed.source,
+          publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : new Date().toISOString(),
+        });
+        seen[key] = Date.now();
+        existingLinks.add(it.link);
+        byCategory[art.category] = (byCategory[art.category] || 0) + 1;
+        added += 1;
+      } catch (e) {
+        errors.push(`create「${it.title}」: ${e.message}`);
       }
     }
   }
   saveSeen(seen);
-  return { ok: true, added, errors };
+  return { ok: true, added, byCategory, errors };
 }
 
-/* ------------------------- 调度 ------------------------- */
+/* ------------------------- 调度（每天 08:00 / 20:00） ------------------------- */
 
-let timer = null;
+let slotTimer = null;
 let booted = false;
 
-async function runInitialIfStale() {
-  try {
-    const recent = (await db.listNews({})) || [];
-    const latest = recent[0]?.publishedAt ? new Date(recent[0].publishedAt).getTime() : 0;
-    if (Date.now() - latest < FRESH_WINDOW_MS) {
-      console.log('[news-bot] 库内已有较新资讯，冷启动跳过补跑（等每日定时）');
-      return;
-    }
-  } catch {
-    /* 读不到就照常补跑 */
+function msUntilNextSlot() {
+  const now = new Date();
+  for (const h of NEWS_SLOT_HOURS) {
+    const t = new Date(now);
+    t.setHours(h, 0, 0, 0);
+    if (t.getTime() > now.getTime()) return { delay: t.getTime() - now.getTime(), at: t };
   }
+  const t = new Date(now);
+  t.setDate(t.getDate() + 1);
+  t.setHours(NEWS_SLOT_HOURS[0], 0, 0, 0);
+  return { delay: t.getTime() - now.getTime(), at: t };
+}
+
+function scheduleNextSlot() {
+  const { delay, at } = msUntilNextSlot();
+  const pad = (n) => String(n).padStart(2, '0');
+  console.log(`[news-bot] 下一次自动更新：${at.getMonth() + 1}/${at.getDate()} ${pad(at.getHours())}:${pad(at.getMinutes())}`);
+  slotTimer = setTimeout(async () => {
+    try {
+      const r = await runOnce();
+      console.log('[news-bot] 定时更新:', JSON.stringify(r));
+    } catch (e) {
+      console.error('[news-bot] 定时更新失败:', e.message);
+    }
+    scheduleNextSlot();
+  }, delay);
+  slotTimer.unref?.();
+}
+
+async function runInitial() {
   try {
     const r = await runOnce();
     console.log('[news-bot] 冷启动补跑:', JSON.stringify(r));
@@ -332,7 +352,7 @@ async function runInitialIfStale() {
   }
 }
 
-/** 启动每日调度 + 冷启动补跑。重复调用只生效一次。 */
+/** 启动调度：每天 08:00/20:00 更新 + 冷启动补跑一次。重复调用只生效一次。 */
 export function startScheduler() {
   if (!ENABLED) {
     console.log('[news-bot] 已关闭（NEWS_BOT_ENABLED=0）');
@@ -340,18 +360,13 @@ export function startScheduler() {
   }
   if (booted) return;
   booted = true;
-  console.log(`[news-bot] 每日资讯调度已启动（间隔 ${Math.round(DAILY_MS / 3600000)}h，每类最多 ${PER_CATEGORY} 条）`);
-  setTimeout(runInitialIfStale, INITIAL_DELAY).unref?.();
-  timer = setInterval(() => {
-    runOnce()
-      .then((r) => console.log('[news-bot] 每日抓取:', JSON.stringify(r)))
-      .catch((e) => console.error('[news-bot] 每日抓取失败:', e.message));
-  }, DAILY_MS);
-  timer.unref?.();
+  console.log(`[news-bot] 资讯调度已启动（每天 08:00 / 20:00 更新，每次最多 ${PER_RUN} 条）`);
+  setTimeout(runInitial, INITIAL_DELAY).unref?.();
+  scheduleNextSlot();
 }
 
 export function stopScheduler() {
-  if (timer) clearInterval(timer);
-  timer = null;
+  if (slotTimer) clearTimeout(slotTimer);
+  slotTimer = null;
   booted = false;
 }
