@@ -32,33 +32,8 @@ function storageKey() {
   return `inspire-car-plans:${u?.id || 'anon'}`;
 }
 
-/** 默认示例方案（首次进入时展示，封面留空走占位） */
-const DEMO_PLANS = [
-  {
-    id: 'demo-1',
-    title: '小米 SU7 赛道版',
-    cover: '',
-    updatedAt: Date.now() - 86400000 * 2,
-    desc: '前 255/35 R19 后 285/30 R19，-1.5° 倾角 flush 姿态',
-    tags: ['轿车', '运动'],
-  },
-  {
-    id: 'demo-2',
-    title: '特斯拉 Model 3 低趴',
-    cover: '',
-    updatedAt: Date.now() - 86400000 * 5,
-    desc: '9.5J ET28 齐平翼子板，HellaFlush 风格',
-    tags: ['电动车', '低趴'],
-  },
-  {
-    id: 'demo-3',
-    title: '宝马 M4 G82 宽体',
-    cover: '',
-    updatedAt: Date.now() - 86400000 * 12,
-    desc: '前 9.5J ET22 后 11J ET18，宽体大抛边',
-    tags: ['跑车', '宽体'],
-  },
-];
+/** 车库卡位下限：自建方案不足此数时，用空白占位卡补足（初始全空白，随用户创作逐个填入） */
+const GARAGE_MIN_SLOTS = 3;
 
 function $(sel) {
   return document.querySelector(sel);
@@ -164,9 +139,10 @@ function writePlans(plans) {
 
 function getPlans() {
   const stored = readPlans();
-  if (stored && stored.length) return stored;
-  writePlans(DEMO_PLANS);
-  return DEMO_PLANS;
+  // 只展示用户自建方案；历史灌入的演示方案(demo-*)一律过滤并清理，不再预置演示车
+  const real = (stored || []).filter((p) => !String(p?.id || '').startsWith('demo-'));
+  if (stored && stored.length !== real.length) writePlans(real);
+  return real;
 }
 
 function upsertPlan(plan) {
@@ -615,6 +591,71 @@ function createCard(plan, onClick, onDelete, index = 0) {
   return card;
 }
 
+/** 空白占位卡：车库卡位里还没有用户自建方案时展示，点击进入创作（拍照引导）。
+ *  复用真实卡片的卡框/泡壳/品牌/条形码/底部结构，仅泡壳与文字为空槽提示，无 3D 预览。 */
+function createBlankCard(index, onClick) {
+  const thumb = el(
+    'div',
+    { class: 'garage-card__thumb' },
+    el(
+      'div',
+      { class: 'garage-card__blank' },
+      el('div', {
+        class: 'garage-card__blank-plus',
+        html:
+          '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      }),
+      el('div', { class: 'garage-card__blank-text' }, '空卡槽')
+    )
+  );
+  const shell = el(
+    'div',
+    { class: 'garage-card__shell' },
+    thumb,
+    el('div', { class: 'garage-card__blister-highlight' }),
+    el('div', { class: 'garage-card__blister-glare' }),
+    el('div', { class: 'garage-card__blister-rim' }),
+    el('div', { class: 'garage-card__blister-refraction' })
+  );
+  const blister = el('div', { class: 'garage-card__blister' }, shell);
+  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
+  const backing = el(
+    'div',
+    { class: 'garage-card__backing' },
+    el(
+      'div',
+      { class: 'garage-card__brand' },
+      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
+      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
+      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
+      el(
+        'div',
+        { class: 'garage-card__brand-cn-row' },
+        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
+        el('div', { class: 'garage-card__no' }, String(index + 1).padStart(3, '0'))
+      )
+    ),
+    blisterZone,
+    el(
+      'div',
+      { class: 'garage-card__model' },
+      el('h3', { class: 'garage-card__title garage-card__title--blank' }, '空卡槽'),
+      el('p', { class: 'garage-card__desc' }, '上传一张爱车照片，AI 识别车型并生成 3D'),
+      el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR')
+    ),
+    el('div', { class: 'garage-card__meta' }, el('span', { class: 'garage-card__meta-no' }, '1/64')),
+    el('div', { class: 'garage-card__barcode-wrap', html: barcodeSVG('blank-' + index) }),
+    el(
+      'div',
+      { class: 'garage-card__footer' },
+      el('span', { class: 'garage-card__footer-live garage-card__footer-live--blank' }, '● 待创作'),
+      el('span', { class: 'garage-card__footer-action' }, '开始创作 →')
+    )
+  );
+  const pack = el('div', { class: 'garage-card__pack' }, backing);
+  return el('article', { class: 'garage-card garage-card--blank', onClick }, pack);
+}
+
 function createEmptyState(onNew) {
   return el(
     'div',
@@ -929,10 +970,10 @@ export function mountGarage({ onEnter, mount } = {}) {
     previewEngine.clear();
     grid.innerHTML = '';
     const plans = getPlans();
-    if (plans.length) {
-      plans.forEach((p, i) => grid.appendChild(createCard(p, (pl) => onEnter?.(pl), deletePlan, i)));
-    } else {
-      grid.appendChild(createEmptyState(() => onEnter?.(null)));
+    plans.forEach((p, i) => grid.appendChild(createCard(p, (pl) => onEnter?.(pl), deletePlan, i)));
+    // 自建方案不足 GARAGE_MIN_SLOTS 个时，用空白占位卡补足卡位（初始全空白，随用户创作逐个填入）
+    for (let i = plans.length; i < GARAGE_MIN_SLOTS; i++) {
+      grid.appendChild(createBlankCard(i, () => onEnter?.(null)));
     }
   }
 
@@ -964,7 +1005,7 @@ export function mountGarage({ onEnter, mount } = {}) {
       for (const p of local) {
         if (p?.id && !remoteIds.has(p.id)) pushPlanToServer(p);
       }
-      const merged = mergePlans(local, remote);
+      const merged = mergePlans(local, remote).filter((p) => !String(p?.id || '').startsWith('demo-'));
       writePlans(merged);
       renderGrid();
     } catch (e) {

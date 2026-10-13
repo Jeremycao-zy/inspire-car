@@ -893,6 +893,39 @@
   letter-spacing: 0.04em;
 }
 
+/* 空白占位卡（无自建方案时的卡位，邀请创作）：虚线青边 + 泡壳内 + 号 */
+.garage-card--blank .garage-card__pack {
+  border: 1px dashed rgba(0, 240, 255, 0.4);
+}
+.garage-card--blank:hover .garage-card__pack {
+  border-color: rgba(0, 240, 255, 0.75);
+}
+.garage-card__blank {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(0, 240, 255, 0.5);
+}
+.garage-card__blank-plus {
+  display: inline-flex;
+  opacity: 0.75;
+}
+.garage-card__blank-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+}
+.garage-card__title--blank {
+  color: rgba(255, 255, 255, 0.45);
+}
+.garage-card__footer-live--blank {
+  opacity: 0.55;
+}
+
 /* 泡壳顶部强光（粉白） */
 .garage-card__blister-highlight {
   position: absolute;
