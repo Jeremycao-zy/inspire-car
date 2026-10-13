@@ -1,0 +1,36 @@
+# 灵感改装 / Inspire Car — Fly.io 部署配置（基础设施即代码）
+# 文档: https://fly.io/docs/reference/configuration/
+#
+# 说明：
+# - 与 Railway 完全等价：单端口全栈（server 同时服务 dist/ 静态产物 + /api/*），只暴露一个端口。
+# - 选 hkg（香港）节点，国内访客延迟最低；如想换地区改 primary_region 即可（nrt=东京 / sin=新加坡）。
+# - 敏感 key（HYPER3D_API_KEY / HUNYUAN3D_TOKEN / QWEN_API_KEY）用 `fly secrets set` 设置，
+#   绝不写进本文件或 git 仓库。
+# - 免费额度：shared-cpu-1x + 256MB，min_machines_running=1 → 永久常驻、不休眠、不收钱。
+
+app = "inspire-car"
+primary_region = "hkg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # 保持至少 1 台常驻 → 免费档也 24 小时在线（不像 Koyeb/Render 会休眠）
+  min_machines_running = 1
+
+[env]
+  # 非敏感：容器必须监听所有网卡，否则外部访问不到
+  NODE_ENV = "production"
+  HOST = "0.0.0.0"
+  SERVE_STATIC = "1"
+  SPA_FALLBACK = "1"
+  PORT = "8080"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
