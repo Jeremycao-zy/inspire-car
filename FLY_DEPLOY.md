@@ -120,3 +120,46 @@ flyctl deploy
 - **内存不够（OOM）**：把 `fly.toml` 的 `memory_mb = 256` 调成 `512`（仍属免费额度内），重跑 `flyctl deploy`。
 - **想持久化用户/模型数据**：免费档挂卷要花钱，先不挂；真要持久再 `flyctl volumes create ...` 并加 `[mounts]`（参考 Dockerfile 注释里的 `/app/.cache`）。
 - **换地区**：改 `primary_region`（nrt=东京 / sin=新加坡 / lax=美西），重跑 `flyctl deploy`。
+
+---
+
+## 9. 多区域部署（未来海外上架 / 全球低延迟）
+
+Fly 的强项是把同一应用铺到多个区域、用 Anycast 把用户自动路由到最近节点。
+`inspire-car.fly.dev` 这一个域名不变，海外用户会落到离他最近的机器。
+
+### 9.1 看可选区域
+```bash
+flyctl regions list          # 列出全部区域（sin/nrt/fra/lax/ams...）
+```
+
+### 9.2 加区域（示例：在已有 sin 基础上加东京 nrt + 法兰克福 fra）
+```bash
+flyctl regions add nrt       # 加东京
+flyctl regions add fra       # 加法兰克福（覆盖欧洲）
+# 想覆盖美洲再加：flyctl regions add lax
+```
+
+### 9.3 在每个区域起机器
+```bash
+# 在东京起一台（读当前目录的 fly.toml 构建上下文）
+flyctl machine run . --region nrt
+# 在法兰克福起一台
+flyctl machine run . --region fra
+```
+> 也可用 `flyctl scale count 3` 自动在已设区域内铺机器；`flyctl status` 看分布。
+
+### 9.4 验证
+```bash
+flyctl status                # 应看到 sin / nrt / fra 各一台
+curl -s https://inspire-car.fly.dev/api/health   # FLY_REGION 字段显示本次由哪个区域处理
+```
+
+### 9.5 费用与休眠
+- 每个区域一台机器；配合 `min_machines_running = 0`（scale to zero），空闲区域自动停机 → 仅按实际访问计费，多区域也不会暴增费用。
+- 常驻多区域（`min_machines_running = 1` 且每区一台）会增加月费，上线初期不建议。
+
+### 9.6 海外上架衔接
+- 应用商店上架用 Capacitor / Tauri 把现有 Web 包成 iOS/Android，壳内加载 `https://inspire-car.fly.dev`（或你的阿里云域名）。
+- 后端多区域已由 Fly 托底，全球用户低延迟；前端静态资源可再加 CDN（Fly 自带 Anycast TLS，已够用）。
+
