@@ -75,6 +75,13 @@
   filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.5));
 }
 
+.photo-guide__back-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.photo-guide__back-icon svg {
+  display: block;
+}
 .photo-guide__back {
   display: inline-flex;
   align-items: center;
