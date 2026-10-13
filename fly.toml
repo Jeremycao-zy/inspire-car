@@ -19,8 +19,10 @@ primary_region = "sin"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  # 保持至少 1 台常驻 → 免费档也 24 小时在线（不像 Koyeb/Render 会休眠）
-  min_machines_running = 1
+  # 设为 0 → 空闲自动停机（scale to zero）：只在实际访问时按秒计费，空闲不花计算费，
+  # 仅少量存储费（约几分钱/月）→ 基本等于免费。代价：闲置后首访有几秒冷启动。
+  # 若要 24h 常驻不休眠，改回 1（但会产生按月计算费，约 $2–5/月）。
+  min_machines_running = 0
 
 [env]
   # 非敏感：容器必须监听所有网卡，否则外部访问不到
