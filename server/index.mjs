@@ -37,6 +37,7 @@ import * as oauth from './oauth.mjs';
 import * as wechatMini from './wechatMini.mjs';
 import * as db from './db.mjs';
 import * as wheels from './wheels.mjs';
+import * as newsBot from './newsBot.mjs';
 import { handleChat } from './chat.mjs';
 import { handleTts } from './voice.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
@@ -2335,6 +2336,33 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (u.pathname === '/api/news/collect' && req.method === 'POST') {
+    // 手动触发一轮资讯抓取（管理员）。后台执行、立即返回，稍后刷新 /api/news 查看。
+    try {
+      const uid = await authUid(req);
+      if (!uid) {
+        sendJson(res, 401, { error: '请先登录' });
+        return;
+      }
+      const adminUids = (process.env.ADMIN_UIDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!adminUids.includes(uid)) {
+        sendJson(res, 403, { error: '无权限（需管理员）' });
+        return;
+      }
+      newsBot
+        .runOnce()
+        .then((r) => console.log('[news-bot] 手动触发:', JSON.stringify(r)))
+        .catch((e) => console.error('[news-bot] 手动触发失败:', e.message));
+      sendJson(res, 202, { ok: true, started: true, hint: '已在后台抓取，稍后刷新资讯查看' });
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+    return;
+  }
+
   sendJson(res, 404, { error: 'not found' });
 });
 
@@ -2382,6 +2410,7 @@ async function start() {
     );
   }
   console.log(`  ▸ 数据存储：${dbInfo.mode === 'sql' ? 'PostgreSQL（持久化）' : '本地 JSON 文件（仅开发）'}`);
+  newsBot.startScheduler(); // 每日前沿汽车资讯自动搜集 + 生成（见 server/newsBot.mjs）
   });
 }
 
