@@ -3,13 +3,13 @@
 #
 # 说明：
 # - 与 Railway 完全等价：单端口全栈（server 同时服务 dist/ 静态产物 + /api/*），只暴露一个端口。
-# - 选 hkg（香港）节点，国内访客延迟最低；如想换地区改 primary_region 即可（nrt=东京 / sin=新加坡）。
+# - 节点选 sin（新加坡）：香港 hkg 已被 Fly 停用、新资源不可建；sin/nrt 是国内延迟最低的可用地域。
 # - 敏感 key（HYPER3D_API_KEY / HUNYUAN3D_TOKEN / QWEN_API_KEY）用 `fly secrets set` 设置，
 #   绝不写进本文件或 git 仓库。
 # - 免费额度：shared-cpu-1x + 256MB，min_machines_running=1 → 永久常驻、不休眠、不收钱。
 
 app = "inspire-car"
-primary_region = "hkg"
+primary_region = "sin"
 
 [build]
   dockerfile = "Dockerfile"
