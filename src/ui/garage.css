@@ -751,7 +751,7 @@
   text-shadow: none;
 }
 
-/* 收藏元数据：右侧青色 N/64（对齐设计稿，去掉 COLLECTOR'S EDITION 字样） */
+/* 收藏元数据：右侧青色比例标 1/64（对齐设计稿，去掉 COLLECTOR'S EDITION 字样） */
 .garage-card__meta {
   display: flex;
   align-items: baseline;
