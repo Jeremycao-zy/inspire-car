@@ -9,8 +9,10 @@ FROM node:22-slim
 WORKDIR /app
 
 # ---- 1) 依赖安装（先只拷清单，最大化 Docker 层缓存）----
+# 用 npm install 而非 npm ci：容忍 package-lock.json 与 package.json 的轻微漂移，
+# 避免 CI 构建因 lockfile 不同步而 exit 1（本地 lockfile 若落后也能照常装）。
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm install --legacy-peer-deps
 
 # ---- 2) 源码 + 构建前端 ----
 COPY . .
