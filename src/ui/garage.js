@@ -589,7 +589,7 @@ function createCard(plan, onClick, onDelete, index = 0) {
     el(
       'div',
       { class: 'garage-card__meta' },
-      el('span', { class: 'garage-card__meta-no' }, `${index + 1}/64`)
+      el('span', { class: 'garage-card__meta-no' }, '1/64')
     ),
     el('div', {
       class: 'garage-card__barcode-wrap',
