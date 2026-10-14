@@ -2,15 +2,15 @@
  * wheel-warehouse.spec.js — 「生成轮毂不进仓库」bug 的回归套件。
  *
  * 覆盖：
- *   1) 展示路径：服务端已登记的轮毂，进「轮毂」分页后应出现 .gw-thumb 卡片。
+ *   1) 展示路径：服务端已登记的轮毂，进「轮毂」分页后应出现 .gw-card 卡片。
  *   2) 健壮性（fix ③）：生成成功后 main.js 广播 mywheel:added，仓库监听并 refresh，
  *      即使仓库已挂载也能即时看到新轮毂，不必重新切页。
- *   3) 来回切 5 次：仓库只挂载一次（无重复 .gw-strip）、无 console / page error。
+ *   3) 来回切 5 次：仓库只挂载一次（无重复 .gw-grid）、无 console / page error。
  *   4) 登记闸门（端到端，经工作室）：模拟一次 live 生成，断言 /api/wheels 被 POST、
  *      返回车库后轮毂分页出现卡片。
  *
- * 注意：所有 /api/* 都按 pathname 精确拦截（不要写成 '**/api/...' 通配，
- * 否则会误伤 /src/api/*.js 模块请求导致 MIME 报错、车库挂不上）。
+ * 注意：所有 /api/ 请求都按 pathname 精确拦截（不要写成通配匹配，
+ * 否则会误伤 /src/api 模块请求导致 MIME 报错、车库挂不上）。
  */
 
 import { test, expect, devices } from '@playwright/test';
@@ -88,8 +88,8 @@ test.describe('轮毂仓库', () => {
     await gotoGarage(page);
 
     await page.click('.garage-nav__item[data-page="wheels"]');
-    await page.waitForSelector('.gw-strip .gw-thumb', { timeout: 10_000 });
-    const count = await page.locator('.gw-strip .gw-thumb').count();
+    await page.waitForSelector('.gw-grid .gw-card', { timeout: 10_000 });
+    const count = await page.locator('.gw-grid .gw-card').count();
     expect(count).toBeGreaterThanOrEqual(1);
   });
 
@@ -99,10 +99,11 @@ test.describe('轮毂仓库', () => {
     await mockApi(page, store);
     await gotoGarage(page);
 
-    // 先进入轮毂分页：挂载仓库并注册监听
+    // 先进入轮毂分页：挂载仓库并注册监听（空仓时显示 .gw-empty 空态；
+    // .gw-head 是模块自带标题，被 garage.css 当重复标题隐藏，不能拿来等）
     await page.click('.garage-nav__item[data-page="wheels"]');
-    await page.waitForSelector('.gw-strip', { timeout: 10_000 });
-    let count = await page.locator('.gw-strip .gw-thumb').count();
+    await page.waitForSelector('.garage-wheels .gw-empty', { timeout: 10_000 });
+    let count = await page.locator('.gw-grid .gw-card').count();
     expect(count).toBe(0); // 空态
 
     // 模拟一次成功后登记（等价于 recordGeneratedWheel 的 POST + notifyWheelAdded）
@@ -112,8 +113,8 @@ test.describe('轮毂仓库', () => {
     });
 
     // 仓库应主动 refresh 并渲染新卡片，无需重新切页
-    await page.waitForSelector('.gw-strip .gw-thumb', { timeout: 10_000 });
-    count = await page.locator('.gw-strip .gw-thumb').count();
+    await page.waitForSelector('.gw-grid .gw-card', { timeout: 10_000 });
+    count = await page.locator('.gw-grid .gw-card').count();
     expect(count).toBe(1);
   });
 
@@ -131,8 +132,8 @@ test.describe('轮毂仓库', () => {
       await page.click('.garage-nav__item[data-page="garage"]');
       await page.click('.garage-nav__item[data-page="wheels"]');
     }
-    // 仓库只应挂载一次：轮毂分页里只有 1 个 .gw-strip
-    const strips = await page.locator('.garage-page--wheels .gw-strip').count();
+    // 仓库只应挂载一次：轮毂分页里只有 1 个 .gw-grid
+    const strips = await page.locator('.garage-page--wheels .gw-grid').count();
     expect(strips).toBe(1);
     expect(errors).toEqual([]);
   });
@@ -160,10 +161,11 @@ test.describe('轮毂仓库', () => {
     for (let i = 0; i < angleN; i++) {
       await angleInputs.nth(i).setInputFiles({ name: `car${i}.png`, mimeType: 'image/png', buffer: png });
     }
-    // 点击「开始生成」（photo-guide 主按钮）
-    await page.click('.photo-guide__overlay-btn.primary, .photo-guide button.primary');
+    // 点击「开始建模」（f4a23d3 重构后主按钮为 .photo-guide__start，5/5 张后自动启用）
+    await page.click('.photo-guide__start');
 
-    // 等待工作室出现（面板里的轮毂上传区）
+    // 等待工作室出现（面板里的轮毂上传区；先切到「轮毂」分页）
+    await page.click('.tab[data-tab="wheels"]');
     await page.waitForSelector('.dropzone:has-text("上传轮毂照片")', { timeout: 30_000 });
     // 在工作室上传轮毂照片 → 触发 runGenerate(wheel) → 登记
     const wheelInput = page.locator('.dropzone:has-text("上传轮毂照片") input[type=file]');
@@ -178,8 +180,8 @@ test.describe('轮毂仓库', () => {
     await page.click('#back-to-garage');
     await page.waitForSelector('.garage-nav__item[data-page="wheels"]', { state: 'visible' });
     await page.click('.garage-nav__item[data-page="wheels"]');
-    await page.waitForSelector('.gw-strip .gw-thumb', { timeout: 10_000 });
-    const count = await page.locator('.gw-strip .gw-thumb').count();
+    await page.waitForSelector('.gw-grid .gw-card', { timeout: 10_000 });
+    const count = await page.locator('.gw-grid .gw-card').count();
     expect(count).toBeGreaterThanOrEqual(1);
   });
 });
