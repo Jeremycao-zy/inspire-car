@@ -145,12 +145,152 @@ const EXPOSURE = { min: 0.3, max: 2.5, step: 0.01 };
 /* ---------------------------- 上传区 ---------------------------- */
 
 /**
+ * 构建轮毂上传的「拍摄引导」两列舞台（opt-in，仅轮毂使用）。
+ *
+ * 视觉语言完全复用已上线的拍照引导 photoGuide.css：蓝图化 ghost
+ * （grayscale/contrast/brightness + 0.42 透明度）、7% 内缩虚线安全框、
+ * 四角相机括号、中心十字准线、霓虹青描边辉光取景框——保证与拍照引导一眼同源。
+ *
+ * @param {{items: Array<{label:string, img:string, desc:string}>}} guide 角度定义（按拍摄顺序）
+ * @param {string} hint 顶部提示语，按中文句读拆成 2–3 条「拍摄要点」
+ * @param {HTMLElement} thumbs 复用主上传区的缩略图容器（选过的照片）
+ * @returns {{stage:HTMLElement, guideCol:HTMLElement, advance:Function, showShot:Function, reset:Function}}
+ */
+function buildGuideStage(guide, hint, thumbs) {
+  const items = guide.items;
+  const len = items.length;
+
+  // ---- 取景框：ghost 蓝图轮廓 + 取景辅助线 + 已选照片 + 大 CTA ----
+  const vfGhost = el('img', { class: 'up-viewfinder__ghost', alt: '' });
+  const vfFrame = el(
+    'div',
+    { class: 'up-viewfinder__frame', 'aria-hidden': 'true' },
+    el('div', { class: 'up-viewfinder__safe' }),
+    el('div', { class: 'up-viewfinder__corner up-viewfinder__corner--tl' }),
+    el('div', { class: 'up-viewfinder__corner up-viewfinder__corner--tr' }),
+    el('div', { class: 'up-viewfinder__corner up-viewfinder__corner--bl' }),
+    el('div', { class: 'up-viewfinder__corner up-viewfinder__corner--br' }),
+    el('div', { class: 'up-viewfinder__cross' })
+  );
+  // 已选照片：铺满取景框，src 由 setThumbs 复用 thumbs 最后一张的 blob URL 填入（不重复创建）
+  const vfShot = el('img', { class: 'up-viewfinder__shot hidden', alt: '已选照片' });
+  // 未选图时悬浮在取景框底部的大按钮（点击经冒泡触发 zone 的 input.click()）
+  const vfCta = el('button', { type: 'button', class: 'up-viewfinder__cta' }, '📷 拍照或选相册');
+  const vf = el('div', { class: 'up-viewfinder' }, vfGhost, vfFrame, vfShot, vfCta);
+
+  // 取景框下方（框外）：当前角度 label + desc
+  const vfLabel = el('div', { class: 'up-viewfinder__meta-label' });
+  const vfDesc = el('div', { class: 'up-viewfinder__meta-desc' });
+  const vfMeta = el('div', { class: 'up-viewfinder__meta' }, vfLabel, vfDesc);
+
+  const mainCol = el('div', { class: 'upload-stage__main' }, vf, vfMeta, thumbs);
+
+  // ---- 右侧参考列：3 个角度缩略项（当前项霓虹高亮、已拍项右上角 ✓）----
+  const guideItems = items.map((item, i) =>
+    el(
+      'div',
+      { class: 'up-guide-item', 'data-idx': String(i) },
+      el(
+        'div',
+        { class: 'up-guide-item__thumb' },
+        el('img', { class: 'up-guide-item__img', src: item.img, alt: '' }),
+        el('span', { class: 'up-guide-item__badge', 'aria-hidden': 'true' }, '✓')
+      ),
+      el('div', { class: 'up-guide-item__label' }, item.label),
+      el('div', { class: 'up-guide-item__desc' }, item.desc)
+    )
+  );
+  // 拍摄要点：由 hint 按中文句读拆成 2–3 条小字
+  const tipLines = String(hint || '')
+    .split(/[，。；!?！？]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const guideCol = el(
+    'div',
+    { class: 'upload-stage__guide' },
+    el('div', { class: 'up-guide-title' }, '拍摄示意图'),
+    el('div', { class: 'up-guide-list' }, ...guideItems),
+    el(
+      'div',
+      { class: 'up-guide-tips' },
+      ...tipLines.map((t) => el('div', { class: 'up-guide-tip' }, t))
+    )
+  );
+
+  const stage = el('div', { class: 'upload-stage' }, mainCol, guideCol);
+
+  // 已选数量高水位：只增不减（重新选更少张时 ghost 不后退）
+  let count = 0;
+  const activeIdx = () => Math.min(count, len - 1);
+  const doneCount = () => Math.min(count, len);
+
+  /** 让 ghost / meta / 参考列高亮与当前已选数量保持一致 */
+  function sync() {
+    const a = activeIdx();
+    const item = items[a];
+    if (item) {
+      vfGhost.src = item.img;
+      vfLabel.textContent = item.label;
+      vfDesc.textContent = item.desc;
+    }
+    const d = doneCount();
+    guideItems.forEach((it, i) => {
+      it.classList.toggle('is-active', i === a);
+      it.classList.toggle('is-done', i < d);
+    });
+  }
+
+  /** 空态：显示蓝图 ghost + 大 CTA，隐藏已选照片，辅助线恢复 */
+  function showEmpty() {
+    vfShot.src = '';
+    vfShot.classList.add('hidden');
+    vfCta.classList.remove('hidden');
+    vfGhost.classList.remove('hidden');
+    vfFrame.classList.remove('is-faded');
+  }
+
+  sync();
+  showEmpty();
+
+  return {
+    stage,
+    guideCol,
+    /** setThumbs 入口：推进高水位 + 同步高亮；count=0 回空态，否则隐藏大按钮 */
+    advance(n) {
+      if (n > count) count = n;
+      sync();
+      if (n <= 0) showEmpty();
+      else vfCta.classList.add('hidden');
+    },
+    /** 已选照片就绪：铺满取景框、隐藏 ghost 与大按钮、辅助线淡出 */
+    showShot(url) {
+      if (!url) return;
+      vfShot.src = url;
+      vfShot.classList.remove('hidden');
+      vfCta.classList.add('hidden');
+      vfGhost.classList.add('hidden');
+      vfFrame.classList.add('is-faded');
+    },
+    /** 生成完成重置：高水位归零、ghost 复位、参考列高亮清零 */
+    reset() {
+      count = 0;
+      sync();
+      showEmpty();
+    },
+  };
+}
+
+/**
  * 上传区控件。
  * @param {Object} o
  * @param {boolean=} o.recognition 是否启用视觉识别（车型识别 + 真车参数）。
  *   轮毂传 false：轮毂照片识别不出车型，跑视觉接口没有意义（用户要求取消）。
+ * @param {Object=} o.guide 拍摄引导配置（opt-in，仅轮毂传）。传入后上传区变为
+ *   「左取景框 + 右参考列」两列舞台，视觉语言复用拍照引导；不传则走原单列逻辑，
+ *   行为与之前完全一致（整车上传绝不能变）。
  */
-function makeUploader({ title, hint, onFiles, recognition = true }) {
+function makeUploader({ title, hint, onFiles, recognition = true, guide = null }) {
   const input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
   input.addEventListener('change', () => {
     const files = Array.from(input.files || []);
@@ -182,13 +322,22 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
   // 识别状态提示（识别中 / 已识别 / 未配置识别模型）——轮毂不启用，不渲染
   const recog = el('div', { class: 'recog-hint' }, '');
 
+  // 拍摄引导（opt-in）：仅轮毂传 guide。传入才构建两列舞台；不传则 guideUI 保持 null，
+  // 下方 zone 结构与交互走原单列逻辑，整车上传行为零变化。
+  let guideUI = null;
+  if (guide && Array.isArray(guide.items) && guide.items.length) {
+    guideUI = buildGuideStage(guide, hint, thumbs);
+  }
+
   const zone = el(
     'div',
-    { class: 'dropzone' },
+    { class: `dropzone${guideUI ? ' dropzone--guide' : ''}` },
     el('div', { class: 'dz-title' }, title),
-    el('div', { class: 'dz-sub' }, '点击选择，或把照片拖到这里'),
+    // guide 模式：用「取景框 + 参考列」两列舞台替换副标题；thumbs 已挂进舞台主列。
+    // 非 guide 模式保持原结构（副标题 + thumbs 直挂 zone），整车上传零变化。
+    guideUI ? guideUI.stage : el('div', { class: 'dz-sub' }, '点击选择，或把照片拖到这里'),
+    guideUI ? null : thumbs,
     input,
-    thumbs,
     bar,
     status,
     actions,
@@ -202,6 +351,8 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
     // 恢复按钮区、细节区不触发"重新选图"
     if (e.target === input) return;
     if (actions.contains(e.target) || detail.contains(e.target)) return;
+    // guide 模式：右侧参考列仅作示意，点击不触发选图（取景框/标题/缩略图仍可点）
+    if (guideUI && guideUI.guideCol.contains(e.target)) return;
     input.click();
   });
   ['dragenter', 'dragover'].forEach((ev) =>
@@ -237,6 +388,8 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
       for (const u of prev) URL.revokeObjectURL(u);
       thumbs._blobUrls = [];
       thumbs.innerHTML = '';
+      // guide 模式：按已选数量推进取景框 ghost 高水位 + 同步右侧参考列高亮
+      if (guideUI) guideUI.advance(files.length);
       for (const f of files) {
         const img = el('img', { src: '', class: 'thumb', title: f.name });
         thumbs.appendChild(img);
@@ -246,6 +399,8 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
             const url = URL.createObjectURL(blob || f);
             thumbs._blobUrls.push(url);
             img.src = url;
+            // guide 模式：把最近一张缩略图的 blob URL 复用进取景框（不重复 createObjectURL）
+            if (guideUI && img === thumbs.lastElementChild) guideUI.showShot(url);
           })
           .catch(() => {});
       }
@@ -306,6 +461,8 @@ function makeUploader({ title, hint, onFiles, recognition = true }) {
     reset() {
       input.value = '';
       thumbs.innerHTML = '';
+      // guide 模式：ghost 高水位归零、取景框回空态、参考列高亮复位
+      if (guideUI) guideUI.reset();
       nameInput.value = '';
       status.textContent = '';
       status.className = 'upload-status';
@@ -448,9 +605,18 @@ export function createPanel(app, mount) {
   });
   const wheelUpload = makeUploader({
     title: '② 上传轮毂照片',
-    hint: '建议 3–5 张：只有轮毂的特写（正面 / 侧面 / 斜 45°），画面里不要带车身；生成后自动装配 4 只',
+    hint: '建议 3 张：轮毂正面 / 侧面 / 斜 45°，画面里只有轮毂、不要带车身',
     // 轮毂不做视觉识别：识别不出车型，纯浪费一次接口调用与时间
     recognition: false,
+    // 拍摄引导：上传区改为与拍照引导同款的「取景框 + 参考列」两列舞台
+    guide: {
+      // 按顺序对应三次拍摄；ghost 随已选数量自动前移
+      items: [
+        { label: '正面', img: '/guides/wheel-front.png', desc: '镜头正对辐条面，轮毂居中占满画面' },
+        { label: '侧面', img: '/guides/wheel-side.png', desc: '拍轮毂桶身侧面，展现轮辋深度' },
+        { label: '斜 45°', img: '/guides/wheel-45.png', desc: '斜 45° 同时拍到辐条与桶身' },
+      ],
+    },
     onFiles: (files) => app.generateWheel(files),
   });
 
