@@ -1,7 +1,11 @@
 /**
  * photoGuide.js — 新建方案后的拍照引导界面
  *
- * 流程：展示 5 个拍摄角度 → 用户上传/拍摄 5 张照片 → 点击「开始建模」
+ * 布局：单屏「取景框 + 角度队列」——左侧大取景框以示例图的蓝图化虚线轮廓为参照
+ *       拍摄当前角度，右侧队列纵排 5 个角度缩略图；拍完一张即替换对应缩略图
+ *       并自动切到下一个未拍摄角度（由原 5 张展开卡片融合而来）。
+ *
+ * 流程：用户按角度上传/拍摄 5 张照片 → 点击「开始建模」
  *       → 调用 generateModel 生成 3D 车模 → 成功后回调，携带 url + files。
  */
 
@@ -170,6 +174,10 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   const filesById = {};
   const thumbsById = {};
   const cardsById = {};
+  // 每个角度一个 file input（挂在队列项里，由取景框的上传/重选按钮编程触发点击）
+  const inputsById = {};
+  // 取景框当前展示的角度（点击队列项切换）
+  let currentAngleId = ANGLES[0].id;
   let generating = false;
 
   const draft = loadDraft();
@@ -204,7 +212,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   const subtitle = el(
     'p',
     { class: 'photo-guide__subtitle' },
-    '请按下方 5 个角度依次拍摄或上传照片。光线充足、镜头干净，模型会更准确。'
+    '对照取景框内的虚线轮廓，按右侧队列逐个拍摄或上传照片。光线充足、镜头干净，模型会更准确。'
   );
 
   // 提示卡片
@@ -246,13 +254,72 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     )
   );
 
-  // 角度网格
-  const grid = el('div', { class: 'photo-guide__grid' });
-  for (const angle of ANGLES) {
-    const card = renderAngleCard(angle);
-    cardsById[angle.id] = card;
-    grid.appendChild(card);
-  }
+  // ---------- 取景框（主视觉：ghost 蓝图轮廓 + 取景辅助线 + 用户照片） ----------
+  // 底层：当前角度示例图，蓝图化处理后作为「车辆方位虚线轮廓」参照
+  const vfGhost = el('img', { class: 'photo-guide__ghost hidden', alt: '' });
+  // 中层：纯 CSS 取景辅助线（虚线安全框 + 四角相机括号 + 中心十字准线）
+  const vfGuides = el(
+    'div',
+    { class: 'photo-guide__guides', 'aria-hidden': 'true' },
+    el('div', { class: 'photo-guide__guide-frame' }),
+    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--tl' }),
+    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--tr' }),
+    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--bl' }),
+    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--br' }),
+    el('div', { class: 'photo-guide__guide-cross' })
+  );
+  // 顶层：用户照片（与队列缩略图共享同一 blob URL，不额外占内存）
+  const vfThumb = el('img', {
+    class: 'photo-guide__thumb photo-guide__viewfinder-thumb hidden',
+    alt: '已拍摄照片',
+  });
+  // 未拍摄时挂在取景框底部居中的大上传触发按钮（点击 → 打开当前角度的 file input）
+  const vfUpload = el(
+    'button',
+    {
+      type: 'button',
+      class: 'photo-guide__upload photo-guide__upload--hero',
+      onClick: () => inputsById[currentAngleId]?.click(),
+    },
+    el('span', {
+      class: 'photo-guide__upload-icon',
+      html:
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+        '<circle cx="12" cy="13" r="4"/></svg>',
+    }),
+    '拍照或选相册'
+  );
+  const vf = el('div', { class: 'photo-guide__viewfinder' }, vfGhost, vfGuides, vfThumb, vfUpload);
+
+  // 取景框下方（框外）：当前角度标题 + 说明 + 重选按钮
+  const vfIndex = el('span', { class: 'photo-guide__angle-index' }, '1/5');
+  const vfTitle = el('h3', { class: 'photo-guide__angle-title' }, ANGLES[0].title);
+  const vfDesc = el('p', { class: 'photo-guide__angle-desc' }, ANGLES[0].desc);
+  const vfRetake = el(
+    'button',
+    { type: 'button', class: 'photo-guide__retake hidden', onClick: handleRetake },
+    '重新选择'
+  );
+  const vfMeta = el(
+    'div',
+    { class: 'photo-guide__viewfinder-meta' },
+    el('div', { class: 'photo-guide__viewfinder-meta-head' }, vfIndex, vfTitle),
+    vfDesc,
+    vfRetake
+  );
+  const vfCol = el('div', { class: 'photo-guide__viewfinder-col' }, vf, vfMeta);
+
+  // ---------- 右侧角度队列：5 个缩略项，点击切换取景框角度 ----------
+  const strip = el('div', { class: 'photo-guide__strip' });
+  ANGLES.forEach((angle, i) => {
+    const item = renderStripItem(angle, i);
+    cardsById[angle.id] = item;
+    strip.appendChild(item);
+  });
+
+  // 单屏舞台：左取景框（flex:1）+ 右队列（固定宽，移动端改为横向滚动）
+  const stage = el('div', { class: 'photo-guide__stage' }, vfCol, strip);
 
   // 底部建模栏
   const counter = el('span', { class: 'photo-guide__counter' }, '已拍摄 0/5 张');
@@ -305,7 +372,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   const scroll = el(
     'div',
     { class: 'photo-guide__scroll' },
-    el('div', { class: 'photo-guide__inner' }, title, subtitle, tips, grid)
+    el('div', { class: 'photo-guide__inner' }, title, subtitle, tips, stage)
   );
 
   root.innerHTML = '';
@@ -322,82 +389,147 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     // 实际上不做恢复，避免 stale 状态
   }
 
-  function renderAngleCard(angle) {
-    const img = el('img', { class: 'photo-guide__card-img', src: angle.img, alt: angle.title });
+  // 默认选中第一个未拍摄的角度（全部拍完则落在最后一个）
+  const firstPending = ANGLES.find((a) => !filesById[a.id]);
+  selectAngle(firstPending ? firstPending.id : ANGLES[ANGLES.length - 1].id);
 
+  /**
+   * 渲染右侧队列中的一个角度项：序号圆点 + 角度标题 + 缩略图（示例图/用户照片）+ ✓ 徽章。
+   * 每项内置一个不可见的 file input，由取景框的上传按钮编程触发。
+   */
+  function renderStripItem(angle, index) {
     const input = el('input', {
+      class: 'photo-guide__file-input',
       type: 'file',
       accept: 'image/*',
+      tabindex: '-1',
+      'aria-hidden': 'true',
       // 注意：不要加 capture 属性——capture 会强制直接开相机，
       // 把 iOS/Android 的「照片图库 / 选取文件」选项藏掉，导致手机上只能拍照、选不了相册。
       // 去掉后系统弹窗会同时提供「拍照 / 照片图库 / 选取文件」。
-      onChange: (e) => handleFileChange(angle.id, e.target.files?.[0]),
-    });
-
-    const uploadZone = el(
-      'label',
-      { class: 'photo-guide__upload' },
-      '📷 拍照或选相册',
-      input
-    );
-
-    const thumb = el('img', { class: 'photo-guide__thumb hidden' });
-    thumbsById[angle.id] = thumb;
-
-    const retakeBtn = el(
-      'button',
-      {
-        class: 'photo-guide__retake hidden',
-        onClick: () => {
-          input.value = '';
-          handleFileChange(angle.id, null);
-          input.click();
-        },
+      onChange: (e) => {
+        handleFileChange(angle.id, e.target.files?.[0]);
+        // 清空 input：否则再次选择同一个文件时 value 不变、change 不再触发
+        e.target.value = '';
       },
-      '重新选择'
-    );
+    });
+    inputsById[angle.id] = input;
+
+    // 示例图（未拍摄时显示）；用户照片就绪后由 thumb 覆盖
+    const guide = el('img', { class: 'photo-guide__strip-img', src: angle.img, alt: '' });
+    const thumb = el('img', {
+      class: 'photo-guide__thumb photo-guide__strip-thumb hidden',
+      alt: angle.title,
+    });
+    thumbsById[angle.id] = thumb;
 
     return el(
       'div',
-      { class: 'photo-guide__card', 'data-angle': angle.id },
-      el('div', { class: 'photo-guide__card-badge' }, '✓'),
-      img,
+      {
+        // photo-guide__card 类名是 e2e 回归契约（'.photo-guide__card input[type=file]'
+        // 用于定位 5 个角度输入），勿删；视觉样式全部由 photo-guide__strip-item 承担。
+        class: 'photo-guide__strip-item photo-guide__card',
+        'data-angle': angle.id,
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `拍摄角度 ${index + 1}：${angle.title}`,
+        onClick: () => selectAngle(angle.id),
+        onKeydown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectAngle(angle.id);
+          }
+        },
+      },
       el(
         'div',
-        { class: 'photo-guide__card-body' },
-        el('h3', { class: 'photo-guide__card-title' }, angle.title),
-        el('p', { class: 'photo-guide__card-desc' }, angle.desc),
-        uploadZone,
+        { class: 'photo-guide__strip-head' },
+        el('span', { class: 'photo-guide__strip-index' }, String(index + 1)),
+        el('span', { class: 'photo-guide__strip-label' }, angle.title)
+      ),
+      el(
+        'div',
+        { class: 'photo-guide__strip-thumb-wrap' },
+        guide,
         thumb,
-        retakeBtn
-      )
+        el('span', { class: 'photo-guide__strip-badge', 'aria-hidden': 'true' }, '✓')
+      ),
+      input
     );
+  }
+
+  /** 切换取景框当前展示的角度 */
+  function selectAngle(id) {
+    if (!ANGLES.some((a) => a.id === id)) return;
+    currentAngleId = id;
+    syncViewfinder();
+  }
+
+  /** 让取景框与 currentAngleId 的拍摄状态保持同步 */
+  function syncViewfinder() {
+    const index = ANGLES.findIndex((a) => a.id === currentAngleId);
+    const angle = ANGLES[index] || ANGLES[0];
+    const shot = !!filesById[angle.id];
+
+    vfGhost.src = angle.img;
+    // 已拍摄 → ghost 隐藏、辅助线淡出，用户照片铺满取景框
+    vfGhost.classList.toggle('hidden', shot);
+    vfGuides.classList.toggle('is-faded', shot);
+    vfIndex.textContent = `${index + 1}/${ANGLES.length}`;
+    vfTitle.textContent = angle.title;
+    vfDesc.textContent = angle.desc;
+
+    const stripThumb = thumbsById[angle.id];
+    if (shot && stripThumb && stripThumb.src) {
+      // 与队列缩略图共享同一 blob URL（压缩图仅几十 KB，不额外占内存）
+      if (vfThumb.src !== stripThumb.src) vfThumb.src = stripThumb.src;
+      vfThumb.classList.remove('hidden');
+      vfUpload.classList.add('hidden');
+      vfRetake.classList.remove('hidden');
+    } else {
+      vfThumb.src = '';
+      vfThumb.classList.add('hidden');
+      vfUpload.classList.remove('hidden');
+      vfRetake.classList.add('hidden');
+    }
+
+    for (const a of ANGLES) {
+      cardsById[a.id].classList.toggle('photo-guide__strip-item--active', a.id === angle.id);
+    }
+  }
+
+  /** 重新选择当前角度的照片：清空旧图并重新打开文件选择 */
+  function handleRetake() {
+    const input = inputsById[currentAngleId];
+    if (!input) return;
+    input.value = '';
+    handleFileChange(currentAngleId, null);
+    input.click();
   }
 
   function handleFileChange(id, file) {
     const thumb = thumbsById[id];
     const card = cardsById[id];
-    const retake = card.querySelector('.photo-guide__retake');
-    const uploadZone = card.querySelector('.photo-guide__upload');
+    const has = file && file.type.startsWith('image/');
 
-    if (file && file.type.startsWith('image/')) {
+    if (has) {
       filesById[id] = file;
       if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);
       // 先清空，别让上一张的解码位图继续占内存
       thumb.src = '';
       thumb.classList.remove('hidden');
-      uploadZone.classList.add('hidden');
-      retake.classList.remove('hidden');
-      card.classList.add('photo-guide__card--done');
+      card.classList.add('photo-guide__strip-item--done');
       // 用压缩后的缩略图显示（原图解码会吃掉几十 MB，横竖屏切换重解码时直接崩）
       makeThumbBlob(file)
         .then((blob) => {
           if (filesById[id] !== file) return; // 期间又换图/清空了，丢弃这次结果
           if (!blob) {
             thumb.src = URL.createObjectURL(file); // 极端情况兜底
-            return;
+          } else {
+            thumb.src = URL.createObjectURL(blob);
           }
-          thumb.src = URL.createObjectURL(blob);
+          // 若当前角度就是它，取景框立即换上（与队列共享同一 URL）
+          if (id === currentAngleId) syncViewfinder();
         })
         .catch(() => {});
     } else {
@@ -405,10 +537,18 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);
       thumb.src = '';
       thumb.classList.add('hidden');
-      uploadZone.classList.remove('hidden');
-      retake.classList.add('hidden');
-      card.classList.remove('photo-guide__card--done');
+      card.classList.remove('photo-guide__strip-item--done');
     }
+
+    // 取景框跟随当前角度刷新（ghost / 用户照片 / 辅助线 / 队列高亮）
+    syncViewfinder();
+
+    // 拍完一张 → 自动切到下一个未拍摄的角度，无需用户手点
+    if (has) {
+      const next = ANGLES.find((a) => !filesById[a.id]);
+      if (next) selectAngle(next.id);
+    }
+
     saveDraft(filesById);
     updateCounter();
   }
