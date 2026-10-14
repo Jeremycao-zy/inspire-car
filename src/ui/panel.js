@@ -24,6 +24,7 @@ import {
   MAX_TOTAL_DELTA_MM as MAX_DELTA,
   DELTA_OK_MM as DELTA_OK,
 } from '../tuning/suspension.js';
+import logoMarkUrl from '../assets/logo-mark-neon.png';
 
 /**
  * 生成缩略图 Blob（只用于预览）。
@@ -52,6 +53,31 @@ async function makeThumbBlob(file, maxSide = 420) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 给宿主元素接线拖拽上传：dragover 时加 .over 高亮，drop 时抽出图片文件回调。
+ * 侧栏触发卡与全屏引导层共用；非 guide（整车）路径仍沿用原有内联写法，不走这里。
+ * @param {HTMLElement} host
+ * @param {(files: File[]) => void} onDrop
+ */
+function wireDrop(host, onDrop) {
+  ['dragenter', 'dragover'].forEach((ev) =>
+    host.addEventListener(ev, (e) => {
+      e.preventDefault();
+      host.classList.add('over');
+    })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    host.addEventListener(ev, (e) => {
+      e.preventDefault();
+      host.classList.remove('over');
+    })
+  );
+  host.addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (files.length) onDrop(files);
+  });
 }
 
 /* ---------------------------- DOM 小工具 ---------------------------- */
@@ -322,55 +348,163 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
   // 识别状态提示（识别中 / 已识别 / 未配置识别模型）——轮毂不启用，不渲染
   const recog = el('div', { class: 'recog-hint' }, '');
 
-  // 拍摄引导（opt-in）：仅轮毂传 guide。传入才构建两列舞台；不传则 guideUI 保持 null，
-  // 下方 zone 结构与交互走原单列逻辑，整车上传行为零变化。
+  // 拍摄引导（opt-in）：仅轮毂传 guide。guide 分支把上传 UI 搬进全屏引导层，侧栏只留触发卡；
+  // 非 guide 分支走原单列逻辑，与引入 guide 前逐字节一致（整车 carUpload 零变化）。
   let guideUI = null;
+  let zone;
+
   if (guide && Array.isArray(guide.items) && guide.items.length) {
+    /* ===== guide 分支：侧栏紧凑触发卡 + 全屏引导层 =====
+     * 轮毂上传区原先挤在 348px 侧栏里，两列舞台撑不起「大取景框」；改为复用车型拍照引导的
+     * 全屏层模式（与 .photo-guide-layer 同构），点触发卡打开全屏层拍摄，Esc/✕ 关闭回侧栏。 */
     guideUI = buildGuideStage(guide, hint, thumbs);
+
+    let prevBodyOverflow = '';
+    function openLayer() {
+      if (!layer.classList.contains('hidden')) return; // 已打开：避免重复覆盖 prevBodyOverflow
+      prevBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden'; // 锁背后滚动，避免侧栏跟着滚
+      layer.classList.remove('hidden');
+    }
+    function closeLayer() {
+      document.body.style.overflow = prevBodyOverflow; // 恢复；不 dispose，thumbs blob URL 保留
+      layer.classList.add('hidden');
+    }
+
+    const layerHeader = el(
+      'div',
+      { class: 'wheel-guide__header' },
+      el(
+        'div',
+        { class: 'wheel-guide__brand' },
+        el('img', { class: 'wheel-guide__logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
+        '轮毂拍摄引导'
+      ),
+      el('button', {
+        type: 'button',
+        class: 'wheel-guide__close',
+        'aria-label': '关闭拍摄引导',
+        onClick: closeLayer,
+      }, '✕')
+    );
+    // 全屏层主体：两列舞台（取景框 + 参考列）+ 进度/状态/失败恢复/任务名，全部搬进来
+    const layerInner = el(
+      'div',
+      { class: 'wheel-guide__inner' },
+      el('div', { class: 'wheel-guide__title' }, title),
+      el('div', { class: 'wheel-guide__subtitle' }, hint),
+      guideUI.stage,
+      bar,
+      status,
+      actions,
+      detail,
+      nameWrap,
+      // 轮毂 recognition:false，这里本就不渲染识别行
+      ...(recognition ? [recog] : [])
+    );
+    const layerScroll = el('div', { class: 'wheel-guide__scroll' }, layerInner);
+    const layerFooter = el(
+      'div',
+      { class: 'wheel-guide__footer' },
+      el('span', { class: 'wheel-guide__footer-hint' }, '选完照片自动开始建模，可随时关闭继续调整'),
+      el('button', { type: 'button', class: 'wheel-guide__footer-close', onClick: closeLayer }, '关闭')
+    );
+    const layer = el(
+      'div',
+      { class: 'wheel-guide-layer hidden', role: 'dialog', 'aria-modal': 'true', 'aria-label': '轮毂拍摄引导' },
+      layerHeader,
+      layerScroll,
+      layerFooter
+    );
+    document.body.appendChild(layer);
+
+    // 层内点击：取景框/缩略图 → 打开文件选择；参考列/恢复按钮/细节不触发
+    layerInner.addEventListener('click', (e) => {
+      if (e.target === input) return;
+      if (actions.contains(e.target) || detail.contains(e.target)) return;
+      if (guideUI.guideCol.contains(e.target)) return;
+      input.click();
+    });
+    // 层内拖拽 → 处理照片（取景框/CTA/参考列交互沿用已实现逻辑，仅换父容器）
+    wireDrop(layer, onFiles);
+    // Esc 关闭
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !layer.classList.contains('hidden')) closeLayer();
+    });
+
+    // ---- 侧栏触发卡（保留 .dropzone 类名 + 「上传轮毂照片」文案，e2e 契约可达）----
+    // 隐藏 input 挂在触发卡里：既有 e2e 选择器 .dropzone:has-text("上传轮毂照片") input[type=file]
+    // 保持可达（hidden 不参与布局，不影响紧凑卡视觉）。
+    zone = el(
+      'div',
+      { class: 'dropzone wheel-guide-trigger', role: 'button', tabindex: '0', 'aria-label': '打开轮毂拍摄引导' },
+      el('div', { class: 'wgt-icon', 'aria-hidden': 'true' }, '📷'),
+      el(
+        'div',
+        { class: 'wgt-body' },
+        el('div', { class: 'dz-title' }, title),
+        el('div', { class: 'wgt-hint' }, hint)
+      ),
+      el('div', { class: 'wgt-go', 'aria-hidden': 'true' }, '›'),
+      input
+    );
+    zone.addEventListener('click', (e) => {
+      // input.click()（层内选图时触发）会派发冒泡 click，须忽略，否则 openLayer 会被
+      // 重复调用把 prevBodyOverflow 覆盖成 'hidden'，导致关闭后 body 滚动锁死
+      if (e.target === input) return;
+      openLayer();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openLayer();
+      }
+    });
+    // 触发卡拖拽 → 处理照片并打开层，让用户立刻看到结果
+    wireDrop(zone, (files) => {
+      onFiles(files);
+      openLayer();
+    });
+  } else {
+    /* ===== 非 guide 分支：原单列逻辑（整车 carUpload，与引入 guide 前逐字节一致）===== */
+    zone = el(
+      'div',
+      { class: 'dropzone' },
+      el('div', { class: 'dz-title' }, title),
+      el('div', { class: 'dz-sub' }, '点击选择，或把照片拖到这里'),
+      input,
+      thumbs,
+      bar,
+      status,
+      actions,
+      detail,
+      nameWrap,
+      // 关掉识别的上传区（轮毂）不渲染识别行，避免留一行永远为空的提示
+      ...(recognition ? [recog] : [])
+    );
+    zone.addEventListener('click', (e) => {
+      // 恢复按钮区、细节区不触发"重新选图"
+      if (e.target === input) return;
+      if (actions.contains(e.target) || detail.contains(e.target)) return;
+      input.click();
+    });
+    ['dragenter', 'dragover'].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.add('over');
+      })
+    );
+    ['dragleave', 'drop'].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.remove('over');
+      })
+    );
+    zone.addEventListener('drop', (e) => {
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (files.length) onFiles(files);
+    });
   }
-
-  const zone = el(
-    'div',
-    { class: `dropzone${guideUI ? ' dropzone--guide' : ''}` },
-    el('div', { class: 'dz-title' }, title),
-    // guide 模式：用「取景框 + 参考列」两列舞台替换副标题；thumbs 已挂进舞台主列。
-    // 非 guide 模式保持原结构（副标题 + thumbs 直挂 zone），整车上传零变化。
-    guideUI ? guideUI.stage : el('div', { class: 'dz-sub' }, '点击选择，或把照片拖到这里'),
-    guideUI ? null : thumbs,
-    input,
-    bar,
-    status,
-    actions,
-    detail,
-    nameWrap,
-    // 关掉识别的上传区（轮毂）不渲染识别行，避免留一行永远为空的提示
-    ...(recognition ? [recog] : [])
-  );
-
-  zone.addEventListener('click', (e) => {
-    // 恢复按钮区、细节区不触发"重新选图"
-    if (e.target === input) return;
-    if (actions.contains(e.target) || detail.contains(e.target)) return;
-    // guide 模式：右侧参考列仅作示意，点击不触发选图（取景框/标题/缩略图仍可点）
-    if (guideUI && guideUI.guideCol.contains(e.target)) return;
-    input.click();
-  });
-  ['dragenter', 'dragover'].forEach((ev) =>
-    zone.addEventListener(ev, (e) => {
-      e.preventDefault();
-      zone.classList.add('over');
-    })
-  );
-  ['dragleave', 'drop'].forEach((ev) =>
-    zone.addEventListener(ev, (e) => {
-      e.preventDefault();
-      zone.classList.remove('over');
-    })
-  );
-  zone.addEventListener('drop', (e) => {
-    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
-    if (files.length) onFiles(files);
-  });
 
   return {
     zone,

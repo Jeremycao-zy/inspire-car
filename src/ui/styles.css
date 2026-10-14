@@ -2286,23 +2286,12 @@ input[type='range'] {
 }
 
 /* =========================================================
-   轮毂上传：拍摄引导两列舞台（opt-in，仅轮毂 .dropzone--guide）
-   视觉语言 1:1 复用拍照引导 photoGuide.css：蓝图化 ghost、7% 虚线安全框、
-   四角括号、中心十字准线、霓虹青描边辉光取景框——与拍照引导一眼同源。
+   轮毂上传：拍摄引导（opt-in，仅轮毂传 guide）
+   上传 UI 搬进全屏引导层 .wheel-guide-layer（与车型拍照引导 .photo-guide-layer
+   同构：fixed inset:0 + 霓虹辉光 + 蓝图格点 + 毛玻璃 header/footer），层内是
+   「取景框 + 参考列」两列舞台。视觉语言 1:1 复用拍照引导 photoGuide.css：
+   蓝图化 ghost、7% 虚线安全框、四角括号、中心十字准线、霓虹青描边辉光取景框。
    ========================================================= */
-
-/* guide 模式下的 dropzone：收紧内边距给两列舞台腾宽度，左对齐，霓虹描边 */
-.dropzone--guide {
-  padding: 12px;
-  text-align: left;
-  border-style: solid;
-  border-color: rgba(0, 240, 255, 0.22);
-}
-.dropzone--guide:hover,
-.dropzone--guide.over {
-  border-color: rgba(0, 240, 255, 0.5);
-  background: rgba(0, 240, 255, 0.04);
-}
 
 /* 舞台内的 .hidden 统一隐藏（ghost / shot / cta 由 JS 切换 classList） */
 .upload-stage .hidden {
@@ -2320,10 +2309,14 @@ input[type='range'] {
   min-width: 0;
 }
 
-/* 取景框：4/3、深空底、霓虹青描边辉光、圆角 18px（取值同 photoGuide__viewfinder） */
+/* 取景框：4/3、深空底、霓虹青描边辉光、圆角 18px（取值同 photoGuide__viewfinder）
+   max-height 防止取景框在矮窗口里顶出视口；注意 aspect-ratio 下 max-height 会把
+   高度回灌成宽度（520px 高 → 693px 宽，差 7px 够不到 700），260px 余量在
+   1280×800 实测 720×540，取景框仍完整落在头/底栏之间的可视区内 */
 .up-viewfinder {
   position: relative;
   aspect-ratio: 4 / 3;
+  max-height: calc(100vh - 260px);
   border-radius: 18px;
   overflow: hidden;
   background: #0c0820;
@@ -2498,9 +2491,9 @@ input[type='range'] {
   color: var(--text-dim, #9aa7c7);
 }
 
-/* 右侧参考列：上限 240px，窄容器（348px 侧栏）内收缩以保证取景框可用宽度 */
+/* 右侧参考列：全屏层有空间，恢复固定 240px，取景框可拿到 ~800px */
 .upload-stage__guide {
-  flex: 0 0 min(240px, 42%);
+  flex: 0 0 240px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2622,7 +2615,8 @@ input[type='range'] {
   box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
 }
 
-/* 响应式：≤860px 单列，参考列移到下方并横向滚动（与 photoGuide 同断点） */
+/* 响应式：≤860px 单列，参考列移到下方并横向滚动（与 photoGuide 同断点）
+   全屏层内取景框终于有足够高度：min-height 保证移动端取景框高度 ≥ 300px */
 @media (max-width: 860px) {
   .upload-stage {
     flex-direction: column;
@@ -2643,5 +2637,241 @@ input[type='range'] {
   .up-guide-item {
     flex: 0 0 150px;
     width: 150px;
+  }
+  .up-viewfinder {
+    min-height: 320px;
+  }
+}
+
+/* =========================================================
+   轮毂拍摄引导：全屏层（与车型拍照引导 .photo-guide-layer 同构）
+   fixed inset:0 + 霓虹辉光 + 蓝图格点叠层 + 毛玻璃 header/footer。
+   ========================================================= */
+.wheel-guide-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 110; /* 高于 studio(#app) 与车型拍照引导(100) */
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(520px 460px at 50% 6%, rgba(255, 46, 151, 0.16), transparent 68%),
+    radial-gradient(900px 520px at 82% -12%, rgba(255, 46, 151, 0.2), transparent 60%),
+    radial-gradient(1000px 600px at 12% 2%, rgba(0, 240, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, #0b0820 0%, #0a0a14 46%, #120a24 100%);
+  background-attachment: fixed;
+  color: var(--text, #e8f6ff);
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  overflow: hidden;
+}
+/* 蓝图格点叠层：霓虹青/粉细线，强化「工位」感（同 photo-guide-layer::before） */
+.wheel-guide-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 46, 151, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
+  z-index: 0;
+}
+.wheel-guide-layer.hidden {
+  display: none;
+}
+/* 拖拽进入时的反馈（wireDrop 切 .over） */
+.wheel-guide-layer.over {
+  box-shadow: inset 0 0 0 2px rgba(0, 240, 255, 0.5), inset 0 0 140px rgba(0, 240, 255, 0.14);
+}
+
+/* 顶部栏（深紫玻璃 + 霓虹描边，同 photo-guide__header） */
+.wheel-guide__header {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: rgba(12, 10, 22, 0.62);
+  border-bottom: 1px solid rgba(255, 46, 151, 0.28);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 24px rgba(177, 74, 237, 0.12);
+}
+.wheel-guide__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #eafcff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 46, 151, 0.32);
+}
+.wheel-guide__logo {
+  height: 28px;
+  width: auto;
+  filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.5));
+}
+.wheel-guide__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--neon-cyan, #00f0ff);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.22);
+  transition: transform 0.1s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.wheel-guide__close:hover {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.45);
+}
+.wheel-guide__close:active {
+  transform: translateY(1px);
+}
+
+/* 可滚动主体 */
+.wheel-guide__scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 28px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+.wheel-guide__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.wheel-guide__title {
+  font-size: 26px;
+  font-weight: 800;
+  color: #eafcff;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 0 30px rgba(255, 46, 151, 0.28);
+}
+.wheel-guide__subtitle {
+  font-size: 14px;
+  color: var(--text-dim, #9aa7c7);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+/* 底部栏（深紫玻璃，同 photo-guide__footer） */
+.wheel-guide__footer {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  background: rgba(12, 10, 22, 0.72);
+  border-top: 1px solid rgba(0, 240, 255, 0.28);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 -6px 24px rgba(177, 74, 237, 0.12);
+}
+.wheel-guide__footer-hint {
+  font-size: 13px;
+  color: var(--text-dim, #9aa7c7);
+}
+.wheel-guide__footer-close {
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--neon-cyan, #00f0ff);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.3), 0 0 14px rgba(0, 240, 255, 0.18);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.wheel-guide__footer-close:hover {
+  background: rgba(0, 240, 255, 0.16);
+  box-shadow: inset 0 0 0 1px var(--neon-cyan, #00f0ff), 0 0 22px rgba(0, 240, 255, 0.36);
+}
+
+/* =========================================================
+   侧栏紧凑触发卡（.dropzone.wheel-guide-trigger）
+   保留 .dropzone 类名 + 「上传轮毂照片」文案，e2e `.dropzone:has-text(...)` 契约可达；
+   霓虹虚线卡片风，横向排[图标 | 标题+hint | ›]，点击打开全屏引导层。
+   ========================================================= */
+.wheel-guide-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  text-align: left;
+  border-color: rgba(0, 240, 255, 0.3);
+  cursor: pointer;
+}
+.wheel-guide-trigger:hover,
+.wheel-guide-trigger.over {
+  border-color: rgba(0, 240, 255, 0.6);
+  background: rgba(0, 240, 255, 0.06);
+}
+.wgt-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--neon-cyan, #00f0ff) 0%, var(--neon-purple, #b14aed) 100%);
+  font-size: 22px;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+}
+.wgt-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.wheel-guide-trigger .dz-title {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  text-align: left;
+}
+.wgt-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim, #9aa7c7);
+}
+.wgt-go {
+  flex: 0 0 auto;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--neon-cyan, #00f0ff);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+
+/* 移动端：收紧全屏层内边距，给取景框腾宽度 */
+@media (max-width: 640px) {
+  .wheel-guide__header {
+    padding: 12px 14px;
+  }
+  .wheel-guide__scroll {
+    padding: 16px 12px;
+  }
+  .wheel-guide__title {
+    font-size: 20px;
+  }
+  .wheel-guide__footer {
+    padding: 12px 14px;
+  }
+  .wheel-guide__footer-hint {
+    font-size: 12px;
   }
 }
