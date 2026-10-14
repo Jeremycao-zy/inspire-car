@@ -2284,3 +2284,364 @@ input[type='range'] {
   padding: 12px 16px;
   border-top: 1px solid var(--line);
 }
+
+/* =========================================================
+   轮毂上传：拍摄引导两列舞台（opt-in，仅轮毂 .dropzone--guide）
+   视觉语言 1:1 复用拍照引导 photoGuide.css：蓝图化 ghost、7% 虚线安全框、
+   四角括号、中心十字准线、霓虹青描边辉光取景框——与拍照引导一眼同源。
+   ========================================================= */
+
+/* guide 模式下的 dropzone：收紧内边距给两列舞台腾宽度，左对齐，霓虹描边 */
+.dropzone--guide {
+  padding: 12px;
+  text-align: left;
+  border-style: solid;
+  border-color: rgba(0, 240, 255, 0.22);
+}
+.dropzone--guide:hover,
+.dropzone--guide.over {
+  border-color: rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.04);
+}
+
+/* 舞台内的 .hidden 统一隐藏（ghost / shot / cta 由 JS 切换 classList） */
+.upload-stage .hidden {
+  display: none !important;
+}
+
+/* 两列舞台：左主列（flex:1）+ 右参考列 */
+.upload-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.upload-stage__main {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 取景框：4/3、深空底、霓虹青描边辉光、圆角 18px（取值同 photoGuide__viewfinder） */
+.up-viewfinder {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0c0820;
+  border: 1px solid rgba(0, 240, 255, 0.55);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.5),
+    0 6px 14px rgba(177, 74, 237, 0.18),
+    inset 0 0 40px rgba(0, 240, 255, 0.1),
+    0 0 26px rgba(0, 240, 255, 0.28);
+  cursor: pointer;
+}
+
+/* 蓝图化 ghost：与 photoGuide__ghost 完全一致 */
+.up-viewfinder__ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1) contrast(0.35) brightness(1.55);
+  opacity: 0.42;
+  transition: opacity 0.25s ease;
+}
+
+/* 取景辅助线容器：纯 CSS，不拦截点击 */
+.up-viewfinder__frame {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+/* 已拍摄：辅助线淡出，让位给用户照片（思路同 photoGuide__guides.is-faded） */
+.up-viewfinder__frame.is-faded {
+  opacity: 0.14;
+}
+
+/* 四周 7% 内缩的虚线矩形（安全框） */
+.up-viewfinder__safe {
+  position: absolute;
+  inset: 7%;
+  border: 2px dashed rgba(0, 240, 255, 0.55);
+  border-radius: 12px;
+}
+
+/* 四角相机括号 */
+.up-viewfinder__corner {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--neon-cyan, #00f0ff);
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.7));
+}
+.up-viewfinder__corner--tl {
+  top: 14px;
+  left: 14px;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 10px;
+}
+.up-viewfinder__corner--tr {
+  top: 14px;
+  right: 14px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 10px;
+}
+.up-viewfinder__corner--bl {
+  bottom: 14px;
+  left: 14px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 10px;
+}
+.up-viewfinder__corner--br {
+  bottom: 14px;
+  right: 14px;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 10px;
+}
+
+/* 中心十字准线（淡） */
+.up-viewfinder__cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  opacity: 0.55;
+}
+.up-viewfinder__cross::before,
+.up-viewfinder__cross::after {
+  content: '';
+  position: absolute;
+  background: rgba(0, 240, 255, 0.65);
+}
+.up-viewfinder__cross::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  transform: translateX(-50%);
+}
+.up-viewfinder__cross::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  transform: translateY(-50%);
+}
+
+/* 已选照片：铺满取景框（与 thumbs 最后一张共享同一 blob URL） */
+.up-viewfinder__shot {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0c0820;
+}
+
+/* 大 CTA：粉→青渐变 pill（沿用主按钮渐变），未选图时悬浮取景框底部 */
+.up-viewfinder__cta {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 4;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(
+    100deg,
+    var(--neon-pink, #ff2e97) 0%,
+    #ff66c4 45%,
+    var(--neon-cyan, #00f0ff) 100%
+  );
+  color: #0a0a14;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(255, 46, 151, 0.35), 0 8px 22px rgba(0, 240, 255, 0.22);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+.up-viewfinder__cta:hover {
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 0 0 30px rgba(255, 46, 151, 0.5), 0 10px 28px rgba(0, 240, 255, 0.4);
+}
+
+/* 取景框下方（框外）：当前角度 label + desc */
+.up-viewfinder__meta {
+  margin-top: 12px;
+}
+.up-viewfinder__meta-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #eafcff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+.up-viewfinder__meta-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim, #9aa7c7);
+}
+
+/* 右侧参考列：上限 240px，窄容器（348px 侧栏）内收缩以保证取景框可用宽度 */
+.upload-stage__guide {
+  flex: 0 0 min(240px, 42%);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: default;
+}
+.up-guide-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--neon-cyan, #00f0ff);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+}
+.up-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.up-guide-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px;
+  border-radius: 14px;
+  background: linear-gradient(170deg, #1a1030 0%, #120a24 55%, #0c0820 100%);
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    inset 0 0 24px rgba(0, 240, 255, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* 当前对应项：霓虹青描边 + 辉光高亮 */
+.up-guide-item.is-active {
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.5),
+    inset 0 0 26px rgba(0, 240, 255, 0.14),
+    0 0 22px rgba(0, 240, 255, 0.45);
+}
+.up-guide-item__thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0c0820;
+  border: 1px solid rgba(0, 240, 255, 0.22);
+}
+.up-guide-item__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.82;
+  filter: grayscale(0.25) brightness(0.9);
+}
+.up-guide-item__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #eafcff;
+}
+.up-guide-item__desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim, #9aa7c7);
+}
+/* 已拍 ✓ 徽章：右上角，默认隐藏，is-done 时弹出 */
+.up-guide-item__badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(100deg, var(--neon-cyan, #00f0ff), #7af0ff);
+  color: #0a0a14;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.up-guide-item.is-done .up-guide-item__badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 拍摄要点（由 hint 拆分） */
+.up-guide-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+}
+.up-guide-tip {
+  position: relative;
+  padding-left: 14px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text-dim, #9aa7c7);
+}
+.up-guide-tip::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+}
+
+/* 响应式：≤860px 单列，参考列移到下方并横向滚动（与 photoGuide 同断点） */
+@media (max-width: 860px) {
+  .upload-stage {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .upload-stage__guide {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+  .up-guide-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .up-guide-item {
+    flex: 0 0 150px;
+    width: 150px;
+  }
+}
