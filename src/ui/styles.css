@@ -2622,3 +2622,110 @@ input[type='range'] {
     gap: 8px;
   }
 }
+
+/* =========================================================
+   真实规格选择器（.spec-picker）
+   替代原来的 6 根连续滑杆：胎宽/扁平比/轮辋/J/ET 全部改为离散序列，
+   杜绝 237mm 这类不存在的规格。倾角仍用滑杆（装配角度，非轮胎规格）。
+   ========================================================= */
+.spec-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(170deg, rgba(26, 16, 48, 0.6) 0%, rgba(12, 8, 32, 0.6) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+}
+.spec-row {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  grid-template-areas:
+    'label value'
+    'ctl   ctl'
+    'note  note';
+  gap: 5px 8px;
+  align-items: center;
+}
+.spec-label {
+  grid-area: label;
+  font-size: 11.5px;
+  color: var(--text-dim, #9aa7c7);
+}
+.spec-value {
+  grid-area: value;
+  font-size: 13px;
+  font-weight: 500;
+  color: #eafcff;
+  font-variant-numeric: tabular-nums;
+}
+.spec-value.is-warn {
+  color: #ffb454;
+}
+.spec-ctl {
+  grid-area: ctl;
+  display: flex;
+  gap: 6px;
+}
+.spec-ctl-row {
+  display: flex;
+  gap: 6px;
+}
+.spec-note {
+  grid-area: note;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim, #9aa7c7);
+}
+.spec-note.is-warn {
+  color: #ffb454;
+}
+.spec-note.is-shift {
+  color: var(--neon-cyan, #00f0ff);
+}
+.spec-select {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 6px;
+  font-size: 11.5px;
+  color: var(--text, #e8f6ff);
+  background: rgba(8, 6, 20, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  border-radius: 7px;
+}
+.spec-select:focus {
+  outline: none;
+  border-color: var(--neon-cyan, #00f0ff);
+}
+.spec-range {
+  width: 100%;
+}
+.spec-rec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.spec-rec-title {
+  font-size: 10.5px;
+  color: var(--text-dim, #9aa7c7);
+  margin-right: 2px;
+}
+.spec-chip {
+  font-size: 10.5px;
+  padding: 3px 8px;
+}
+.spec-oe-tag {
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--text-dim, #9aa7c7);
+  background: rgba(255, 46, 151, 0.06);
+  border: 1px solid rgba(255, 46, 151, 0.2);
+}
+.spec-oe-tag.is-oe {
+  color: #7dfcd4;
+  background: rgba(29, 158, 117, 0.14);
+  border-color: rgba(29, 158, 117, 0.42);
+}

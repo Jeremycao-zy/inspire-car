@@ -12,6 +12,8 @@
 
 import { ET_REF } from '../tuning/wheelRig.js';
 import { createColorWheel } from './colorWheel.js';
+import { createSpecPicker } from './sizePicker.js';
+import { getBasis } from '../tuning/tireBasis.js';
 import { renderMyWheels } from './myWheels.js';
 import {
   fenderStatus,
@@ -766,14 +768,30 @@ export function createPanel(app, mount) {
   }
 
   const readout = el('div', { class: 'readout' });
-  const paramBox = el(
-    'div',
-    {},
-    segBar,
-    presetBar,
-    ...AXLE_PARAMS.map((spec) => makeSlider(spec, () => app.apply())),
-    readout
-  );
+
+  /* ---- 真实规格选择器（替代 AXLE_PARAMS 的 6 根连续滑杆）----
+   * 滑杆能拖出 237mm 胎宽这类不存在的规格，填不出真实值就没资格谈间隙判定。
+   * 倾角保留滑杆（它是装配角度，不是轮胎规格）。 */
+  const specPicker = createSpecPicker({
+    el,
+    basis: getBasis(app.params.realSpecs?.carKey),
+    getSpec() {
+      const t = app.params.axleTarget;
+      // axleTarget 'all' 时以当前作用域的 front 为准展示（写回时按 all 分发到两根轴）
+      return { ...app.params.front, axleTarget: t };
+    },
+    applySpec(patch) {
+      const t = app.params.axleTarget;
+      if (t !== 'rear') Object.assign(app.params.front, patch);
+      if (t !== 'front') Object.assign(app.params.rear, patch);
+    },
+    onChange() {
+      app.apply();
+      syncAll();
+    },
+  });
+
+  const paramBox = el('div', {}, segBar, presetBar, specPicker.root, readout);
 
   /* ---- 悬挂读数（3 行着色，依赖 chassis.suspensionReadout）---- */
   const suspReadout = el('div', { class: 'readout susp' });
@@ -1485,6 +1503,7 @@ export function createPanel(app, mount) {
   }
 
   function syncAll() {
+    specPicker?.render();
     syncSeg();
     syncSuspTarget();
     syncScene();

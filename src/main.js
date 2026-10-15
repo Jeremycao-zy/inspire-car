@@ -45,6 +45,7 @@ import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
 import { loading3D } from './ui/loading3d.js';
 import './ui/styles.css';
+import './ui/professional-theme.css';
 
 /** 文件指纹：同一张照片反复选择时 name/size/lastModified 一致，用于额度用尽后的去重拦截 */
 function sigOfFiles(files) {
@@ -930,6 +931,10 @@ const app = {
       rimInch: s.rimInch ?? null,
       tireWidth: s.tireWidth ?? null,
       aspect: s.aspect ?? null,
+      // 车型 key（如 mercedes-sl350-r230）——精准适配底座 tireBasis.js 的索引。
+      // 只在 official-db 命中时存在（server/specs.js 的 matchedKey）；LLM 路径为 null，
+      // 此时前端只能做「灵感预览」，不产出工程结论。
+      carKey: s.matchedKey ?? null,
       source: s.source || '',
       confidence: s.confidence ?? 0, // 参数可信度（区别于车名识别把握）
       nameConfidence: opts?.nameConfidence ?? null, // 车名识别把握（来自视觉 rec.confidence）
@@ -982,7 +987,10 @@ const app = {
    */
   applyVisionRecognition(rec) {
     if (!rec?.fullName) return false;
+    // ⚠️ 必须显式清空 carKey：识别到车名但没查到参数时，若沿用上一次的 key，
+    // 会把 A 车的原厂规格套到 B 车上（串档）。本方法是「仅识别、未命中库」的路径。
     this.params.realSpecs = {
+      carKey: null,
       length: null,
       width: null,
       height: null,
