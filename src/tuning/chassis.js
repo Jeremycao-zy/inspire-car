@@ -25,6 +25,7 @@
 import * as THREE from 'three';
 import { tireOuterRadius } from './tire.js';
 import { suspensionReadout as computeSuspensionReadout } from './suspension.js';
+import { wheelCenterZm } from './wheelPlacement.js';
 
 /* ------------------------------------------------------------------ */
 /*                            常量                                     */
@@ -137,6 +138,11 @@ export class ChassisParams {
 
     const front = axleParams?.front || OE_SPEC.front;
     const rear = axleParams?.rear || OE_SPEC.rear;
+
+    // 当前 ET：cornerSpec 用它算轮心外移（3D 里轮子随 ET 内外移动）。
+    // 未传（用 OE_SPEC 兜底）时与原厂相同 → 外移为 0，行为与改造前一致。
+    this.etF = Number.isFinite(front?.et) ? front.et : OE_SPEC.front.et;
+    this.etR = Number.isFinite(rear?.et) ? rear.et : OE_SPEC.rear.et;
 
     // Step 3 — 推导主参数
     let wheelbase = RATIO.wheelbase * L;
@@ -310,6 +316,19 @@ export class ChassisParams {
   cornerSpec() {
     const F = { y: this.hubY_F, x: this.axleX_F, t: this.halfTrack_F };
     const R = { y: this.hubY_R, x: this.axleX_R, t: this.halfTrack_R };
+
+    // 轮心 Z 叠加 ET 外移：轮辋安装面固定，改 ET 轮心必然内外移动。
+    // 此前这里写死 z = ±halfTrack，导致面板里改 ET 在 3D 里毫无反应
+    // （2026-10-15 用户指出「数据调节反应不出真实效果」）。
+    // OE 基准取 chassis.js 自己的 OE_SPEC —— 与本模块同源，避免两处原厂值打架。
+    const spec = this.p || {};
+    const etF = this.etF ?? OE_SPEC.front.et;
+    const etR = this.etR ?? OE_SPEC.rear.et;
+    const zFL = wheelCenterZm({ halfTrackM: F.t, side: 1, etMm: etF, oeEtMm: OE_SPEC.front.et });
+    const zFR = wheelCenterZm({ halfTrackM: F.t, side: -1, etMm: etF, oeEtMm: OE_SPEC.front.et });
+    const zRL = wheelCenterZm({ halfTrackM: R.t, side: 1, etMm: etR, oeEtMm: OE_SPEC.rear.et });
+    const zRR = wheelCenterZm({ halfTrackM: R.t, side: -1, etMm: etR, oeEtMm: OE_SPEC.rear.et });
+
     return {
       frontX: F.x,
       rearX: R.x,
@@ -318,10 +337,10 @@ export class ChassisParams {
       bodyHalfWidth: this.bodyHalfWidth,
       hubY: { front: F.y, rear: R.y },
       corners: [
-        { id: 'FL', label: '左前', x: F.x, y: F.y, z: +F.t, side: +1, halfTrack: F.t },
-        { id: 'FR', label: '右前', x: F.x, y: F.y, z: -F.t, side: -1, halfTrack: F.t },
-        { id: 'RL', label: '左后', x: R.x, y: R.y, z: +R.t, side: +1, halfTrack: R.t },
-        { id: 'RR', label: '右后', x: R.x, y: R.y, z: -R.t, side: -1, halfTrack: R.t },
+        { id: 'FL', label: '左前', x: F.x, y: F.y, z: zFL, side: 1, halfTrack: F.t },
+        { id: 'FR', label: '右前', x: F.x, y: F.y, z: zFR, side: -1, halfTrack: F.t },
+        { id: 'RL', label: '左后', x: R.x, y: R.y, z: zRL, side: 1, halfTrack: R.t },
+        { id: 'RR', label: '右后', x: R.x, y: R.y, z: zRR, side: -1, halfTrack: R.t },
       ],
     };
   }
