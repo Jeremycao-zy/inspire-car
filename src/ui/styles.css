@@ -2729,3 +2729,30 @@ input[type='range'] {
   background: rgba(29, 158, 117, 0.14);
   border-color: rgba(29, 158, 117, 0.42);
 }
+
+/* =========================================================
+   承诺收口：区分「灵感预览」与「精准适配」
+   规则估算的读数必须显式标注，不能让用户误以为是几何验证结果。
+   ========================================================= */
+
+/* 未建档车型：读数不着色（不给绿/黄/红判定），仅显示数值 */
+.susp-row.susp-raw .susp-label,
+.susp-row.susp-raw .susp-val {
+  color: var(--text-dim, #9aa7c7);
+}
+.susp-row.susp-raw {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: rgba(160, 160, 190, 0.28);
+}
+
+/* 读数区底部的免责说明：常驻，不随状态变化 */
+.susp-disclaimer {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #b9b3d1;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(160, 160, 190, 0.22);
+}
