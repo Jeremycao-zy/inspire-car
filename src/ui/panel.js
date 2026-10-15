@@ -15,6 +15,7 @@ import { createColorWheel } from './colorWheel.js';
 import { createSpecPicker } from './sizePicker.js';
 import { sfx } from './sfx.js';
 import { getBasis, canJudge } from '../tuning/tireBasis.js';
+import { createClearanceReport } from './clearanceReport.js';
 import { renderMyWheels } from './myWheels.js';
 import {
   fenderStatus,
@@ -797,7 +798,27 @@ export function createPanel(app, mount) {
     },
   });
 
-  const paramBox = el('div', {}, segBar, presetBar, specPicker.root, readout);
+  /* ---- 动态间隙检测报告（精准适配）----
+   * 替代不了旧的规则估算读数，而是**补充**几何检测结论：
+   * 报「哪个角 + 什么工况 + 哪个方向 + 多少 mm + 怎么改」，而不是一个绿黄红。 */
+  const clearanceReport = createClearanceReport({
+    app,
+    el,
+    onApplied() {
+      app.apply();
+      syncAll();
+    },
+  });
+
+  const paramBox = el(
+    'div',
+    {},
+    segBar,
+    presetBar,
+    specPicker.root,
+    clearanceReport.root,
+    readout
+  );
 
   /* ---- 悬挂读数（3 行着色，依赖 chassis.suspensionReadout）---- */
   const suspReadout = el('div', { class: 'readout susp' });
@@ -1510,6 +1531,7 @@ export function createPanel(app, mount) {
 
   function syncAll() {
     specPicker?.render();
+    clearanceReport?.render();
     syncSeg();
     syncSuspTarget();
     syncScene();
