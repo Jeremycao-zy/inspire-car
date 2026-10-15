@@ -2044,7 +2044,19 @@ const staticServer = createStaticServer({
 /** 判断是否 API 请求（/api 与 /api/*）。API 请求永远不进静态逻辑，SSE 才不会被误伤。 */
 const isApiPath = (p) => p === '/api' || p.startsWith('/api/');
 
-const server = http.createServer(async (req, res) => {
+/**
+ * 单个 HTTP 请求的完整处理流程（原 createServer 回调体，独立成函数以便统一兜底）。
+ *
+ * 为什么拆出来：下面所有路由都是 async，任何一处抛出未被捕获的异常都会变成
+ * unhandled rejection —— Node 默认直接终止进程。进程一死，平台网关（Fly）就拿不到
+ * 上游响应，对外只会回 **502 Bad Gateway**，日志里还看不到我们自己的状态码，
+ * 排查极其困难。拆出来后由外层 catch 统一收敛成 500，单个坏请求不再拖垮整机。
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @returns {Promise<void>}
+ */
+async function handleRequest(req, res) {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
@@ -2450,6 +2462,28 @@ const server = http.createServer(async (req, res) => {
   }
 
   sendJson(res, 404, { error: 'not found' });
+}
+
+/* 兜底网：handleRequest 里任何漏网的异常都在这里变成 500，
+ * 绝不放任它变成 unhandled rejection 把进程打死（否则平台网关只回 502）。 */
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((err) => {
+    console.error(`[http] ${req.method} ${req.url} 处理失败:`, err);
+    try {
+      if (res.headersSent) {
+        res.end();
+      } else {
+        res.writeHead(500, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        res.end('Internal Server Error\n');
+      }
+    } catch {
+      /* 连接已断，忽略 */
+    }
+  });
 });
 
 async function start() {

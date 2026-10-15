@@ -294,7 +294,10 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
     } catch {
       // 文件不存在
       if (useSpaFallback && !looksLikeFile(pathname)) {
-        await sendIndex(res, req.method === 'HEAD');
+        // 必须把真实的 req 传下去：下游 pipeFile() 要靠 req.on('close') 监听
+        // 客户端断开以及时销毁读流。曾在这里传一个 { method, headers } 的合成对象，
+        // 它没有 .on()，pipeFile 抛 TypeError，最终演变成进程崩溃 + 网关 502。
+        await sendIndex(req, res);
         return;
       }
       sendPlain(res, 404, 'Not Found');
@@ -334,16 +337,35 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
     return path.extname(path.basename(p)) !== '';
   }
 
-  async function sendIndex(res, isHead) {
+  /**
+   * 回落到 dist/index.html（SPA fallback）。
+   *
+   * @param {import('node:http').IncomingMessage} req 真实请求对象（必须带 .on()，见 pipeFile）
+   * @param {import('node:http').ServerResponse} res
+   * @returns {Promise<void>}
+   */
+  async function sendIndex(req, res) {
     const idx = path.join(absRoot, 'index.html');
     try {
       const st = await fsp.stat(idx);
       if (st.isFile()) {
-        await sendFile({ method: isHead ? 'HEAD' : 'GET', headers: {} }, res, idx, st, 'index.html');
+        // 直接透传真实 req：
+        //  · req.method 本身就是 'HEAD'/'GET'，无需再造一个 method 覆盖对象；
+        //  · 真实的 headers 才能让 If-None-Match / Range 协商（304 / 206）正常生效；
+        //  · 真实 req 是 EventEmitter，pipeFile() 依赖的 req.on('close') 才存在。
+        // 注意：绝不能用 { ...req } 展开——展开出来是普通对象，会丢掉 .on() 原型方法。
+        await sendFile(req, res, idx, st, 'index.html');
         return;
       }
     } catch {
       /* 落到 404 */
+    }
+    // 关键：sendFile 内部可能已经 writeHead（headersSent=true）。
+    // 此时再 writeHead(404) 会抛 ERR_HTTP_HEADERS_SENT，二次异常会冒泡成
+    // 未捕获 rejection 把整个进程带崩（线上表现就是网关 502），所以必须先判。
+    if (res.headersSent) {
+      endQuietly(res);
+      return;
     }
     sendPlain(res, 404, 'Not Found');
   }
@@ -372,6 +394,21 @@ export function createStaticServer({ root, flag, spaFallback } = {}) {
     spaFallback: useSpaFallback,
     handle,
   };
+}
+
+/**
+ * 静默结束一个响应：已经发过头、或连接已断时用它收尾，避免抛错。
+ * 所有"异常路径上的收尾"都必须走这里，防止错误处理本身再抛异常。
+ *
+ * @param {import('node:http').ServerResponse} res
+ * @returns {void}
+ */
+function endQuietly(res) {
+  try {
+    res.end();
+  } catch {
+    /* 连接已断，忽略 */
+  }
 }
 
 /* ------------------------- 可复用的带缓存文件发送 ------------------------- */
@@ -467,12 +504,17 @@ function pipeFile(req, res, file, start, end) {
   const stream = fs.createReadStream(file, { start, end });
   let destroyed = false;
 
-  req.on('close', () => {
-    if (!destroyed) {
-      destroyed = true;
-      stream.destroy();
-    }
-  });
+  // req 未必是真正的 IncomingMessage（历史上这里收到过 { method, headers } 合成对象）。
+  // 必须先判 .on 是否存在，否则抛 TypeError 会一路冒泡成未捕获 rejection → 进程崩溃
+  // → 平台网关对外表现为 502。
+  if (typeof req === 'object' && req !== null && typeof req.on === 'function') {
+    req.on('close', () => {
+      if (!destroyed) {
+        destroyed = true;
+        stream.destroy();
+      }
+    });
+  }
 
   stream.on('error', () => {
     if (!destroyed) {
@@ -512,6 +554,12 @@ function matchesEtag(header, etag) {
  * @returns {void}
  */
 function sendPlain(res, code, text, extraHeaders = {}) {
+  // 响应头已经发出（例如上游 sendFile 已 writeHead 后才失败）时，再 writeHead 会抛
+  // ERR_HTTP_HEADERS_SENT。这个二次异常会盖掉真正的病因并把进程带崩，所以直接收尾。
+  if (res.headersSent) {
+    endQuietly(res);
+    return;
+  }
   const buf = Buffer.from(`${text}\n`, 'utf8');
   res.writeHead(code, {
     'Content-Type': 'text/plain; charset=utf-8',
