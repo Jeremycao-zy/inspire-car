@@ -6,10 +6,13 @@
  *
  * 覆盖（对应交付自检项）：
  *   1) 桌面 1280×800：全屏层内取景框 .up-viewfinder 宽度 ≥ 700px（实测值打印）。
- *   2) 移动 390×844：取景框高度 ≥ 300px（实测值打印）。
- *   3) 选 3 张照片 → 关闭 → 重开：3 张缩略图、ghost 高水位停在第 3 项、
+ *   2) 移动 390×844：取景框吃满可用列宽、无水平溢出（scrollWidth ≤ clientWidth）、
+ *      右下角括号不被裁（旧 min-height:320 + 4:3 会把宽回灌成 426px 溢出，已改 1:1）。
+ *   3) footer 关闭键可命中：elementFromPoint 点中心 + 右缘必须命中关闭键本身
+ *     （#sfx-mute-btn fixed z-index 9999 曾遮挡，层 z-index 已提至 10050）。
+ *   4) 选 3 张照片 → 关闭 → 重开：3 张缩略图、ghost 高水位停在第 3 项、
  *      取景框照片 blob URL 仍然有效（跨开关层不丢失、不 dispose）。
- *   4) Esc 关闭；打开时 body 滚动锁定（overflow:hidden），关闭后恢复。
+ *   5) Esc 关闭；打开时 body 滚动锁定（overflow:hidden），关闭后恢复。
  *
  * 所有 /api/ 请求按 pathname 精确拦截（勿用通配匹配，会误伤 /src/api 模块请求）。
  */
@@ -100,8 +103,32 @@ async function openGuideLayer(page) {
   await page.waitForSelector('.wheel-guide-layer:not(.hidden) .up-viewfinder', { state: 'visible' });
 }
 
+/** elementFromPoint 命中测试：点元素上若干相对坐标点，必须命中元素本身（或其子元素） */
+async function hitTest(page, selector, points) {
+  return page.evaluate(
+    ({ selector, points }) => {
+      const el = document.querySelector(selector);
+      if (!el) return { ok: false, reason: 'not found', results: [] };
+      const r = el.getBoundingClientRect();
+      const results = points.map(([fx, fy]) => {
+        const x = r.left + r.width * fx;
+        const y = r.top + r.height * fy;
+        const hit = document.elementFromPoint(x, y);
+        return {
+          fx,
+          fy,
+          hit: hit ? `${hit.tagName.toLowerCase()}.${hit.className}` : 'null',
+          ok: !!hit && (hit === el || el.contains(hit)),
+        };
+      });
+      return { ok: results.every((x) => x.ok), rect: { x: r.x, y: r.y, w: r.width, h: r.height }, results };
+    },
+    { selector, points }
+  );
+}
+
 test.describe('轮毂全屏拍摄引导层', () => {
-  test('桌面 1280×800：取景框宽度 ≥ 700px（大取景框）', async ({ page }) => {
+  test('桌面 1280×800：取景框宽度 ≥ 700px + footer 关闭键可命中（不被 #sfx-mute-btn 遮挡）', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await loginAsUser(page);
     await mockApi(page);
@@ -112,9 +139,30 @@ test.describe('轮毂全屏拍摄引导层', () => {
     // eslint-disable-next-line no-console
     console.log(`[MEASURE][desktop 1280x800] .up-viewfinder width = ${rect.width.toFixed(1)}px, height = ${rect.height.toFixed(1)}px`);
     expect(rect.width).toBeGreaterThanOrEqual(700);
+
+    // 缺陷 1 回归：footer 关闭键中心 + 右缘必须命中关闭键本身
+    // （#sfx-mute-btn 是 fixed bottom-right z-index 9999，层 z-index 提到 10050 盖住它）
+    const closeSel = '.wheel-guide-layer:not(.hidden) .wheel-guide__footer-close';
+    const hit = await hitTest(page, closeSel, [
+      [0.5, 0.5],
+      [0.95, 0.5],
+    ]);
+    // eslint-disable-next-line no-console
+    console.log(`[MEASURE][desktop] footer-close rect = ${hit.rect.w.toFixed(1)}x${hit.rect.h.toFixed(1)} @ (${hit.rect.x.toFixed(1)},${hit.rect.y.toFixed(1)}), hits = ${JSON.stringify(hit.results)}`);
+    expect(hit.ok).toBe(true);
+
+    // 经 footer 关闭键关闭（Playwright click 自带命中检测，被遮挡会超时失败）
+    await page.click(closeSel);
+    await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+
+    // 重开后 ✕ 路径依旧可用（双关闭路径都通）
+    await openGuideLayer(page);
+    await page.click('.wheel-guide-layer:not(.hidden) .wheel-guide__close');
+    await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
   });
 
-  test('移动 390×844：取景框高度 ≥ 300px', async ({ page }) => {
+  test('移动 390×844：取景框吃满可用宽度且不水平溢出', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAsUser(page);
     await mockApi(page);
@@ -124,7 +172,37 @@ test.describe('轮毂全屏拍摄引导层', () => {
     const rect = await page.locator('.wheel-guide-layer .up-viewfinder').boundingBox();
     // eslint-disable-next-line no-console
     console.log(`[MEASURE][mobile 390x844] .up-viewfinder width = ${rect.width.toFixed(1)}px, height = ${rect.height.toFixed(1)}px`);
-    expect(rect.height).toBeGreaterThanOrEqual(300);
+
+    // 缺陷 2 回归：无横滚、右下角括号不被裁、取景框吃满可用列宽
+    const m = await page.evaluate(() => {
+      const sc = document.querySelector('.wheel-guide-layer:not(.hidden) .wheel-guide__scroll');
+      const vf = document.querySelector('.wheel-guide-layer .up-viewfinder');
+      const br = document.querySelector('.wheel-guide-layer .up-viewfinder__corner--br');
+      const cs = getComputedStyle(sc);
+      const avail = sc.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const vr = vf.getBoundingClientRect();
+      const brr = br.getBoundingClientRect();
+      return {
+        scrollWidth: sc.scrollWidth,
+        clientWidth: sc.clientWidth,
+        avail,
+        vfWidth: vr.width,
+        vfHeight: vr.height,
+        vfRight: vr.right,
+        brRight: brr.right,
+        innerWidth: window.innerWidth,
+      };
+    });
+    // eslint-disable-next-line no-console
+    console.log(
+      `[MEASURE][mobile] scroll scrollWidth=${m.scrollWidth} clientWidth=${m.clientWidth}, avail=${m.avail.toFixed(1)}, ` +
+        `vf=${m.vfWidth.toFixed(1)}x${m.vfHeight.toFixed(1)} right=${m.vfRight.toFixed(1)}, brRight=${m.brRight.toFixed(1)}, innerWidth=${m.innerWidth}`
+    );
+    expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth); // 无横滚
+    expect(m.brRight).toBeLessThanOrEqual(m.innerWidth); // 右缘括号不被裁
+    expect(m.vfWidth).toBeGreaterThanOrEqual(m.avail - 1); // 吃满可用列宽
+    expect(m.vfWidth).toBeLessThanOrEqual(m.avail + 1);
+    expect(m.vfHeight).toBeGreaterThanOrEqual(300); // 1:1 派生高度仍 ≥ 原 300 阈值
   });
 
   test('3 张照片跨开关层持久化 + Esc 关闭 + body 滚动锁', async ({ page }) => {
