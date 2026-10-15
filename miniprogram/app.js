@@ -13,18 +13,19 @@
 
 const CONFIG = {
   // 后端 API 基地址（不带末尾斜杠）
-  // 开发示例：'http://127.0.0.1:8787'（需勾选不校验域名）
-  // 生产示例：'https://api.your-domain.com'
-  API_BASE: 'https://your-domain.example.com',
+  // 当前指向已上线的站点。换成国内备案域名后，只需改 API_BASE / WEB_BASE 这两行，其余代码不动。
+  // 开发示例：'http://127.0.0.1:8787'（需在开发者工具勾选「不校验合法域名」）
+  API_BASE: 'https://inspire-car.fly.dev',
 
   // 现有 Web 应用基地址（编辑器以 <web-view> 承载）
-  // 生产示例：'https://your-domain.com'
-  WEB_BASE: 'https://your-domain.example.com',
+  WEB_BASE: 'https://inspire-car.fly.dev',
 
   // 编辑器路径：最终打开 `${WEB_BASE}${STUDIO_PATH}?token=<JWT>`
-  // 注意：现有 Web 应用目前消费的是 URL 里的 `oauth_token` 参数，
-  // 上线前需确认 /studio 页面能读取 `token`（或此处改为 `oauth_token=`）。
-  STUDIO_PATH: '/studio',
+  // ⚠️ 必须是根路径 '/'：线上 SPA fallback 未生效，未知子路径一律 502
+  //    （已实测复现：https://inspire-car.fly.dev/studio → 502，本地 8787/xyz → 502）
+  //    等静态回落修好、可支持深链后，这里再改成 '/studio'。
+  // Web 端 src/auth.js 的 consumeOAuthCallback 同时支持 oauth_token 与 token，用 token 即可。
+  STUDIO_PATH: '/',
 
   // 本地存储键
   TOKEN_KEY: 'ic_token',
