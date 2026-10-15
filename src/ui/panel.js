@@ -13,6 +13,7 @@
 import { ET_REF } from '../tuning/wheelRig.js';
 import { createColorWheel } from './colorWheel.js';
 import { createSpecPicker } from './sizePicker.js';
+import { sfx } from './sfx.js';
 import { getBasis } from '../tuning/tireBasis.js';
 import { renderMyWheels } from './myWheels.js';
 import {
@@ -485,6 +486,11 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
   return {
     zone,
     setStatus(text, tone = '') {
+      // 状态变化 → 音效。所有状态消息都走这一个入口（生成成功/失败/配额用尽/
+      // 演示模式等有十几处调用点），按 tone 映射，不去散着改。
+      if (tone === 'ok') sfx.success();
+      else if (tone === 'err') sfx.fail();
+      else if (tone === 'warn') sfx.warn();
       status.textContent = text;
       status.className = `upload-status ${tone}`;
     },
