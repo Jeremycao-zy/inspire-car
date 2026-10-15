@@ -2616,11 +2616,22 @@ input[type='range'] {
 }
 
 /* 响应式：≤860px 单列，参考列移到下方并横向滚动（与 photoGuide 同断点）
-   全屏层内取景框终于有足够高度：min-height 保证移动端取景框高度 ≥ 300px */
+   移动端取景框：宽度吃满可用列宽，1:1 由宽度派生高度。
+   旧值 min-height:320 + aspect-ratio:4/3 会把宽度回灌成 426px、溢出 390 视口
+   （QA 实测 scrollWidth 439 > clientWidth 390，右下角括号被裁）；1:1 下
+   390 视口实测约 366×366，既不水平溢出又比 4:3 的 256px 更饱满。 */
 @media (max-width: 860px) {
   .upload-stage {
     flex-direction: column;
     gap: 14px;
+    /* ⚠️ 必须覆盖基线的 align-items:flex-start（那是给桌面横向布局用的）。
+       column 方向下 cross axis 变成水平轴，flex-start 会让 main 列缩到内容宽度，
+       子元素的 width:100% 在不定宽父容器里退化成 auto —— 实测取景框只剩 192px。
+       stretch 才能让取景框吃满可用列宽（390 视口 → 366px）。 */
+    align-items: stretch;
+  }
+  .upload-stage__main {
+    width: 100%;
   }
   .upload-stage__guide {
     flex: 0 0 auto;
@@ -2639,7 +2650,9 @@ input[type='range'] {
     width: 150px;
   }
   .up-viewfinder {
-    min-height: 320px;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
   }
 }
 
@@ -2650,7 +2663,9 @@ input[type='range'] {
 .wheel-guide-layer {
   position: fixed;
   inset: 0;
-  z-index: 110; /* 高于 studio(#app) 与车型拍照引导(100) */
+  z-index: 10050; /* 高于 #sfx-mute-btn(9999)/CRT 叠层(9998)：全屏层打开时独占屏幕；
+                     关闭后 display:none，音效钮等恢复可点（QA 实测 footer 关闭键曾被
+                     z-index 9999 的音效钮挡住，elementFromPoint 命中不到） */
   display: flex;
   flex-direction: column;
   background:
@@ -2767,7 +2782,8 @@ input[type='range'] {
   margin: 0 0 24px;
 }
 
-/* 底部栏（深紫玻璃，同 photo-guide__footer） */
+/* 底部栏（深紫玻璃，同 photo-guide__footer）
+   padding-right 加大：关闭键左移避开右下角固定元素热区（与 z-index 提升双保险） */
 .wheel-guide__footer {
   position: relative;
   z-index: 1;
@@ -2777,6 +2793,7 @@ input[type='range'] {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 24px;
+  padding-right: 64px;
   background: rgba(12, 10, 22, 0.72);
   border-top: 1px solid rgba(0, 240, 255, 0.28);
   backdrop-filter: blur(14px);
@@ -2870,6 +2887,7 @@ input[type='range'] {
   }
   .wheel-guide__footer {
     padding: 12px 14px;
+    padding-right: 56px;
   }
   .wheel-guide__footer-hint {
     font-size: 12px;

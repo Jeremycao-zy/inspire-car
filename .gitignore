@@ -34,3 +34,7 @@ public/models/_test-part.glb
 
 # vite dev temporary configs
 vite.config.js.timestamp-*.mjs
+
+# playwright artifacts
+test-results/
+playwright-report/
