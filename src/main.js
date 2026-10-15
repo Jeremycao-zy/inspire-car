@@ -2958,3 +2958,13 @@ void bootGarage().finally(hideBrandLoading);
 
 /* 调试入口统一在文件上方（window.__garage 只赋值一次），
  * 这里不再重复赋值——重复会把上面那份覆盖掉。 */
+
+/* PWA：仅生产构建下注册 Service Worker，让「添加到主屏幕」后可离线打开首屏。
+ * 开发模式（HMR）下不注册，避免缓存干扰热更新。 */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[PWA] Service Worker 注册失败:', err);
+    });
+  });
+}
