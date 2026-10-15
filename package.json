@@ -10,13 +10,14 @@
     "api": "node server/index.mjs",
     "build": "vite build",
     "preview": "vite preview --port 4173",
-    "verify": "node scripts/verify-tire-basis.mjs && node scripts/verify-car-specs.mjs && node scripts/verify-spec-picker.mjs && node scripts/verify-sfx.mjs && node scripts/verify-wheel-gate.mjs",
+    "verify": "node scripts/verify-tire-basis.mjs && node scripts/verify-car-specs.mjs && node scripts/verify-spec-picker.mjs && node scripts/verify-sfx.mjs && node scripts/verify-et-3d.mjs && node scripts/verify-wheel-gate.mjs",
     "repro:tire": "node scripts/_repro-tire.mjs",
     "start": "SERVE_STATIC=1 SPA_FALLBACK=1 node server/index.mjs",
     "verify:tire": "node scripts/verify-tire-basis.mjs && node scripts/verify-spec-picker.mjs",
     "verify:gate": "node scripts/verify-wheel-gate.mjs",
     "verify:specs": "node scripts/verify-car-specs.mjs",
-    "verify:sfx": "node scripts/verify-sfx.mjs"
+    "verify:sfx": "node scripts/verify-sfx.mjs",
+    "verify:et3d": "node scripts/verify-et-3d.mjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
