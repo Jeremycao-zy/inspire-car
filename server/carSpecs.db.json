@@ -22,7 +22,7 @@
         "SL 350"
       ],
       "specs": {
-        "length": 4535,
+        "length": 4664,
         "width": 1817,
         "height": 1290,
         "wheelbase": 2560,
@@ -31,12 +31,15 @@
         "groundClearance": 120,
         "approachAngle": 12,
         "departureAngle": 14,
-        "rimInch": 18,
+        "rimInch": 19,
         "tireWidth": 255,
-        "aspect": 45
+        "aspect": 35,
+        "tireWidthRear": 285,
+        "aspectRear": 30,
+        "rimInchRear": 19
       },
       "source": "official-db",
-      "note": "厂商公开参数"
+      "note": "厂商公开参数 ｜ 2026-10-15 校正：车长/车高/原厂轮胎规格按厂商公开数据修正（见 verify-car-specs.mjs）"
     },
     {
       "key": "toyota-gr-supra-a90",
@@ -236,8 +239,8 @@
       ],
       "specs": {
         "length": 4560,
-        "width": 1878,
-        "height": 1434,
+        "width": 1800,
+        "height": 1405,
         "wheelbase": 2700,
         "trackFront": 1599,
         "trackRear": 1585,
@@ -249,7 +252,7 @@
         "aspect": 30
       },
       "source": "official-db",
-      "note": "厂商公开参数"
+      "note": "厂商公开参数 ｜ 2026-10-15 校正：车长/车高/原厂轮胎规格按厂商公开数据修正（见 verify-car-specs.mjs）"
     },
     {
       "key": "tesla-model3",
@@ -302,7 +305,7 @@
       "specs": {
         "length": 4600,
         "width": 1855,
-        "height": 1685,
+        "height": 1655,
         "wheelbase": 2690,
         "trackFront": 1600,
         "trackRear": 1610,
@@ -314,7 +317,7 @@
         "aspect": 65
       },
       "source": "official-db",
-      "note": "厂商公开参数"
+      "note": "厂商公开参数 ｜ 2026-10-15 校正：车长/车高/原厂轮胎规格按厂商公开数据修正（见 verify-car-specs.mjs）"
     },
     {
       "key": "honda-crv-rw",
@@ -334,7 +337,7 @@
         "CRV"
       ],
       "specs": {
-        "length": 4595,
+        "length": 4712,
         "width": 1855,
         "height": 1679,
         "wheelbase": 2660,
@@ -348,7 +351,7 @@
         "aspect": 60
       },
       "source": "official-db",
-      "note": "厂商公开参数"
+      "note": "厂商公开参数 ｜ 2026-10-15 校正：车长/车高/原厂轮胎规格按厂商公开数据修正（见 verify-car-specs.mjs）"
     },
     {
       "key": "bmw-x5-g05",
@@ -367,7 +370,7 @@
       "specs": {
         "length": 4922,
         "width": 2004,
-        "height": 1745,
+        "height": 1776,
         "wheelbase": 2975,
         "trackFront": 1685,
         "trackRear": 1690,
@@ -379,7 +382,7 @@
         "aspect": 45
       },
       "source": "official-db",
-      "note": "厂商公开参数"
+      "note": "厂商公开参数 ｜ 2026-10-15 校正：车长/车高/原厂轮胎规格按厂商公开数据修正（见 verify-car-specs.mjs）"
     },
     {
       "key": "ford-f150",
