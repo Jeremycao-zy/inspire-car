@@ -21,9 +21,11 @@ const CONFIG = {
   WEB_BASE: 'https://inspire-car.fly.dev',
 
   // 编辑器路径：最终打开 `${WEB_BASE}${STUDIO_PATH}?token=<JWT>`
-  // ⚠️ 必须是根路径 '/'：线上 SPA fallback 未生效，未知子路径一律 502
-  //    （已实测复现：https://inspire-car.fly.dev/studio → 502，本地 8787/xyz → 502）
-  //    等静态回落修好、可支持深链后，这里再改成 '/studio'。
+  // 深链（/studio 等未知子路径）自 2026-10-15 起已修复，线上返回 200（此前会 502，
+  // 根因是 server/static.mjs 给 sendFile 传了合成 req 对象、缺 .on() 导致 Node 进程崩溃）。
+  // 这里仍保持根路径 '/'：前端是单页应用、没有路由，/studio 只是回落到同一个首页，
+  // 换成 '/studio' 不会打开不同的页面。等前端哪天做了真正的路由（如 #/studio），
+  // 直接把这里改成对应路径即可，其余代码不用动。
   // Web 端 src/auth.js 的 consumeOAuthCallback 同时支持 oauth_token 与 token，用 token 即可。
   STUDIO_PATH: '/',
 
