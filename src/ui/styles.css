@@ -2756,3 +2756,124 @@ input[type='range'] {
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(160, 160, 190, 0.22);
 }
+
+/* =========================================================
+   动态间隙检测报告（.clr-report）
+   精准适配层级的核心产出：从「绿黄红」升级为
+   「哪个角 + 什么工况 + 哪个方向 + 多少 mm + 怎么改」。
+   ========================================================= */
+.clr-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(170deg, rgba(20, 26, 44, 0.75) 0%, rgba(12, 10, 24, 0.75) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+}
+.clr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.clr-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eafcff;
+}
+.clr-badge {
+  font-size: 10.5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.clr-badge.is-ok   { color: #7dfcd4; background: rgba(29, 158, 117, 0.2);  border-color: rgba(29, 158, 117, 0.5); }
+.clr-badge.is-warn { color: #ffd08a; background: rgba(250, 183, 77, 0.16); border-color: rgba(250, 183, 77, 0.45); }
+.clr-badge.is-bad  { color: #ff9aa6; background: rgba(226, 75, 74, 0.16);  border-color: rgba(226, 75, 74, 0.5); }
+.clr-badge.is-na   { color: #b9b3d1; background: rgba(160, 160, 190, 0.12); border-color: rgba(160, 160, 190, 0.35); }
+
+/* 工况统计条 */
+.clr-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.clr-stat-total { margin-left: auto; color: var(--text-dim, #9aa7c7); }
+
+/* 最坏工况：报告的核心，必须最显眼 */
+.clr-worst {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'where value' 'obs obs';
+  gap: 4px 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border-left: 3px solid rgba(160, 160, 190, 0.5);
+}
+.clr-worst.is-ok   { border-left-color: #1d9e75; }
+.clr-worst.is-warn { border-left-color: #fab34d; }
+.clr-worst.is-bad  { border-left-color: #e24b4a; background: rgba(226, 75, 74, 0.08); }
+.clr-worst__where  { grid-area: where; font-size: 12px; color: #eafcff; }
+.clr-worst__value  { grid-area: value; display: flex; align-items: baseline; gap: 3px; }
+.clr-worst__obs    { grid-area: obs; font-size: 10.5px; color: var(--text-dim, #9aa7c7); }
+.clr-sep { opacity: 0.4; margin: 0 2px; }
+.clr-num {
+  font-size: 19px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+}
+.clr-worst.is-warn .clr-num { color: #ffd08a; }
+.clr-worst.is-bad  .clr-num { color: #ff9aa6; }
+.clr-unit { font-size: 11px; color: var(--text-dim, #9aa7c7); }
+
+/* 建议条目 */
+.clr-suggests { display: flex; flex-direction: column; gap: 7px; }
+.clr-suggest {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+}
+.clr-suggest.is-verified { border-color: rgba(0, 240, 255, 0.38); }
+.clr-suggest__text {
+  margin: 0 0 7px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: #dfe9f7;
+}
+.clr-suggest__note { font-size: 10.5px; color: #ffd08a; }
+
+.clr-allgood {
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  color: #7dfcd4;
+  background: rgba(29, 158, 117, 0.12);
+  border: 1px solid rgba(29, 158, 117, 0.35);
+}
+
+/* 未建档：不编造任何数字 */
+.clr-na {
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(160, 160, 190, 0.22);
+}
+.clr-na__title { margin: 0 0 4px; font-size: 11.5px; color: #dfe9f7; }
+.clr-na__body  { margin: 0; font-size: 10.5px; line-height: 1.6; color: var(--text-dim, #9aa7c7); }
+
+.clr-disclaimer {
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.55;
+  color: #b9b3d1;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(160, 160, 190, 0.2);
+}
