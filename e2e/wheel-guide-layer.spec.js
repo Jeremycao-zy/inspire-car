@@ -1,18 +1,16 @@
 /**
- * wheel-guide-layer.spec.js — 轮毂「全屏拍摄引导层」实测套件。
+ * wheel-guide-layer.spec.js — 轮毂「单图轮播拍摄弹窗」实测套件（方案 C，2026-10-15 定稿）。
  *
- * 背景：侧栏仅 348px，两列舞台撑不起大取景框；轮毂上传区改为
- * 「侧栏紧凑触发卡 + 全屏引导层（.wheel-guide-layer）」结构。
+ * 背景：轮毂生成界面不再套用车身拍照引导的全屏蓝图取景框，改为「暗色遮罩 +
+ * 居中弹窗（~560px）」，弹窗内容只有轮毂示意图：角度胶囊（正面｜侧面｜斜45°）
+ * + 单张大示意图。拍完自动切下一个角度；已拍胶囊打 ✓；点胶囊可回看实拍图。
  *
- * 覆盖（对应交付自检项）：
- *   1) 桌面 1280×800：全屏层内取景框 .up-viewfinder 宽度 ≥ 700px（实测值打印）。
- *   2) 移动 390×844：取景框吃满可用列宽、无水平溢出（scrollWidth ≤ clientWidth）、
- *      右下角括号不被裁（旧 min-height:320 + 4:3 会把宽回灌成 426px 溢出，已改 1:1）。
- *   3) footer 关闭键可命中：elementFromPoint 点中心 + 右缘必须命中关闭键本身
- *     （#sfx-mute-btn fixed z-index 9999 曾遮挡，层 z-index 已提至 10050）。
- *   4) 选 3 张照片 → 关闭 → 重开：3 张缩略图、ghost 高水位停在第 3 项、
- *      取景框照片 blob URL 仍然有效（跨开关层不丢失、不 dispose）。
- *   5) Esc 关闭；打开时 body 滚动锁定（overflow:hidden），关闭后恢复。
+ * 覆盖：
+ *   1) 桌面 1280×800：弹窗水平居中、示意图 1:1 且 ≥280px、当前角度胶囊高亮；
+ *      ✕ / Esc / 点遮罩空白 三条关闭路径都可用，关闭后触发卡可再开。
+ *   2) 移动 390×844：弹窗不超出视口、页面无水平溢出（scrollWidth ≤ clientWidth）。
+ *   3) 拍完自动切角度（1 张→侧面、2 张→斜45°、3 张→全 ✓）；点已拍胶囊回看实拍图
+ *      （blob URL 与 thumbs 同源）；3 张跨关闭/重开持久化；打开时 body 滚动锁定。
  *
  * 所有 /api/ 请求按 pathname 精确拦截（勿用通配匹配，会误伤 /src/api 模块请求）。
  */
@@ -39,8 +37,8 @@ async function mockApi(page) {
     if (url.pathname === '/api/generate' && req.method() === 'POST') {
       // 按 kind 分流：car（拍照引导建整车）必须回 done，否则工作室挂不上；
       // wheel 只回 accepted/polling 不发 done，让生成保持在途——模拟「生成中关闭/
-      // 重开引导层」时上传区状态不被 layer 清掉（done 后 main.js 的 u.reset() 是
-      // 既有的「拍完下一张」设计，与 layer 本身是否清状态无关，不能混验）。
+      // 重开弹窗」时上传区状态不被清掉（done 后 main.js 的 u.reset() 是既有的
+      // 「拍完下一张」设计，与弹窗本身是否清状态无关，不能混验）。
       let kind = '';
       try {
         kind = JSON.parse(req.postData() || '{}').kind || '';
@@ -81,7 +79,6 @@ async function enterStudio(page) {
   await page.goto('/');
   await page.click('button:has-text("新建改装方案")');
   await page.waitForSelector('.photo-guide__card input[type=file]', { state: 'visible' });
-
   const angleInputs = page.locator('.photo-guide__card input[type=file]');
   const angleN = await angleInputs.count();
   const png = Buffer.from(PNG_1X1, 'base64');
@@ -97,10 +94,10 @@ async function enterStudio(page) {
   await page.waitForSelector('.dropzone:has-text("上传轮毂照片")', { timeout: 30_000 });
 }
 
-/** 打开全屏引导层并等待取景框可见 */
+/** 打开轮毂拍摄弹窗并等待示意图可见 */
 async function openGuideLayer(page) {
   await page.click('.dropzone:has-text("上传轮毂照片")');
-  await page.waitForSelector('.wheel-guide-layer:not(.hidden) .up-viewfinder', { state: 'visible' });
+  await page.waitForSelector('.wheel-guide-layer:not(.hidden) .wg-stage', { state: 'visible' });
 }
 
 /** elementFromPoint 命中测试：点元素上若干相对坐标点，必须命中元素本身（或其子元素） */
@@ -127,85 +124,120 @@ async function hitTest(page, selector, points) {
   );
 }
 
-test.describe('轮毂全屏拍摄引导层', () => {
-  test('桌面 1280×800：取景框宽度 ≥ 700px + footer 关闭键可命中（不被 #sfx-mute-btn 遮挡）', async ({ page }) => {
+/** 经触发卡内的隐藏 input 选 n 张轮毂图（e2e 契约：.dropzone:has-text(...) input[type=file]） */
+async function pickWheelPhotos(page, n) {
+  const png = Buffer.from(PNG_1X1, 'base64');
+  const files = Array.from({ length: n }, (_, i) => ({ name: `w${i + 1}.png`, mimeType: 'image/png', buffer: png }));
+  await page.locator('.dropzone:has-text("上传轮毂照片") input[type=file]').setInputFiles(files);
+  await expect.poll(() => page.locator('.wheel-guide-layer .thumbs .thumb').count()).toBe(n);
+  // 等缩略图 blob URL 全部填充（makeThumbBlob 异步）
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const imgs = Array.from(document.querySelectorAll('.wheel-guide-layer .thumbs .thumb'));
+        return imgs.length > 0 && imgs.every((i) => i.src.startsWith('blob:'));
+      })
+    )
+    .toBe(true);
+}
+
+test.describe('轮毂拍摄弹窗（方案 C 单图轮播）', () => {
+  test('桌面 1280×800：弹窗居中 + 大示意图 + ✕/Esc/遮罩三条关闭路径', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await loginAsUser(page);
     await mockApi(page);
     await enterStudio(page);
     await openGuideLayer(page);
 
-    const rect = await page.locator('.wheel-guide-layer .up-viewfinder').boundingBox();
+    // 弹窗水平居中、宽度 ~560
+    const modal = await page.locator('.wheel-guide-modal').boundingBox();
     // eslint-disable-next-line no-console
-    console.log(`[MEASURE][desktop 1280x800] .up-viewfinder width = ${rect.width.toFixed(1)}px, height = ${rect.height.toFixed(1)}px`);
-    expect(rect.width).toBeGreaterThanOrEqual(700);
+    console.log(`[MEASURE][desktop] modal = ${modal.width.toFixed(1)}x${modal.height.toFixed(1)} @ (${modal.x.toFixed(1)},${modal.y.toFixed(1)})`);
+    expect(modal.width).toBeGreaterThanOrEqual(480);
+    expect(modal.width).toBeLessThanOrEqual(561);
+    expect(Math.abs(modal.x + modal.width / 2 - 640)).toBeLessThanOrEqual(2); // 水平居中
 
-    // 缺陷 1 回归：footer 关闭键中心 + 右缘必须命中关闭键本身
-    // （#sfx-mute-btn 是 fixed bottom-right z-index 9999，层 z-index 提到 10050 盖住它）
-    const closeSel = '.wheel-guide-layer:not(.hidden) .wheel-guide__footer-close';
-    const hit = await hitTest(page, closeSel, [
+    // 示意图：1:1 且 ≥280px，参考图真实加载完成
+    const stage = await page.locator('.wheel-guide-layer .wg-stage').boundingBox();
+    // eslint-disable-next-line no-console
+    console.log(`[MEASURE][desktop] .wg-stage = ${stage.width.toFixed(1)}x${stage.height.toFixed(1)}`);
+    expect(stage.width).toBeGreaterThanOrEqual(280);
+    expect(Math.abs(stage.width - stage.height)).toBeLessThanOrEqual(1); // 1:1
+    const diagramOk = await page.evaluate(() => {
+      const img = document.querySelector('.wheel-guide-layer .wg-diagram');
+      return img && img.complete && img.naturalWidth > 0 && img.src.includes('wheel-front');
+    });
+    expect(diagramOk).toBe(true); // 初始为正面示意图
+
+    // 角度胶囊：3 个，第一个为当前要拍
+    await expect(page.locator('.wheel-guide-layer .wg-tab')).toHaveCount(3);
+    const cur = page.locator('.wheel-guide-layer .wg-tab.is-current');
+    await expect(cur).toHaveCount(1);
+    expect(await cur.getAttribute('data-idx')).toBe('0');
+    await expect(page.locator('.wheel-guide-layer .wg-count')).toContainText('第 1 / 3 张');
+
+    // ✕ 命中测试：必须命中 ✕ 自身（不得被右下角 fixed 元素遮挡）
+    const hit = await hitTest(page, '.wheel-guide-layer:not(.hidden) .wg-close', [
       [0.5, 0.5],
-      [0.95, 0.5],
+      [0.9, 0.5],
     ]);
     // eslint-disable-next-line no-console
-    console.log(`[MEASURE][desktop] footer-close rect = ${hit.rect.w.toFixed(1)}x${hit.rect.h.toFixed(1)} @ (${hit.rect.x.toFixed(1)},${hit.rect.y.toFixed(1)}), hits = ${JSON.stringify(hit.results)}`);
+    console.log(`[MEASURE][desktop] wg-close hits = ${JSON.stringify(hit.results)}`);
     expect(hit.ok).toBe(true);
 
-    // 经 footer 关闭键关闭（Playwright click 自带命中检测，被遮挡会超时失败）
-    await page.click(closeSel);
+    // 路径 1：✕ 关闭 → body 滚动恢复
+    await page.click('.wheel-guide-layer:not(.hidden) .wg-close');
     await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
 
-    // 重开后 ✕ 路径依旧可用（双关闭路径都通）
+    // 路径 2：重开 → Esc 关闭
     await openGuideLayer(page);
-    await page.click('.wheel-guide-layer:not(.hidden) .wheel-guide__close');
+    await page.keyboard.press('Escape');
     await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+
+    // 路径 3：重开 → 点遮罩空白处（弹窗外）关闭
+    await openGuideLayer(page);
+    await page.mouse.click(8, 8); // 左上角，弹窗之外 = 遮罩
+    await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+
+    // 关闭后触发卡仍可再开（回归：footer 关闭后触发卡失灵的怀疑）
+    await openGuideLayer(page);
+    await expect(page.locator('.wheel-guide-layer:not(.hidden) .wg-stage')).toBeVisible();
   });
 
-  test('移动 390×844：取景框吃满可用宽度且不水平溢出', async ({ page }) => {
+  test('移动 390×844：弹窗不超出视口、无水平溢出', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAsUser(page);
     await mockApi(page);
     await enterStudio(page);
     await openGuideLayer(page);
 
-    const rect = await page.locator('.wheel-guide-layer .up-viewfinder').boundingBox();
-    // eslint-disable-next-line no-console
-    console.log(`[MEASURE][mobile 390x844] .up-viewfinder width = ${rect.width.toFixed(1)}px, height = ${rect.height.toFixed(1)}px`);
-
-    // 缺陷 2 回归：无横滚、右下角括号不被裁、取景框吃满可用列宽
     const m = await page.evaluate(() => {
-      const sc = document.querySelector('.wheel-guide-layer:not(.hidden) .wheel-guide__scroll');
-      const vf = document.querySelector('.wheel-guide-layer .up-viewfinder');
-      const br = document.querySelector('.wheel-guide-layer .up-viewfinder__corner--br');
-      const cs = getComputedStyle(sc);
-      const avail = sc.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-      const vr = vf.getBoundingClientRect();
-      const brr = br.getBoundingClientRect();
+      const modal = document.querySelector('.wheel-guide-modal').getBoundingClientRect();
+      const stage = document.querySelector('.wheel-guide-layer .wg-stage').getBoundingClientRect();
       return {
-        scrollWidth: sc.scrollWidth,
-        clientWidth: sc.clientWidth,
-        avail,
-        vfWidth: vr.width,
-        vfHeight: vr.height,
-        vfRight: vr.right,
-        brRight: brr.right,
+        docScrollW: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
+        modalX: modal.x,
+        modalRight: modal.right,
+        stageW: stage.width,
+        stageH: stage.height,
       };
     });
     // eslint-disable-next-line no-console
     console.log(
-      `[MEASURE][mobile] scroll scrollWidth=${m.scrollWidth} clientWidth=${m.clientWidth}, avail=${m.avail.toFixed(1)}, ` +
-        `vf=${m.vfWidth.toFixed(1)}x${m.vfHeight.toFixed(1)} right=${m.vfRight.toFixed(1)}, brRight=${m.brRight.toFixed(1)}, innerWidth=${m.innerWidth}`
+      `[MEASURE][mobile] docScrollW=${m.docScrollW} innerWidth=${m.innerWidth}, modal x=${m.modalX.toFixed(1)} right=${m.modalRight.toFixed(1)}, stage=${m.stageW.toFixed(1)}x${m.stageH.toFixed(1)}`
     );
-    expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth); // 无横滚
-    expect(m.brRight).toBeLessThanOrEqual(m.innerWidth); // 右缘括号不被裁
-    expect(m.vfWidth).toBeGreaterThanOrEqual(m.avail - 1); // 吃满可用列宽
-    expect(m.vfWidth).toBeLessThanOrEqual(m.avail + 1);
-    expect(m.vfHeight).toBeGreaterThanOrEqual(300); // 1:1 派生高度仍 ≥ 原 300 阈值
+    expect(m.docScrollW).toBeLessThanOrEqual(m.innerWidth); // 页面无水平溢出
+    expect(m.modalX).toBeGreaterThanOrEqual(0); // 弹窗不超出左缘
+    expect(m.modalRight).toBeLessThanOrEqual(m.innerWidth); // 不超出右缘
+    expect(m.stageW).toBeGreaterThanOrEqual(280); // 示意图仍够大
+    expect(Math.abs(m.stageW - m.stageH)).toBeLessThanOrEqual(1); // 1:1
   });
 
-  test('3 张照片跨开关层持久化 + Esc 关闭 + body 滚动锁', async ({ page }) => {
+  test('拍完自动切角度 + 胶囊回看实拍 + 3 张跨关闭持久化 + body 滚动锁', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await loginAsUser(page);
     await mockApi(page);
@@ -213,55 +245,47 @@ test.describe('轮毂全屏拍摄引导层', () => {
     await openGuideLayer(page);
 
     // 打开时锁 body 滚动
-    await expect
-      .poll(() => page.evaluate(() => document.body.style.overflow))
-      .toBe('hidden');
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
 
-    // 经触发卡内的隐藏 input 选 3 张（e2e 契约：.dropzone:has-text(...) input[type=file]）
-    const png = Buffer.from(PNG_1X1, 'base64');
-    const wheelInput = page.locator('.dropzone:has-text("上传轮毂照片") input[type=file]');
-    await wheelInput.setInputFiles([
-      { name: 'w1.png', mimeType: 'image/png', buffer: png },
-      { name: 'w2.png', mimeType: 'image/png', buffer: png },
-      { name: 'w3.png', mimeType: 'image/png', buffer: png },
-    ]);
+    // 第 1 张：当前角度自动切到「侧面」，正面打 ✓
+    await pickWheelPhotos(page, 1);
+    expect(await page.locator('.wheel-guide-layer .wg-tab.is-current').getAttribute('data-idx')).toBe('1');
+    await expect(page.locator('.wheel-guide-layer .wg-count')).toContainText('第 2 / 3 张');
+    await expect(page.locator('.wheel-guide-layer .wg-tab[data-idx="0"]')).toHaveClass(/is-done/);
 
-    // 3 张缩略图就绪（blob URL 已填充）
-    await expect.poll(() => page.locator('.wheel-guide-layer .thumbs .thumb').count()).toBe(3);
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const imgs = Array.from(document.querySelectorAll('.wheel-guide-layer .thumbs .thumb'));
-          return imgs.every((i) => i.src.startsWith('blob:'));
-        })
-      )
-      .toBe(true);
-
-    // ghost 高水位推进到第 3 项：3/3 全部 done，ghost 停在第 3 项（is-active）
-    await expect.poll(() => page.locator('.wheel-guide-layer .up-guide-item.is-done').count()).toBe(3);
-    await expect(page.locator('.wheel-guide-layer .up-guide-item.is-active')).toHaveCount(1);
-    const activeIdx = await page.locator('.wheel-guide-layer .up-guide-item.is-active').getAttribute('data-idx');
-    expect(activeIdx).toBe('2'); // 第 3 张拍完，ghost 停在第 3 项
-    // 取景框显示已选照片（与 thumbs 最后一张共享 blob URL）
-    const shotSrc = await page.locator('.wheel-guide-layer .up-viewfinder__shot').getAttribute('src');
+    // 点「正面」胶囊回看：显示实拍缩略图（blob URL，与 thumbs[0] 同源）
+    await page.click('.wheel-guide-layer .wg-tab[data-idx="0"]');
+    const shotSrc = await page.locator('.wheel-guide-layer .wg-shot').getAttribute('src');
+    const thumb0Src = await page.locator('.wheel-guide-layer .thumbs .thumb').first().getAttribute('src');
     expect(shotSrc).toMatch(/^blob:/);
-    await expect(page.locator('.wheel-guide-layer .up-viewfinder__shot')).toBeVisible();
+    expect(shotSrc).toBe(thumb0Src); // 同源，不重复 createObjectURL
+    await expect(page.locator('.wheel-guide-layer .wg-meta__label')).toContainText('已拍');
 
-    // ✕ 关闭：层隐藏 + body 滚动恢复
-    await page.click('.wheel-guide-layer:not(.hidden) .wheel-guide__close');
+    // 第 2 张（替换语义：选 2 张，高水位推进）：当前角度切到「斜 45°」
+    await pickWheelPhotos(page, 2);
+    expect(await page.locator('.wheel-guide-layer .wg-tab.is-current').getAttribute('data-idx')).toBe('2');
+    await expect(page.locator('.wheel-guide-layer .wg-count')).toContainText('第 3 / 3 张');
+
+    // 第 3 张：三个角度全部 ✓，无当前项，计数显示已拍 3/3
+    await pickWheelPhotos(page, 3);
+    await expect(page.locator('.wheel-guide-layer .wg-tab.is-done')).toHaveCount(3);
+    await expect(page.locator('.wheel-guide-layer .wg-tab.is-current')).toHaveCount(0);
+    await expect(page.locator('.wheel-guide-layer .wg-count')).toContainText('已拍 3/3');
+    // 大图显示最近一张实拍（与 thumbs 最后一张同源）
+    const shotSrc3 = await page.locator('.wheel-guide-layer .wg-shot').getAttribute('src');
+    const thumbLast = await page.locator('.wheel-guide-layer .thumbs .thumb').last().getAttribute('src');
+    expect(shotSrc3).toBe(thumbLast);
+
+    // ✕ 关闭 → 重开：3 张缩略图、三个 ✓、blob 仍有效（不 dispose、不清空）
+    await page.click('.wheel-guide-layer:not(.hidden) .wg-close');
     await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
-    await expect
-      .poll(() => page.evaluate(() => document.body.style.overflow))
-      .not.toBe('hidden');
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
 
-    // 重开：3 张照片 + ghost 停在第 3 项 + blob 仍有效（不 dispose、不清空）
     await openGuideLayer(page);
     await expect.poll(() => page.locator('.wheel-guide-layer .thumbs .thumb').count()).toBe(3);
-    await expect.poll(() => page.locator('.wheel-guide-layer .up-guide-item.is-done').count()).toBe(3);
-    const shotSrc2 = await page.locator('.wheel-guide-layer .up-viewfinder__shot').getAttribute('src');
-    expect(shotSrc2).toMatch(/^blob:/);
-    const activeIdx2 = await page.locator('.wheel-guide-layer .up-guide-item.is-active').getAttribute('data-idx');
-    expect(activeIdx2).toBe('2'); // ghost 仍停在第 3 项
+    await expect(page.locator('.wheel-guide-layer .wg-tab.is-done')).toHaveCount(3);
+    const shotSrc4 = await page.locator('.wheel-guide-layer .wg-shot').getAttribute('src');
+    expect(shotSrc4).toMatch(/^blob:/);
     const blobAlive = await page.evaluate(async (url) => {
       try {
         const res = await fetch(url);
@@ -269,14 +293,12 @@ test.describe('轮毂全屏拍摄引导层', () => {
       } catch {
         return false;
       }
-    }, shotSrc2);
+    }, shotSrc4);
     expect(blobAlive).toBe(true);
 
     // Esc 关闭 + body 滚动恢复
     await page.keyboard.press('Escape');
     await expect(page.locator('.wheel-guide-layer:not(.hidden)')).toHaveCount(0);
-    await expect
-      .poll(() => page.evaluate(() => document.body.style.overflow))
-      .not.toBe('hidden');
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 });

@@ -2286,412 +2286,208 @@ input[type='range'] {
 }
 
 /* =========================================================
-   轮毂上传：拍摄引导（opt-in，仅轮毂传 guide）
-   上传 UI 搬进全屏引导层 .wheel-guide-layer（与车型拍照引导 .photo-guide-layer
-   同构：fixed inset:0 + 霓虹辉光 + 蓝图格点 + 毛玻璃 header/footer），层内是
-   「取景框 + 参考列」两列舞台。视觉语言 1:1 复用拍照引导 photoGuide.css：
-   蓝图化 ghost、7% 虚线安全框、四角括号、中心十字准线、霓虹青描边辉光取景框。
+   轮毂上传：单图轮播拍摄舞台（方案 C，2026-10-15 用户定稿）
+   与车型拍照引导彻底解耦——不再套用全屏蓝图取景框，改为「角度胶囊
+   切换 + 单张大示意图」。整个界面只有轮毂示意图：拍完一张自动切到
+   下一个角度；已拍角度胶囊打 ✓；点任意胶囊可回看（已拍的回看实拍图）。
    ========================================================= */
 
-/* 舞台内的 .hidden 统一隐藏（ghost / shot / cta 由 JS 切换 classList） */
-.upload-stage .hidden {
+/* 弹窗内的 .hidden 统一隐藏（实拍覆盖图由 JS 切 classList） */
+.wheel-guide-modal .hidden {
   display: none !important;
 }
 
-/* 两列舞台：左主列（flex:1）+ 右参考列 */
-.upload-stage {
+/* ---- 角度胶囊行 ---- */
+.wg-tabs {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 14px;
 }
-.upload-stage__main {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-/* 取景框：4/3、深空底、霓虹青描边辉光、圆角 18px（取值同 photoGuide__viewfinder）
-   max-height 防止取景框在矮窗口里顶出视口；注意 aspect-ratio 下 max-height 会把
-   高度回灌成宽度（520px 高 → 693px 宽，差 7px 够不到 700），260px 余量在
-   1280×800 实测 720×540，取景框仍完整落在头/底栏之间的可视区内 */
-.up-viewfinder {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  max-height: calc(100vh - 260px);
-  border-radius: 18px;
-  overflow: hidden;
-  background: #0c0820;
-  border: 1px solid rgba(0, 240, 255, 0.55);
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.5),
-    0 6px 14px rgba(177, 74, 237, 0.18),
-    inset 0 0 40px rgba(0, 240, 255, 0.1),
-    0 0 26px rgba(0, 240, 255, 0.28);
-  cursor: pointer;
-}
-
-/* 蓝图化 ghost：与 photoGuide__ghost 完全一致 */
-.up-viewfinder__ghost {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: grayscale(1) contrast(0.35) brightness(1.55);
-  opacity: 0.42;
-  transition: opacity 0.25s ease;
-}
-
-/* 取景辅助线容器：纯 CSS，不拦截点击 */
-.up-viewfinder__frame {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-/* 已拍摄：辅助线淡出，让位给用户照片（思路同 photoGuide__guides.is-faded） */
-.up-viewfinder__frame.is-faded {
-  opacity: 0.14;
-}
-
-/* 四周 7% 内缩的虚线矩形（安全框） */
-.up-viewfinder__safe {
-  position: absolute;
-  inset: 7%;
-  border: 2px dashed rgba(0, 240, 255, 0.55);
-  border-radius: 12px;
-}
-
-/* 四角相机括号 */
-.up-viewfinder__corner {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  border: 3px solid var(--neon-cyan, #00f0ff);
-  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.7));
-}
-.up-viewfinder__corner--tl {
-  top: 14px;
-  left: 14px;
-  border-right: none;
-  border-bottom: none;
-  border-top-left-radius: 10px;
-}
-.up-viewfinder__corner--tr {
-  top: 14px;
-  right: 14px;
-  border-left: none;
-  border-bottom: none;
-  border-top-right-radius: 10px;
-}
-.up-viewfinder__corner--bl {
-  bottom: 14px;
-  left: 14px;
-  border-right: none;
-  border-top: none;
-  border-bottom-left-radius: 10px;
-}
-.up-viewfinder__corner--br {
-  bottom: 14px;
-  right: 14px;
-  border-left: none;
-  border-top: none;
-  border-bottom-right-radius: 10px;
-}
-
-/* 中心十字准线（淡） */
-.up-viewfinder__cross {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 36px;
-  height: 36px;
-  transform: translate(-50%, -50%);
-  opacity: 0.55;
-}
-.up-viewfinder__cross::before,
-.up-viewfinder__cross::after {
-  content: '';
-  position: absolute;
-  background: rgba(0, 240, 255, 0.65);
-}
-.up-viewfinder__cross::before {
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1.5px;
-  transform: translateX(-50%);
-}
-.up-viewfinder__cross::after {
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1.5px;
-  transform: translateY(-50%);
-}
-
-/* 已选照片：铺满取景框（与 thumbs 最后一张共享同一 blob URL） */
-.up-viewfinder__shot {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #0c0820;
-}
-
-/* 大 CTA：粉→青渐变 pill（沿用主按钮渐变），未选图时悬浮取景框底部 */
-.up-viewfinder__cta {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  z-index: 4;
-  transform: translateX(-50%);
+.wg-tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 13px 24px;
+  gap: 6px;
+  padding: 6px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: linear-gradient(
-    100deg,
-    var(--neon-pink, #ff2e97) 0%,
-    #ff66c4 45%,
-    var(--neon-cyan, #00f0ff) 100%
-  );
-  color: #0a0a14;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 0 20px rgba(255, 46, 151, 0.35), 0 8px 22px rgba(0, 240, 255, 0.22);
-  transition: transform 0.1s ease, box-shadow 0.15s ease;
-}
-.up-viewfinder__cta:hover {
-  transform: translateX(-50%) translateY(-1px);
-  box-shadow: 0 0 30px rgba(255, 46, 151, 0.5), 0 10px 28px rgba(0, 240, 255, 0.4);
-}
-
-/* 取景框下方（框外）：当前角度 label + desc */
-.up-viewfinder__meta {
-  margin-top: 12px;
-}
-.up-viewfinder__meta-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: #eafcff;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
-}
-.up-viewfinder__meta-desc {
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--text-dim, #9aa7c7);
-}
-
-/* 右侧参考列：全屏层有空间，恢复固定 240px，取景框可拿到 ~800px */
-.upload-stage__guide {
-  flex: 0 0 240px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  cursor: default;
-}
-.up-guide-title {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--neon-cyan, #00f0ff);
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
-}
-.up-guide-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.up-guide-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 9px;
-  border-radius: 14px;
-  background: linear-gradient(170deg, #1a1030 0%, #120a24 55%, #0c0820 100%);
   border: 1px solid rgba(0, 240, 255, 0.28);
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.45),
-    inset 0 0 24px rgba(0, 240, 255, 0.06);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background: rgba(0, 240, 255, 0.05);
+  color: var(--text-dim, #9aa7c7);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
 }
-/* 当前对应项：霓虹青描边 + 辉光高亮 */
-.up-guide-item.is-active {
+.wg-tab:hover {
+  border-color: rgba(0, 240, 255, 0.55);
+  color: #d6f6ff;
+}
+/* 当前要拍的角度：实心霓虹青 */
+.wg-tab.is-current {
+  background: var(--neon-cyan, #00f0ff);
   border-color: var(--neon-cyan, #00f0ff);
-  box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.5),
-    inset 0 0 26px rgba(0, 240, 255, 0.14),
-    0 0 22px rgba(0, 240, 255, 0.45);
+  color: #0b0820;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
 }
-.up-guide-item__thumb {
+/* 已拍角度：✓ 亮起（当前角度上的 ✓ 反白） */
+.wg-tab__check {
+  display: none;
+  color: var(--neon-cyan, #00f0ff);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  font-weight: 700;
+}
+.wg-tab.is-done .wg-tab__check {
+  display: inline;
+}
+.wg-tab.is-done.is-current .wg-tab__check {
+  color: #0b0820;
+  text-shadow: none;
+}
+/* 正在预览（点胶囊回看）：描边提亮，不一定是要拍的角度 */
+.wg-tab.is-preview {
+  border-color: rgba(0, 240, 255, 0.6);
+  color: #eafcff;
+}
+
+/* ---- 单张大示意图：1:1、宽 min(320px,100%)、可点击选图 ---- */
+.wg-stage {
   position: relative;
-  aspect-ratio: 4 / 3;
-  border-radius: 10px;
+  width: min(320px, 100%);
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
   overflow: hidden;
   background: #0c0820;
-  border: 1px solid rgba(0, 240, 255, 0.22);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    inset 0 0 32px rgba(0, 240, 255, 0.08),
+    0 0 22px rgba(0, 240, 255, 0.18);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.up-guide-item__img {
+.wg-stage:hover {
+  border-color: rgba(0, 240, 255, 0.65);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    inset 0 0 32px rgba(0, 240, 255, 0.1),
+    0 0 30px rgba(0, 240, 255, 0.32);
+}
+.wg-diagram {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.82;
-  filter: grayscale(0.25) brightness(0.9);
 }
-.up-guide-item__label {
-  font-size: 13px;
+/* 已拍照片覆盖在示意图上（点胶囊回看已拍角度时显示，blob URL 与 thumbs 同源） */
+.wg-shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---- 角度说明 ---- */
+.wg-meta {
+  text-align: center;
+  margin: 12px 0 0;
+}
+.wg-meta__label {
+  font-size: 13.5px;
   font-weight: 700;
   color: #eafcff;
 }
-.up-guide-item__desc {
-  font-size: 11px;
-  line-height: 1.5;
+.wg-meta__desc {
+  margin-top: 3px;
+  font-size: 12px;
   color: var(--text-dim, #9aa7c7);
 }
-/* 已拍 ✓ 徽章：右上角，默认隐藏，is-done 时弹出 */
-.up-guide-item__badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: linear-gradient(100deg, var(--neon-cyan, #00f0ff), #7af0ff);
-  color: #0a0a14;
-  font-size: 11px;
-  font-weight: 800;
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-  opacity: 0;
-  transform: scale(0.6);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.up-guide-item.is-done .up-guide-item__badge {
-  opacity: 1;
-  transform: scale(1);
-}
 
-/* 拍摄要点（由 hint 拆分） */
-.up-guide-tips {
+/* ---- 进度圆点 + 计数 ---- */
+.wg-dots {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px;
-  border-radius: 12px;
-  background: rgba(0, 240, 255, 0.05);
-  border: 1px solid rgba(0, 240, 255, 0.18);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0 14px;
 }
-.up-guide-tip {
-  position: relative;
-  padding-left: 14px;
-  font-size: 11px;
-  line-height: 1.55;
+.wg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a3650;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.wg-dot.is-done {
+  background: var(--neon-cyan, #00f0ff);
+}
+.wg-dot.is-current {
+  background: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.7);
+}
+.wg-count {
+  margin-left: 6px;
+  font-size: 11.5px;
   color: var(--text-dim, #9aa7c7);
 }
-.up-guide-tip::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 0.55em;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
-}
 
-/* 响应式：≤860px 单列，参考列移到下方并横向滚动（与 photoGuide 同断点）
-   移动端取景框：宽度吃满可用列宽，1:1 由宽度派生高度。
-   旧值 min-height:320 + aspect-ratio:4/3 会把宽度回灌成 426px、溢出 390 视口
-   （QA 实测 scrollWidth 439 > clientWidth 390，右下角括号被裁）；1:1 下
-   390 视口实测约 366×366，既不水平溢出又比 4:3 的 256px 更饱满。 */
-@media (max-width: 860px) {
-  .upload-stage {
-    flex-direction: column;
-    gap: 14px;
-    /* ⚠️ 必须覆盖基线的 align-items:flex-start（那是给桌面横向布局用的）。
-       column 方向下 cross axis 变成水平轴，flex-start 会让 main 列缩到内容宽度，
-       子元素的 width:100% 在不定宽父容器里退化成 auto —— 实测取景框只剩 192px。
-       stretch 才能让取景框吃满可用列宽（390 视口 → 366px）。 */
-    align-items: stretch;
-  }
-  .upload-stage__main {
-    width: 100%;
-  }
-  .upload-stage__guide {
-    flex: 0 0 auto;
-    width: 100%;
-  }
-  .up-guide-list {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 6px;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-  }
-  .up-guide-item {
-    flex: 0 0 150px;
-    width: 150px;
-  }
-  .up-viewfinder {
-    width: 100%;
-    max-width: 100%;
-    aspect-ratio: 1 / 1;
-  }
+/* ---- CTA 行 ---- */
+.wg-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.wg-cta {
+  border: none;
+  border-radius: 999px;
+  padding: 12px 26px;
+  background: linear-gradient(135deg, #ff2e97 0%, #ff5fb0 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(255, 46, 151, 0.35);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+.wg-cta:hover {
+  box-shadow: 0 10px 28px rgba(255, 46, 151, 0.5);
+}
+.wg-cta:active {
+  transform: translateY(1px);
+}
+.wg-cta__hint {
+  font-size: 11.5px;
+  color: var(--text-dim, #9aa7c7);
 }
 
 /* =========================================================
-   轮毂拍摄引导：全屏层（与车型拍照引导 .photo-guide-layer 同构）
-   fixed inset:0 + 霓虹辉光 + 蓝图格点叠层 + 毛玻璃 header/footer。
+   轮毂拍摄引导：暗色遮罩 + 居中弹窗（方案 C）
+   不再是全屏层——只罩一层暗色遮罩，内容是一个 ~560px 的居中弹窗。
+   z-index 10050：高于 #sfx-mute-btn(9999)/CRT 叠层(9998)，弹窗打开时
+   右下角固定元素不挡弹窗；关闭后 display:none，一切恢复可点。
    ========================================================= */
 .wheel-guide-layer {
   position: fixed;
   inset: 0;
-  z-index: 10050; /* 高于 #sfx-mute-btn(9999)/CRT 叠层(9998)：全屏层打开时独占屏幕；
-                     关闭后 display:none，音效钮等恢复可点（QA 实测 footer 关闭键曾被
-                     z-index 9999 的音效钮挡住，elementFromPoint 命中不到） */
+  z-index: 10050;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   background:
-    radial-gradient(520px 460px at 50% 6%, rgba(255, 46, 151, 0.16), transparent 68%),
-    radial-gradient(900px 520px at 82% -12%, rgba(255, 46, 151, 0.2), transparent 60%),
-    radial-gradient(1000px 600px at 12% 2%, rgba(0, 240, 255, 0.16), transparent 55%),
-    linear-gradient(180deg, #0b0820 0%, #0a0a14 46%, #120a24 100%);
-  background-attachment: fixed;
+    radial-gradient(700px 480px at 50% 18%, rgba(0, 240, 255, 0.08), transparent 62%),
+    rgba(7, 5, 14, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--text, #e8f6ff);
   font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  overflow: hidden;
-}
-/* 蓝图格点叠层：霓虹青/粉细线，强化「工位」感（同 photo-guide-layer::before） */
-.wheel-guide-layer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 46, 151, 0.06) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
-  -webkit-mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
-  z-index: 0;
 }
 .wheel-guide-layer.hidden {
   display: none;
@@ -2701,125 +2497,59 @@ input[type='range'] {
   box-shadow: inset 0 0 0 2px rgba(0, 240, 255, 0.5), inset 0 0 140px rgba(0, 240, 255, 0.14);
 }
 
-/* 顶部栏（深紫玻璃 + 霓虹描边，同 photo-guide__header） */
-.wheel-guide__header {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
+.wheel-guide-modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 18px 22px 20px;
+  border-radius: 18px;
+  background:
+    radial-gradient(420px 300px at 50% 0%, rgba(255, 46, 151, 0.1), transparent 70%),
+    linear-gradient(180deg, #1a132e 0%, #140f24 100%);
+  border: 1px solid rgba(0, 240, 255, 0.38);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.6),
+    0 0 34px rgba(0, 240, 255, 0.14);
+}
+
+/* 弹窗头：标题 + ✕ */
+.wg-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
-  background: rgba(12, 10, 22, 0.62);
-  border-bottom: 1px solid rgba(255, 46, 151, 0.28);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 0 24px rgba(177, 74, 237, 0.12);
+  margin-bottom: 2px;
 }
-.wheel-guide__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.wg-title {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
   color: #eafcff;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 46, 151, 0.32);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
 }
-.wheel-guide__logo {
-  height: 28px;
-  width: auto;
-  filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.5));
-}
-.wheel-guide__close {
+.wg-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 240, 255, 0.5);
-  background: rgba(0, 240, 255, 0.1);
-  color: var(--neon-cyan, #00f0ff);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.22);
-  transition: transform 0.1s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-.wheel-guide__close:hover {
-  background: rgba(0, 240, 255, 0.2);
-  border-color: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 22px rgba(0, 240, 255, 0.45);
-}
-.wheel-guide__close:active {
-  transform: translateY(1px);
-}
-
-/* 可滚动主体 */
-.wheel-guide__scroll {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 28px 24px;
-  -webkit-overflow-scrolling: touch;
-}
-.wheel-guide__inner {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-.wheel-guide__title {
-  font-size: 26px;
-  font-weight: 800;
-  color: #eafcff;
-  margin: 0 0 8px;
-  letter-spacing: -0.01em;
-  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 0 30px rgba(255, 46, 151, 0.28);
-}
-.wheel-guide__subtitle {
-  font-size: 14px;
-  color: var(--text-dim, #9aa7c7);
-  line-height: 1.6;
-  margin: 0 0 24px;
-}
-
-/* 底部栏（深紫玻璃，同 photo-guide__footer）
-   padding-right 加大：关闭键左移避开右下角固定元素热区（与 z-index 提升双保险） */
-.wheel-guide__footer {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
-  padding-right: 64px;
-  background: rgba(12, 10, 22, 0.72);
-  border-top: 1px solid rgba(0, 240, 255, 0.28);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 -6px 24px rgba(177, 74, 237, 0.12);
-}
-.wheel-guide__footer-hint {
-  font-size: 13px;
-  color: var(--text-dim, #9aa7c7);
-}
-.wheel-guide__footer-close {
-  padding: 10px 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 240, 255, 0.5);
+  border: 1px solid rgba(0, 240, 255, 0.4);
   background: rgba(0, 240, 255, 0.08);
   color: var(--neon-cyan, #00f0ff);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
-  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.3), 0 0 14px rgba(0, 240, 255, 0.18);
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.wheel-guide__footer-close:hover {
-  background: rgba(0, 240, 255, 0.16);
-  box-shadow: inset 0 0 0 1px var(--neon-cyan, #00f0ff), 0 0 22px rgba(0, 240, 255, 0.36);
+.wg-close:hover {
+  background: rgba(0, 240, 255, 0.18);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+}
+.wg-sub {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--text-dim, #9aa7c7);
+  line-height: 1.6;
 }
 
 /* =========================================================
@@ -2875,21 +2605,20 @@ input[type='range'] {
 }
 
 /* 移动端：收紧全屏层内边距，给取景框腾宽度 */
+/* 移动端：收紧遮罩/弹窗内边距，CTA 行纵排防止小屏挤压 */
 @media (max-width: 640px) {
-  .wheel-guide__header {
-    padding: 12px 14px;
+  .wheel-guide-layer {
+    padding: 12px;
   }
-  .wheel-guide__scroll {
-    padding: 16px 12px;
+  .wheel-guide-modal {
+    padding: 14px 16px 16px;
+    max-height: calc(100vh - 24px);
   }
-  .wheel-guide__title {
-    font-size: 20px;
+  .wg-stage {
+    width: min(300px, 100%);
   }
-  .wheel-guide__footer {
-    padding: 12px 14px;
-    padding-right: 56px;
-  }
-  .wheel-guide__footer-hint {
-    font-size: 12px;
+  .wg-cta-row {
+    flex-direction: column;
+    gap: 8px;
   }
 }
