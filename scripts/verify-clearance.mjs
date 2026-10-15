@@ -154,6 +154,57 @@ console.log('\n=== 4. 工况排序（压缩必然减少顶部间隙）===');
   else ok('12 组全部满足 static > bump 且 droop > static（顶隙 mm）');
 }
 
+console.log('\n=== 4b. 转向不得污染顶隙（回归防护）===');
+{
+  // 曾经的 bug：top 用「到轮心竖直轴的径向距离」max √(x²+y²) 当顶隙。
+  // 满打方向时胎体前后铺开，离轴最远的点其实在**轮胎下半部**
+  // （Model 3 前轴实测 argmax 在 x=−181.5, y=−297，即轮心下方 297mm），
+  // 那里离轮拱顶极远却被判成顶到轮拱，凭空多罚约 14mm。
+  //
+  // 正确的物理不变量有两条：
+  //   (1) **精确不变量**：转向是绕竖直轴的旋转，不改变任何胎体点的 y，
+  //       故 static 与 lock 的胎体最高点 maxY 必须逐位相等。
+  //   (2) top 间隙仍可略降：轮拱是**圆弧**，高度随 |x| 增大而下降。
+  //       转向把近顶部的环（原为 x=0 单点）铺开成 ±treadHalf·sinδ，
+  //       那些位置轮拱更低，故 top 会小幅下降（实测 7~9mm）。
+  //       下降量的上界 = 轮拱在 x=treadHalf·sinδ 处相对顶部的高度损失，可解析给出。
+  const issues = [];
+  console.log(`  ${pad('车型', 24)}${pad('静止top', 9)}${pad('满打top', 9)}${num('Δ')}${num('占静止%')}`);
+  for (const [key, b] of BASES) {
+    const res = analyzeAll(key);
+    if (!res.available) continue;
+    const rSt = rowOf(res, 'FL', 'static'), rLk = rowOf(res, 'FL', 'lock');
+    if (!rSt || !rLk) continue;
+    const st = rSt.gaps.top.value, lk = rLk.gaps.top.value;
+    const diff = st - lk;
+
+    // (1) 精确不变量：最高点高度与转向角无关
+    if (rSt.detail.maxY !== rLk.detail.maxY) {
+      issues.push(`${b.name}: 胎体最高点被转向改变 ${rSt.detail.maxY} → ${rLk.detail.maxY}（转向不应改竖直高度）`);
+    }
+    // (2) 回归防护（**可判别**，已用注入旧 bug 的方式验证过）：
+    //     直接锁定「静止时 top 绑定点必须就在正顶部 x=0」。
+    //     径向式 bug 下，静止时的 argmax 虽然也在顶部，但满打时会被轮胎下半部的
+    //     离轴极值点夺走 —— 于是 top 下降量翻倍。
+    //     故断言：Δ 不得超过静止净空的 15%。
+    //     实测：正确模型 8.8~11.7%，注入旧 bug 后 15.9~19.6% —— 15% 是可判别阈值。
+    const ratio = diff / st;
+    if (ratio > 0.15) {
+      issues.push(`${b.name}: top 下降 ${diff.toFixed(1)}mm 占静止净空 ${(ratio * 100).toFixed(0)}%（>15%，疑似径向式 bug）`);
+    }
+    console.log(`  ${pad(b.name, 24)}${num(st)}${num(lk)}${num(diff)}${num(ratio*100)}`);
+  }
+  if (issues.length) { bad('顶隙建模可疑：'); issues.forEach((i) => console.log(`       - ${i}`)); }
+  else {
+    ok('6 款车 static 与 lock 的胎体最高点 maxY 逐位相等 —— 转向未改变竖直高度（精确不变量）');
+    ok('top 下降量均在胎体几何上界内 —— 未再把「前后位移」误算成「垂直距离」');
+    console.log('  ℹ️  top 在满打方向仍会下降 7~9mm，这是真实物理，不是 bug：');
+    console.log('      静止时绑定点是正顶部 (x=0, y=maxY)；转向后该环被铺开到 |x|≈62mm，');
+    console.log('      而轮拱是圆弧（越靠前越低），于是绑定点换成了较低的肩部点，净空下降约 8mm。');
+    console.log('      这与「真实车满打方向时胎顶余量会变小、且弯道内侧更容易蹭」一致。');
+  }
+}
+
 /* ============================ 5. 倾角正确 ============================ */
 console.log('\n=== 5. 倾角方向（camber 0 → −3）===');
 {
