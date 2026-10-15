@@ -32,6 +32,16 @@ primary_region = "sin"
   SPA_FALLBACK = "1"
   PORT = "8080"
 
+# ---- 持久卷（2026-10-16）----
+# 之前 .cache 存在容器本地，**每次 fly deploy 都会清空**（用户方案、账号、
+# 额度计数、生成的 GLB、论坛上传全部丢失）。挂卷解决。
+# ⚠️ Fly volume 只能挂给**一台**机器，所以机器数必须 = 1（已在 fly.toml 固定）。
+# 将来要横向扩容到 2 台以上，必须把 GLB/上传迁到对象存储（COS/S3），
+# 卷只能存数据库类小文件。
+[[mounts]]
+  source = "inspire_car_data"
+  destination = "/app/.cache"
+
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
