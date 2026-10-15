@@ -14,7 +14,7 @@ import { ET_REF } from '../tuning/wheelRig.js';
 import { createColorWheel } from './colorWheel.js';
 import { createSpecPicker } from './sizePicker.js';
 import { sfx } from './sfx.js';
-import { getBasis } from '../tuning/tireBasis.js';
+import { getBasis, canJudge } from '../tuning/tireBasis.js';
 import { renderMyWheels } from './myWheels.js';
 import {
   fenderStatus,
@@ -1606,9 +1606,22 @@ export function createPanel(app, mount) {
               : '',
       },
     ];
+    /* ---- 承诺收口（2026-10-15）----
+     * 这里的轮拱间隙来自 suspension.js 的标量减法 `baseFG − Δ`，**不是几何验证**。
+     * 产品定位已明确分两层：灵感预览（可承诺好看）/ 精准适配（可承诺依据）。
+     * 未建档车型没有可信的轮拱基准，此时继续给绿/黄/红就是在误导 ——
+     * 所以未建档时一律不显示判定结论，只显示数值 + 明确说明。 */
+    const basisKey = app.params.realSpecs?.carKey;
+    const mayJudge = canJudge(basisKey);
+
     for (const row of suspRows) {
-      const cls =
-        row.status === 'good' ? 'susp-good' : row.status === 'warn' ? 'susp-warn' : 'susp-danger';
+      const cls = mayJudge
+        ? row.status === 'good'
+          ? 'susp-good'
+          : row.status === 'warn'
+            ? 'susp-warn'
+            : 'susp-danger'
+        : 'susp-raw'; // 未建档：不着色，纯数值
       const valText = `${row.val >= 0 ? '+' : ''}${row.val.toFixed(0)} mm`;
       const lineEl = el(
         'div',
@@ -1619,6 +1632,16 @@ export function createPanel(app, mount) {
       if (row.tip) lineEl.appendChild(el('span', { class: 'susp-tip' }, row.tip));
       suspReadout.appendChild(lineEl);
     }
+
+    suspReadout.appendChild(
+      el(
+        'div',
+        { class: 'susp-disclaimer' },
+        mayJudge
+          ? '轮拱间隙为「原厂基准 − 降低量」的规则估算，非几何验证；不等同于工程结论。'
+          : '该车型未建档，以上仅为估算数值，不构成任何适配结论。'
+      )
+    );
     } // end else (chassis 已 derive)
   }
 
