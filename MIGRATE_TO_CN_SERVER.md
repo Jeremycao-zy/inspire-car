@@ -30,9 +30,12 @@
 | 规格 | **2 核 4G**（2C4G） | 你计划买的规格，够用 |
 | 系统盘 | **≥ 60GB**（建议 80–100GB） | 生成的 GLB 模型单文件 12–44MB，.cache 会慢慢长大 |
 | 计费 | **包月**（务必 ≥ 3 个月，否则备案不过） | 别选按量，备案不认 |
-| 地域 | 选离你用户近的境内节点（如广州 / 上海 / 北京） | 备案主体与地域要一致，按你身份证或营业执照属地选 |
+| 地域 | 任意**中国大陆境内**节点即可，按离你和你的用户近的选（广州 / 上海 / 北京 等） | 见下方说明 |
 | 镜像 | 选 **Ubuntu 22.04 LTS** 或 **Debian 12** | 本文命令按这两个发行版写 |
 | 带宽 | 轻量一般给固定峰值带宽（如 6–8Mbps），够个人站 | 大文件下载慢点但能用 |
+
+> **地域不需要和主体所在地一致**（常见误解）：服务器地域只是机器放在哪个机房，随便选境内节点，按延迟/价格挑就行。
+> 真正决定备案归属的是**备案主体**：你这次是做小程序，主体是**个体工商户 / 公司**，所以备案系统里选的"备案省份"按**营业执照上的注册地**填，由该省通信管理局审核——这跟服务器机房在哪个城市是两回事，不用刻意凑到一起。
 
 价格**以活动页为准**，不要凭记忆。先看官方活动页再下单：
 - 腾讯云轻量应用服务器活动：<https://cloud.tencent.com/act/pro/lighthouse2023> （或官网产品页 <https://cloud.tencent.com/product/lighthouse>）
@@ -130,33 +133,54 @@ mkdir -p /opt/garage-vite && tar -xzf /opt/garage.tgz -C /opt/garage-vite
 ```bash
 # 在服务器项目根目录
 cat > .env <<'EOF'
-# ===== 密钥（不进 git，从 Fly 原 secrets 抄过来）=====
-# Hyper3D (Rodin/BANG) 商业 API Key（可选，不配则走离线演示）
-HYPER3D_API_KEY=<你的 HYPER3D_API_KEY>
-# 混元 3D 凭证（可选）
-HUNYUAN3D_TOKEN=<你的 HUNYUAN3D_TOKEN>
-# 车型识别视觉模型 key（可选，qwen/dashscope/bailian 任一）
-QWEN_API_KEY=<你的 QWEN_API_KEY>
-# fal.ai（可选）
-FAL_KEY=<你的 FAL_KEY>
-# 微信小程序登录（可选，要小程序登录才配）
-WECHAT_APPID=<你的小程序 APPID>
-WECHAT_SECRET=<你的小程序 SECRET>
-# 微信/苹果 OAuth 网站登录（可选）
-# APPLE_CLIENT_ID=<...>
+# ===== 密钥（不进 git，值从 Fly 原 secrets 抄过来）=====
+# ⚠️ 全部先留空！下面每条等号后面什么都别写。
+#    留空 = 该能力走 demo/关闭，站点照样能起来。
+#    **千万别直接照抄 <...> 这种占位文字**——那会被当成真 key 传进去，
+#    结果不是降级到 demo，而是拿假 key 去请求、全部 401 报错。
+#    等你拿到真 key 了，再逐行把等号后面填上（直接 vi .env 改即可）。
+#
+# Hyper3D (Rodin/BANG) 商业 API Key
+HYPER3D_API_KEY=
+# 混元 3D 凭证
+HUNYUAN3D_TOKEN=
+# 车型识别视觉模型 key（qwen/dashscope/bailian 任一）
+QWEN_API_KEY=
+# fal.ai
+FAL_KEY=
+# 微信小程序登录（要小程序登录才配）
+WECHAT_APPID=
+WECHAT_SECRET=
+# 微信/苹果 OAuth 网站登录
+# APPLE_CLIENT_ID=
 
 # ===== 仅当你决定用 PostgreSQL 时才填（默认不用，走 JSON 模式）=====
 # DATABASE_URL=postgres://inspirecar:inspirecar@db:5432/inspirecar
-# AUTH_SECRET=<openssl rand -hex 48 生成的固定随机值>
+# AUTH_SECRET=<用 openssl rand -hex 48 生成的固定随机值>
 EOF
 ```
 
-> 这条干什么：把密钥和敏感配置集中到 `.env`，compose 用 `env_file` 注入容器，源码和 git 里都不出现明文。失败会怎样：`.env` 没建 → 容器能起但 3D 生成等走 demo；`DATABASE_URL` 填错 → 启动会回退 JSON 模式并打警告（不影响站点启动）。
+> 这条干什么：把密钥与敏感配置集中到 `.env`，compose 用 `env_file` 注入容器，源码和 git 里都不出现明文。
+>
+> **这一步不能跳过，文件必须存在（全空也行）**：compose 的 `env_file` 默认是必填的，.env 不存在时 `docker compose up` 会直接报错 `env file .env not found`，容器根本起不来。你现在还没从 Fly 抄过来也没关系——先全空，站点照样能跑（3D 生成走 demo，其余功能不受影响），等拿到 key 再填。
+>
+> 其他失败情况：`DATABASE_URL` 填错 → 启动回退 JSON 模式并打警告（不影响站点启动）。
+
+> 从 Fly 把现有密钥抄过来（可选，省得手抄）：
+> ```bash
+> # 在你 Mac 上跑，会列出 Fly 上已设置的密钥名（值不显示）
+> ~/.fly/bin/flyctl secrets list --app inspire-car
+> # 值只能逐个去看，用你当时设置的值填进服务器上的 .env
+> ```
 
 ### 4.2 构建并启动
 
 ```bash
 cd /opt/garage-vite
+
+# 保险一步：确保 .env 存在（跳过 4.1 也能起来，就是 3D 走 demo）
+[ -f .env ] || touch .env
+
 # 构建镜像并后台启动（-d 后台；--build 每次都重新构建前端）
 docker compose up -d --build
 
@@ -326,22 +350,61 @@ STUDIO_PATH: '/',                          // ← 保持 '/'，别改（见下�
 - **request 合法域名**：加上 `https://www.inspirecar.cn`（API 请求用，必须是 https + 已备案域名，不能用 IP）。
 - **业务域名（web-view 业务域名）**：加上 `https://www.inspirecar.cn`（承载 3D 编辑器的 `<web-view>` 用）。
 
-### 7.3 业务域名校验文件放哪（关键，关系到 `server/static.mjs`）
+### 7.3 业务域名校验文件放哪（最容易搞错的一步）
 
-微信要求把校验文件 `MP_verify_xxxx.txt` 放到站点**根路径可访问**的位置（即 `https://www.inspirecar.cn/MP_verify_xxxx.txt` 能直接下载）。
+微信要求：把 `MP_verify_xxxx.txt` 放到**域名根目录**，也就是 `https://www.inspirecar.cn/MP_verify_xxxx.txt` 这个地址必须能直接打开、显示一串随机字符。
 
-本项目后端由 `server/static.mjs` 托管 `dist/` 目录。该文件**必须落到 `dist/` 里**，否则访问会 404 或回落成 `index.html`（文本校验失败）。**最稳的做法**：
+> ⚠️ **不要放进 `.well-known/`**。`.well-known/` 是 Let's Encrypt / Caddy 申请证书用的 HTTP-01 挑战路径，跟微信的校验文件是两套东西。放进去的话，`https://域名/MP_verify_xxxx.txt` 仍然取不到文件，微信会报"域名验证失败"。
+
+两种方式，选一个：
+
+**方式 A（推荐，不用重建容器）—— 交给 Caddy 直接返回：**
 
 ```bash
-# 在服务器项目根目录，把微信下发的校验文件放进 public/.well-known/
-mkdir -p public/.well-known
-cp <你下载的 MP_verify_xxxx.txt> public/.well-known/
-# 重新构建前端（让它被拷贝进 dist/.well-known/）
+# 在服务器上建一个专门放微信校验文件的目录
+sudo mkdir -p /opt/wx-verify
+# 把你下载的校验文件放进去（文件名保持原样，一个字都别改）
+sudo cp <你下载的 MP_verify_xxxx.txt> /opt/wx-verify/
+```
+
+然后把 `/etc/caddy/Caddyfile` 里 6.1 那个域名块**整块替换**成下面这样：
+
+```caddyfile
+www.inspirecar.cn {
+    # ① 微信业务域名校验文件：直接从本地目录返回，不转发给应用
+    #    用 /MP_verify_* 做前缀匹配（通配写在末尾，Caddy 一定认）
+    handle /MP_verify_* {
+        root * /opt/wx-verify
+        file_server
+    }
+
+    # ② 其余所有请求兜底转发给容器
+    #    包一层 handle 是为了和上面互斥：命中的走①，没命中的才到这里
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+```
+
+> 为什么写成两个 `handle`：`handle` 之间是互斥的，第一个命中的生效，且**不需要**你操心文件里的先后顺序（Caddy 会按指令优先级自动排序）。这样写最稳，不会哪天因为顺序调整导致校验文件被 `reverse_proxy` 抢走、又被 SPA 回落成 HTML 页面。
+
+```bash
+sudo systemctl reload caddy
+# 自检：必须显示一串字符，而不是网页 HTML
+curl -s https://www.inspirecar.cn/MP_verify_xxxx.txt
+```
+
+**方式 B —— 放进前端 `public/`，重新构建：**
+
+```bash
+# 在服务器项目根目录。放 public/ 而不是 dist/：
+# Vite 构建会把 public/ 整个拷进 dist/，下次构建也不会丢；直接丢 dist/ 会被覆盖。
+cp <你下载的 MP_verify_xxxx.txt> public/
+# 重新构建（让它进 dist/ 根目录）
 docker compose up -d --build
 ```
 
-> 为什么放 `public/.well-known/` 而不是 `dist/`：Vite 构建时会把 `public/` 整个拷到 `dist/`，放 `public/` 一劳永逸，下次构建也不丢；直接丢 `dist/` 会被下次构建覆盖。
-> 备选：不想重新构建，也可以让 Caddy 单独把 `/.well-known/` 指到宿主机某个目录（在 Caddyfile 里加 `handle /.well-known/* { root * /opt/well-known  file_server }`）。
+> 为什么这样才对：本项目开了 SPA 回落（`SPA_FALLBACK=1`），**文件不存在时未知路径会回落成 `index.html` 并返回 200**。所以你访问 `https://域名/MP_verify_xxxx.txt` 时，如果看到的是一大段网页 HTML 而不是一串短字符，就说明文件没落到它该在的位置——微信校验必然失败。自检时务必 curl 看内容，别只看状态码是不是 200。
 
 ### 7.4 `project.config.json` 的 appid
 
@@ -393,11 +456,14 @@ curl -s https://www.inspirecar.cn/api/health
 6. **`SERVE_STATIC` 没开 = 只跑 API、不托管前端**
    生产必须 `SERVE_STATIC=1` 且 `PORT` 一致，否则首页打不开（API 能通但静态 404）。compose 已默认开启。
 
-7. **小程序 `STUDIO_PATH` 保持 `/`**
-   历史实测 `https://域名/studio` 之类深链曾 502（回落未生效时）。现在回落已修，但为稳妥，小程序侧 `STUDIO_PATH` 继续用 `'/'`，等确认深链稳定后再考虑改路径。
+7. **小程序 `STUDIO_PATH` 保持 `/`，原因不是 502**
+   深链 502 已于 2026-10-15 修复（见第 4 条）。这里继续用 `'/'` 的真实原因是：**前端是单页应用且没有路由**，`/studio` 只是回落到同一个首页，不会打开别的页面。等前端哪天做了真路由（如 `#/studio`），再改这个常量，其余代码都不用动。
 
-8. **`.env` 别提交**
-   密钥只在 `.env`，已被 `.gitignore` 忽略。若你用 `env_file` 注入，确认 `.env` 没被 `git add`。
+8. **微信校验文件别放 `.well-known/`（高频踩坑）**
+   `MP_verify_xxxx.txt` 必须在**域名根目录**能直取（`https://域名/MP_verify_xxxx.txt`）。`.well-known/` 是 Let's Encrypt 申请证书走的路径，跟微信校验无关，放进去必然验证失败。另外本项目开了 SPA 回落，**文件缺失时返回的是 200 + 网页 HTML 而不是 404**，所以自检必须 curl 看内容是不是一串短字符，只看状态码 200 会被骗过去。详见 7.3。
+
+9. **`.env` 别提交，且文件必须存在**
+   密钥只在 `.env`，已被 `.gitignore` 忽略（`git add` 时确认没把它带进去）。同时注意：`env_file` 默认必填，`.env` 不存在时 `docker compose up` 会直接报 `env file .env not found` 而起不来——所以这一步不能跳过，全空也要有这个文件（见 4.1 / 4.2）。
 
 ---
 
