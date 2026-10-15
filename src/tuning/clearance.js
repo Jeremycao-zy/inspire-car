@@ -20,6 +20,8 @@
  *      代价：主销后倾会使轮胎在转向时额外前移，真实风险被低估。
  *   A5 轮心外移**只由 ET 决定**（复用 wheelPlacement 的物理结论）：`hubOffset = oeEt − et`。
  *   A6 `archLip`（翼子板外沿半宽）在底座里是**估算值、不可信**，本模块**不用它当几何基准**。
+ *      反例：宝马 G20 archLipF=870 < 原厂胎面外缘 903，翼子板比轮胎还靠内 33mm。
+ *      保留该字段仅供人工参考；外侧几何一律走 options.fenderSkinAllowanceMm 标定。
  *
  * ## 坐标系（每个角的局部系，原点 = 轮心）
  *   +x 车辆前方 / +y 上 / +z 车身外侧
@@ -233,13 +235,13 @@ function posePoint(r, zt, sinT, cosT, pose) {
 
 /**
  * 全胎体包络（一次扫描同时得到 4 个量）：
- *   - topReach  = max √(x²+y²)  轮拱顶判定用（轮拱是以轮心竖直轴为轴的圆柱面）
+ *   - topClear  = min √(archR²−x²) − y  轮拱顶判定用（见下方 archTopClearance）
  *   - foreReach = max  x
  *   - aftReach  = max −x
  *   - innerReach= max −z        内侧包络（内衬/卡钳是深腔，全胎体都受约束）
  */
-function fullEnvelope(profile, pose, nSpin) {
-  let topReach = 0, foreReach = 0, aftReach = 0, innerReach = 0;
+function fullEnvelope(profile, pose, nSpin, archRadius) {
+  let topClear = Infinity, foreReach = 0, aftReach = 0, innerReach = 0, maxY = -Infinity;
   const trig = [];
   for (let j = 0; j < nSpin; j++) {
     const t = (j * 2 * Math.PI) / nSpin;
@@ -249,15 +251,47 @@ function fullEnvelope(profile, pose, nSpin) {
     for (const zt of [h, -h]) {
       for (let j = 0; j < nSpin; j++) {
         const p = posePoint(r, zt, trig[j][0], trig[j][1], pose);
-        const planar = Math.sqrt(p.x * p.x + p.y * p.y);
-        if (planar > topReach) topReach = planar;
+        if (p.y > maxY) maxY = p.y;
+        const clear = archTopClearance(archRadius, p.x, p.y);
+        if (clear < topClear) topClear = clear;
         if (p.x > foreReach) foreReach = p.x;
         if (-p.x > aftReach) aftReach = -p.x;
         if (-p.z > innerReach) innerReach = -p.z;
       }
     }
   }
-  return { topReach, foreReach, aftReach, innerReach };
+  return {
+    topClear: Number.isFinite(topClear) ? topClear : 0,
+    // 胎体最高点高度：转向是绕竖直轴的旋转，**不改变任何点的 y**，
+    // 故 maxY 必须与转向角无关。这是 top 建模的精确不变量（见 verify 4b 断言）。
+    maxY,
+    foreReach, aftReach, innerReach,
+  };
+}
+
+/**
+ * 单点到**圆形轮拱轮廓**的垂直净空（mm）。
+ *
+ * 轮拱在 x-y 平面内是以轮心为心、半径 `archRadius` 的**圆弧**，不是圆柱面。
+ * 圆弧在纵向位置 x 处的高度为 h(x) = √(archRadius² − x²)，故该点的垂直净空 = h(x) − y。
+ *
+ * ⚠️ 为什么不能写成 `archRadius − √(x²+y²)`（径向距离）：
+ *   那样等于把「到轮心竖直轴的距离」当成「到轮拱的距离」，两者**只在正顶部 x=0 才相等**。
+ *   满打方向时胎体前后铺开，离竖直轴最远的点其实在**轮胎下半部**
+ *   （实测 Model 3 前轴 steer34°：argmax 在 x=−181.5, y=−297，即轮心下方 297mm），
+ *   那里离轮拱顶极远，却会被径向式误判成「顶到轮拱」，凭空多罚约 14mm。
+ *
+ * |x| ≥ archRadius 的点已在轮拱圆之外，归入 fore/aft 约束，不参与 top 判定。
+ *
+ * @param {number} archRadius 轮拱半径（mm，轮心到轮拱顶）
+ * @param {number} x 胎体点的纵向坐标（mm）
+ * @param {number} y 胎体点的竖直坐标（mm）
+ * @returns {number} 垂直净空（mm）；点在轮拱圆外返回 Infinity
+ */
+function archTopClearance(archRadius, x, y) {
+  const ax = Math.abs(x);
+  if (ax >= archRadius) return Infinity;
+  return Math.sqrt(archRadius * archRadius - ax * ax) - y;
 }
 
 /**
@@ -324,7 +358,7 @@ function solveOne({ spec, basis, axle, camberDeg, riseMm, steerDeg, options }) {
   const geom = tireGeometry(spec);
   const profile = tireProfilePoints(spec, options.profileSamples);
   const pose = makePose(geom, camberDeg, steerDeg);
-  const full = fullEnvelope(profile, pose, options.spinSamples);
+  const full = fullEnvelope(profile, pose, options.spinSamples, archRadius);
   // band=0 表示「不设高度带」，即全高保守判定
   const innerBand = options.innerObstacleBandK > 0
     ? options.innerObstacleBandK * geom.ROuter
@@ -335,8 +369,9 @@ function solveOne({ spec, basis, axle, camberDeg, riseMm, steerDeg, options }) {
   const hubOff = hubOffsetMm(spec.et, oeSpec.et);
 
   // --- top：轮拱顶（实测依据：archRadius 语义 = 轮心到轮拱顶） ---
+  // 轮拱是**圆弧**，逐点算垂直净空取最小，而不是用径向距离（见 archTopClearance 注释）。
   // 轮心相对车身上移 riseMm → 胎体同步上移 → 顶部间隙直接减少 riseMm
-  const topGap = archRadius - full.topReach - riseMm;
+  const topGap = full.topClear - riseMm;
 
   // --- outer：翼子板外沿平面 vs 胎体前/后中心截面的上半段最外点 ---
   //   A3 简化假设：唇口只在轮心以上存在；余量 = 原厂胎面外缘再往外 allowance
@@ -364,7 +399,17 @@ function solveOne({ spec, basis, axle, camberDeg, riseMm, steerDeg, options }) {
     aft: { value: r1(aftGap), obstacle: GAP_OBSTACLES.aft },
   };
   const minGap = Math.min(...GAP_DIRECTIONS.map((k) => gaps[k].value));
-  return { gaps, minGap, verdict: verdictOf(minGap), detail: { hubOff, camberDeg, steerDeg, riseMm, outerDiameter: geom.outerDiameter } };
+  return {
+    gaps,
+    minGap,
+    verdict: verdictOf(minGap),
+    detail: {
+      hubOff, camberDeg, steerDeg, riseMm,
+      outerDiameter: geom.outerDiameter,
+      // 胎体最高点高度（mm）。转向不改变竖直高度，故该值与 steerDeg 无关。
+      maxY: r1(full.maxY),
+    },
+  };
 }
 
 /** 判定：≥THRESH.ok 安全 / ≥THRESH.warn 警告 / 否则干涉（<0 为实际蹭胎） */

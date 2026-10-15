@@ -93,7 +93,13 @@ export const ET_VALUES_MM = [
  *   wheelCenterGainF/R 轮心增益：满压缩时轮心相对车身的上移量 = suspTravel × gain。
  *                    双叉臂/多连杆前悬约 0.60–0.75。⚠️ 直接把 suspTravel 当轮心位移
  *                    会严重高估压缩量（会把原厂状态算成「蹭胎 −60mm」）——本项目踩过。
- *   archLipF/R       轮拱外缘（翼子板）Z 向半宽
+ *   archLipF/R       ⚠️ **估算值，不可作几何基准，保留仅供人工参考**（不要删字段，可能有别处引用）
+ *                    轮拱外缘（翼子板）Z 向半宽。它是按车身尺寸**推算**的，不是实测。
+ *                    实测反例：宝马 G20 的 archLipF=870，而该车原厂胎面外缘 =
+ *                    halfTrackF 790.5 + 225/2 = 903 —— 翼子板竟比轮胎还靠内 33mm，
+ *                    几何上不可能。**绝不可用作外侧间隙基准**，否则原厂即算出大幅干涉。
+ *                    需要外侧几何时请用 clearance.js 的 options.fenderSkinAllowanceMm
+ *                    （同样是标定值，但语义明确：原厂胎面外缘再往外多少）。
  *   suspTravelF/R    悬挂压缩行程（满压缩）
  *   reboundF/R       回弹行程
  *   steerDeg         前轴最大转向角
