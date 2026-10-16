@@ -71,7 +71,7 @@ git push origin main
 
 ## 5.（可选）绑阿里云买的自定义域名
 
-1. Zeabur 服务面板 → **Domain / 域名** → 输入你的域名（如 `inspirecar.cn`）
+1. Zeabur 服务面板 → **Domain / 域名** → 输入你的域名（如 `inspire-car.com`）
 2. Zeabur 会显示一个 **CNAME 目标值**（形如 `xxx.zeabur.app` 或一条 CNAME 记录）
 3. 阿里云控制台 → **域名 → 云解析 DNS** → 添加记录：
    - 类型 `CNAME`，主机记录 `@`（再补一条 `www`），记录值粘 Zeabur 给的 CNAME

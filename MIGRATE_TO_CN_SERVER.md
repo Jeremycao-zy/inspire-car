@@ -11,7 +11,7 @@
 **必须先 ICP 备案通过、且域名解析可用，再搬家。** 顺序反了会白干：
 
 1. **先备案**：中国大陆管局要求备案主体必须有一台**境内服务器**（境外的 Fly.io 新加坡节点不算）。所以你买境内机器、提交备案，是**为了拿备案号**，不是为了先跑服务。
-2. **备案通过后再搬家**：等备案号下来、域名（如 `www.inspirecar.cn`）解析到你这台境内机器之后，再执行本文第 3～8 节的迁移。
+2. **备案通过后再搬家**：等备案号下来、域名（如 `www.inspire-car.com`）解析到你这台境内机器之后，再执行本文第 3～8 节的迁移。
 3. 搬家期间 Fly.io 那台**先别删**，等国内跑稳了、验证清单全过，再下线 Fly 以省心省钱。
 
 > 为什么不能反过来：没备案就把域名指向境内服务器并提供公开访问，管局会**阻断访问**甚至注销备案。所以"先有境内服务器用于备案 → 备案通过 → 再切流量"。
@@ -282,7 +282,7 @@ pg_dump -h <fly-pg-host> -U <user> <dbname> > fly-db.sql
 
 ## 6. 域名 + HTTPS
 
-备案通过后，把域名（如 `www.inspirecar.cn`）**A 记录**指向这台服务器的**公网 IP**。
+备案通过后，把域名（如 `www.inspire-car.com`）**A 记录**指向这台服务器的**公网 IP**。
 
 ### 6.1 用 Caddy 自动拿免费 HTTPS（最省心，自动续期）
 
@@ -299,13 +299,13 @@ curl -fsSL https://get.caddy.com | bash
 
 ```caddy
 # 替换成你的域名
-www.inspirecar.cn {
+www.inspire-car.com {
     # 反向代理到同机容器（compose 已映射 8080 到宿主机）
     reverse_proxy 127.0.0.1:8080
 }
 
-# 若你还要用根域名 inspirecar.cn 访问，加一条：
-# inspirecar.cn {
+# 若你还要用根域名 inspire-car.com 访问，加一条：
+# inspire-car.com {
 #     reverse_proxy 127.0.0.1:8080
 # }
 ```
@@ -336,8 +336,8 @@ ICP 备案（管局）通过后，**30 日内**还要做**公安备案**（全�
 打开 `miniprogram/app.js`，把顶部 `CONFIG` 里的：
 
 ```js
-API_BASE: 'https://inspire-car.fly.dev',   // ← 改成 https://www.inspirecar.cn
-WEB_BASE: 'https://inspire-car.fly.dev',   // ← 改成 https://www.inspirecar.cn
+API_BASE: 'https://inspire-car.fly.dev',   // ← 改成 https://www.inspire-car.com
+WEB_BASE: 'https://inspire-car.fly.dev',   // ← 改成 https://www.inspire-car.com
 STUDIO_PATH: '/',                          // ← 保持 '/'，别改（见下方坑）
 ```
 
@@ -347,12 +347,12 @@ STUDIO_PATH: '/',                          // ← 保持 '/'，别改（见下�
 
 登录 [微信公众平台](https://mp.weixin.qq.com) → 你的小程序 → **开发管理 → 开发设置**：
 
-- **request 合法域名**：加上 `https://www.inspirecar.cn`（API 请求用，必须是 https + 已备案域名，不能用 IP）。
-- **业务域名（web-view 业务域名）**：加上 `https://www.inspirecar.cn`（承载 3D 编辑器的 `<web-view>` 用）。
+- **request 合法域名**：加上 `https://www.inspire-car.com`（API 请求用，必须是 https + 已备案域名，不能用 IP）。
+- **业务域名（web-view 业务域名）**：加上 `https://www.inspire-car.com`（承载 3D 编辑器的 `<web-view>` 用）。
 
 ### 7.3 业务域名校验文件放哪（最容易搞错的一步）
 
-微信要求：把 `MP_verify_xxxx.txt` 放到**域名根目录**，也就是 `https://www.inspirecar.cn/MP_verify_xxxx.txt` 这个地址必须能直接打开、显示一串随机字符。
+微信要求：把 `MP_verify_xxxx.txt` 放到**域名根目录**，也就是 `https://www.inspire-car.com/MP_verify_xxxx.txt` 这个地址必须能直接打开、显示一串随机字符。
 
 > ⚠️ **不要放进 `.well-known/`**。`.well-known/` 是 Let's Encrypt / Caddy 申请证书用的 HTTP-01 挑战路径，跟微信的校验文件是两套东西。放进去的话，`https://域名/MP_verify_xxxx.txt` 仍然取不到文件，微信会报"域名验证失败"。
 
@@ -370,7 +370,7 @@ sudo cp <你下载的 MP_verify_xxxx.txt> /opt/wx-verify/
 然后把 `/etc/caddy/Caddyfile` 里 6.1 那个域名块**整块替换**成下面这样：
 
 ```caddyfile
-www.inspirecar.cn {
+www.inspire-car.com {
     # ① 微信业务域名校验文件：直接从本地目录返回，不转发给应用
     #    用 /MP_verify_* 做前缀匹配（通配写在末尾，Caddy 一定认）
     handle /MP_verify_* {
@@ -391,7 +391,7 @@ www.inspirecar.cn {
 ```bash
 sudo systemctl reload caddy
 # 自检：必须显示一串字符，而不是网页 HTML
-curl -s https://www.inspirecar.cn/MP_verify_xxxx.txt
+curl -s https://www.inspire-car.com/MP_verify_xxxx.txt
 ```
 
 **方式 B —— 放进前端 `public/`，重新构建：**
@@ -418,15 +418,15 @@ docker compose up -d --build
 
 ```bash
 # 1) 首页
-curl -s -o /dev/null -w "%{http_code}\n" https://www.inspirecar.cn/
+curl -s -o /dev/null -w "%{http_code}\n" https://www.inspire-car.com/
 # 期望：200
 
 # 2) 不存在的深链（验证 SPA 回落没有 502）
-curl -s -o /dev/null -w "%{http_code}\n" https://www.inspirecar.cn/xyz-test-123
+curl -s -o /dev/null -w "%{http_code}\n" https://www.inspire-car.com/xyz-test-123
 # 期望：200（回落到 index.html）
 
 # 3) 健康检查接口
-curl -s https://www.inspirecar.cn/api/health
+curl -s https://www.inspire-car.com/api/health
 # 期望：返回一段 JSON，含 "ok":true；dbMode 应为 "json" 或 "sql"
 ```
 

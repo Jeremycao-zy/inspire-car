@@ -36,7 +36,7 @@ services:
       # MAX_BODY_MB: "80"            # 上传图片+GLB 的请求体上限（默认 80MB）
       # MAX_POLL_MS: "900000"        # 单次生成最长轮询（默认 ~15 分钟）
       # POLL_INTERVAL_MS: "5000"     # 轮询间隔
-      # PUBLIC_BASE_URL: "https://www.inspirecar.cn"  # 前端/ OAuth 回跳基地址（同源一般不用改）
+      # PUBLIC_BASE_URL: "https://www.inspire-car.com"  # 前端/ OAuth 回跳基地址（同源一般不用改）
       # ADMIN_UIDS: ""               # 资讯发布管理员白名单（逗号分隔 uid），留空=无后台发布权限
       # ---- 用 PostgreSQL 时打开（需同时取消下方 db 服务）----
       # DATABASE_URL: "postgres://inspirecar:inspirecar@db:5432/inspirecar"
