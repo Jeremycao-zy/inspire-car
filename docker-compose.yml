@@ -23,9 +23,10 @@ services:
     image: inspire-car:latest
     container_name: inspire-car
     restart: unless-stopped
-    # 应用本身只监听容器内的 8080（HTTP）。HTTPS 由前置 Caddy/Nginx 负责（见文档第 6 节）。
+    # 应用本身只监听容器内的 8080（HTTP）。宿主机用 80 映射（备案标准端口）；
+    # HTTPS 由前置 Caddy/Nginx 负责（见文档第 6 节），后续再加 443。
     ports:
-      - "8080:8080"
+      - "80:8080"
     environment:
       NODE_ENV: production
       HOST: "0.0.0.0"
