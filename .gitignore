@@ -20,6 +20,13 @@ scripts/_qa-*.mjs
 # local env (keep .env.example)
 .env
 .env.local
+*.env.production
+.env.prod
+
+# 令牌文件（历史教训：曾把真实 tempToken 误贴进 docs 设计文档并 push 到公开仓库）
+.workbuddy/tokens/
+*_token.txt
+tokens/
 
 # project data (not source)
 .workbuddy/

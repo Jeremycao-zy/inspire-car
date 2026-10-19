@@ -1,0 +1,111 @@
+# 灵感改装 / Inspire Car —— push to main ⇒ 自动构建并部署到 Fly.io
+#
+# 存在的理由：Fly.io 不会监听 GitHub 推送。过去每次 `git push origin main` 之后
+# 线上毫无变化，必须在本地手动跑 flyctl deploy，导致过误判"已上线"的事故。
+# 本 workflow 把"push 即上线"变成默认行为，杜绝 push ≠ 上线。
+#
+# 密钥策略（重要）：
+# - 应用运行时密钥（HYPER3D / HUNYUAN3D / QWEN / FAL / WECHAT 等）由
+#   `flyctl secrets set` 存放在 Fly 侧的加密 secret store 里，**不需要也不应该**
+#   出现在本仓库或本 workflow。容器启动时由 Fly 注入。
+# - 本 workflow 唯一需要的 GitHub Secret 是 FLY_API_TOKEN（仅授权部署，不进容器）。
+# - 任何真实密钥都不得写进本文件，只允许 ${{ secrets.XXX }} 引用。
+
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+  # 手动触发：workflow 改动后、或线上出问题时可在 UI 上一键重跑，不必空推一个空提交。
+  workflow_dispatch:
+
+# 并发控制：同一时间只允许一个部署在跑。新 push 进来时不取消正在跑的部署
+# （避免"部署到一半被打断"导致线上半新半旧），而是排队等它结束。
+# 若你更想要"后到的 push 取消前一个"（快速追最新代码），把下面一行改成：
+#   cancel-in-progress: true
+concurrency:
+  group: fly-deploy-inspire-car
+  cancel-in-progress: false
+
+permissions:
+  contents: read # 只需要读代码来构建，不需要写权限
+
+jobs:
+  deploy:
+    name: Build & Deploy inspire-car
+    runs-on: ubuntu-latest
+    # flyctl deploy --remote-only 走远端 BuildKit，首次构建可能较慢；
+    # 留足余量避免超时被 kill（Fly 上正在滚动发布时被杀很难收拾）。
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: oven-sh/setup-node@v4
+        with:
+          node-version: '22'
+          # package-lock.json 已提交，用 npm ci 严格按 lockfile 安装，保证构建可复现。
+          cache: 'npm'
+
+      - name: Install dependencies
+        # 用 npm install 而非 npm ci：package-lock.json 与 package.json 存在少量漂移
+        # （@playwright/test 未登记在 lockfile 里），npm ci 会因"不同步"直接报错退出。
+        # 与 Dockerfile 的 npm install --legacy-peer-deps 保持一致，避免"CI 过了但镜像构建挂"。
+        # 后续若要升级回 npm ci，先本地 `npm install --package-lock-only` 同步 lockfile 再提交。
+        run: npm install --legacy-peer-deps
+
+      - name: Verify build
+        run: npm run build
+        # 这一步是部署闸门：构建失败 → job 失败 → 后续 deploy 步骤根本不会执行，
+        # 坏代码不可能进生产。
+
+      # ---------------------------------------------------------------------
+      # Fly.io CLI
+      # 用固定大版本 @2 而非 @master：master 是移动目标，上游一次不兼容改动
+      # 就会让我们的部署静默翻车，且难以归因。
+      # ---------------------------------------------------------------------
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@2
+        with:
+          flyctl-version: latest
+
+      - name: Verify flyctl auth
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl auth whoami
+        # 提前验证 token 有效：否则会跑到一半才失败，白等一次构建。
+        # token 缺失/失效时这里会明确报 401，比 deploy 步骤里的模糊错误好定位。
+
+      - name: Deploy to Fly.io
+        env:
+          # 通过环境变量传 token，而不是 `flyctl deploy -t $TOKEN`：
+          # 命令行参数会出现在进程列表和部分日志里，环境变量更安全。
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --app inspire-car \
+            --remote-only \
+            --strategy rolling
+
+      # ---------------------------------------------------------------------
+      # 部署后冒烟验证：确认线上真的起来了（消除"以为上线了其实没上"）
+      # ---------------------------------------------------------------------
+      - name: Smoke test production
+        run: |
+          echo "等待 Fly 滚动发布完成 + scale-from-zero 冷启动..."
+          # scale-to-zero（min_machines_running=0）意味着首次访问有几秒冷启动，重试几次。
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://inspire-car.fly.dev/ || true)
+            echo "  尝试 $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "生产站点可达，部署生效。"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::部署后 100 秒内 https://inspire-car.fly.dev/ 未返回 200，请检查 Fly 控制台。"
+          exit 1

@@ -27,7 +27,7 @@
 
 **文件格式（两行，向后兼容）**——`~/.workbuddy/tokens/hunyuan3d`：
 ```
-***REMOVED-LEAKED-TOKEN***
+tk_xxxxxxxxxxxxxxxxxxxxxxxx
 2026-08-30T12:47:03Z
 ```
 - 第一行：tempToken（必填）
