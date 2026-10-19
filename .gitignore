@@ -13,6 +13,9 @@ dist-verify/
 outputs/
 scripts/_qa-*.png
 scripts/_qa-*.mjs
+# QA 一次性脚本已归档到 tools/archive/qa-scripts（2026-10-20），
+# 新写的一次性调试脚本请继续用 _qa- 前缀，会被自动忽略、不会误提交。
+tools/archive/qa-screenshots/
 
 # logs
 *.log
