@@ -461,7 +461,7 @@ export function installGlobalSfx() {
         return;
       }
       // 关闭类按钮优先（✕ / 关闭 / 取消）：用"落下"音，与"抬起"区分
-      if (t.closest('[aria-label*="关闭"], .wg-close, .wheel-guide__close, .wheel-guide__footer-close, [data-act="close"]')) {
+      if (t.closest('[aria-label*="关闭"], .ws-close, .wg-close, .wheel-guide__close, [data-act="close"]')) {
         sfx.close();
         return;
       }

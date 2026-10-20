@@ -17,6 +17,7 @@ import { sfx } from './sfx.js';
 import { getBasis, canJudge } from '../tuning/tireBasis.js';
 import { createClearanceReport } from './clearanceReport.js';
 import { renderMyWheels } from './myWheels.js';
+import { buildWheelStudio } from './wheelStudio.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -174,139 +175,14 @@ const EXPOSURE = { min: 0.3, max: 2.5, step: 0.01 };
 /* ---------------------------- 上传区 ---------------------------- */
 
 /**
- * 构建轮毂上传的「单图轮播」拍摄舞台（方案 C，2026-10-15 用户定稿）。
- *
- * 与车型拍照引导彻底解耦：不再是全屏蓝图取景框那套，界面里只有轮毂示意图——
- * 角度胶囊（正面｜侧面｜斜45°）+ 单张大示意图。拍完一张自动切到下一个角度；
- * 已拍角度胶囊打 ✓，点任意胶囊可回看该角度（已拍的回看实拍缩略图，未拍的看示意图）。
- *
- * @param {{items: Array<{label:string, img:string, desc:string}>}} guide 角度定义（按拍摄顺序）
- * @param {string} hint 顶部提示语（保留给外层弹窗副标题用，本函数不再展示）
- * @param {HTMLElement} thumbs 复用主上传区的缩略图容器（按选择顺序一一对应角度）
- * @returns {{stage:HTMLElement, advance:Function, showShot:Function, reset:Function}}
- */
-function buildGuideStage(guide, hint, thumbs) {
-  const items = guide.items;
-  const len = items.length;
-
-  // ---- 角度胶囊：当前要拍 = 实心青；已拍 = ✓ 亮起；正在预览 = 描边提亮 ----
-  const tabs = items.map((item, i) =>
-    el(
-      'button',
-      { type: 'button', class: 'wg-tab', 'data-idx': String(i) },
-      el('span', { class: 'wg-tab__label' }, item.label),
-      el('span', { class: 'wg-tab__check', 'aria-hidden': 'true' }, '✓')
-    )
-  );
-  const tabsRow = el('div', { class: 'wg-tabs' }, ...tabs);
-
-  // ---- 单张大示意图（1:1）：未拍角度显示参考图；已拍角度被实拍缩略图覆盖 ----
-  const diagram = el('img', { class: 'wg-diagram', alt: '轮毂拍摄示意图' });
-  // ⚠️ 清空用 removeAttribute：赋空串在浏览器里会解析成文档 URL，getAttribute 判空会失真
-  const shot = el('img', { class: 'wg-shot hidden', alt: '已选照片' });
-  const stageBox = el('div', { class: 'wg-stage' }, diagram, shot);
-
-  // ---- 角度说明（label + desc）----
-  const metaLabel = el('div', { class: 'wg-meta__label' });
-  const metaDesc = el('div', { class: 'wg-meta__desc' });
-  const meta = el('div', { class: 'wg-meta' }, metaLabel, metaDesc);
-
-  // ---- 进度圆点 + 计数 ----
-  const dots = items.map(() => el('span', { class: 'wg-dot' }));
-  const countText = el('span', { class: 'wg-count' });
-  const dotsRow = el('div', { class: 'wg-dots' }, ...dots, countText);
-
-  // ---- CTA：常驻，拍完仍可点（重拍/继续拍）----
-  const cta = el('button', { type: 'button', class: 'wg-cta' }, '拍照或选相册');
-  const ctaRow = el(
-    'div',
-    { class: 'wg-cta-row' },
-    cta,
-    el('span', { class: 'wg-cta__hint' }, '或把照片拖进来')
-  );
-
-  const stage = el(
-    'div',
-    { class: 'wg-stage-wrap' },
-    tabsRow, stageBox, meta, dotsRow, ctaRow
-  );
-
-  // 已选数量高水位：只增不减（重新选更少张时不后退）
-  let count = 0;
-  let preview = 0; // 当前预览的角度：默认跟随目标角度，点胶囊可临时回看
-  const activeIdx = () => Math.min(count, len - 1);
-  const doneCount = () => Math.min(count, len);
-
-  /** 预览角度 i：已拍的显示实拍缩略图（复用 thumbs 里的 blob URL，不重复创建），未拍的显示示意图 */
-  function showAngle(i) {
-    preview = Math.max(0, Math.min(i, len - 1));
-    const item = items[preview];
-    const thumbImg = thumbs.children[preview];
-    const hasShot = !!(thumbImg && thumbImg.getAttribute('src'));
-    if (hasShot) {
-      shot.src = thumbImg.src;
-      shot.classList.remove('hidden');
-    } else {
-      shot.removeAttribute('src');
-      shot.classList.add('hidden');
-    }
-    if (item) {
-      diagram.src = item.img;
-      let suffix = '';
-      if (preview < doneCount()) suffix = ' · 已拍，可重拍';
-      else if (preview === activeIdx() && count < len) suffix = ' · 当前要拍';
-      metaLabel.textContent = item.label + suffix;
-      metaDesc.textContent = item.desc;
-    }
-    tabs.forEach((t, j) => {
-      t.classList.toggle('is-current', j === activeIdx() && count < len);
-      t.classList.toggle('is-done', j < doneCount());
-      t.classList.toggle('is-preview', j === preview);
-    });
-    dots.forEach((d, j) => {
-      d.classList.toggle('is-done', j < doneCount());
-      d.classList.toggle('is-current', j === activeIdx() && count < len);
-    });
-    countText.textContent =
-      count >= len ? `已拍 ${len}/${len}，可关闭继续调整` : `第 ${Math.min(count + 1, len)} / ${len} 张`;
-  }
-
-  tabs.forEach((t, i) =>
-    t.addEventListener('click', (e) => {
-      e.stopPropagation(); // 切角度 ≠ 选图
-      showAngle(i);
-    })
-  );
-
-  showAngle(0);
-
-  return {
-    stage,
-    /** setThumbs 入口：推进高水位，并跳回当前要拍的角度（拍完自动切下一张） */
-    advance(n) {
-      if (n > count) count = n;
-      showAngle(activeIdx());
-    },
-    /** 实拍缩略图就绪（src 已写进 thumbs）：刷新当前预览（同一张 blob URL，不重复创建） */
-    showShot() {
-      showAngle(preview);
-    },
-    /** 生成完成重置：高水位归零、回到第一个角度 */
-    reset() {
-      count = 0;
-      showAngle(0);
-    },
-  };
-}
-
-/**
  * 上传区控件。
  * @param {Object} o
  * @param {boolean=} o.recognition 是否启用视觉识别（车型识别 + 真车参数）。
  *   轮毂传 false：轮毂照片识别不出车型，跑视觉接口没有意义（用户要求取消）。
  * @param {Object=} o.guide 拍摄引导配置（opt-in，仅轮毂传）。传入后上传区变为
- *   「左取景框 + 右参考列」两列舞台，视觉语言复用拍照引导；不传则走原单列逻辑，
- *   行为与之前完全一致（整车上传绝不能变）。
+ *   独立的「轮毂工坊 WHEEL STUDIO」拍摄台（转盘 + 规格清单，与车模拍摄引导
+ *   两套完全不同的视觉语言）；不传则走原单列逻辑，行为与之前完全一致
+ *   （整车上传绝不能变）。
  */
 function makeUploader({ title, hint, onFiles, recognition = true, guide = null }) {
   const input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
@@ -349,7 +225,7 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
     /* ===== guide 分支：侧栏紧凑触发卡 + 遮罩上的居中弹窗（方案 C 单图轮播，2026-10-15 定稿）=====
      * 不再套用车型拍照引导的全屏蓝图取景框：界面里只有轮毂示意图（角度胶囊 + 单张大图）。
      * 遮罩仍 fixed 全屏（锁滚动/挡背景交互），但内容是一个 ~560px 居中弹窗。 */
-    guideUI = buildGuideStage(guide, hint, thumbs);
+    guideUI = buildWheelStudio(guide, thumbs, { title, hint });
     // 提示语已由弹窗副标题展示，状态行清空、只留给生成状态（避免同一句话出现两次）
     status.textContent = '';
 
@@ -365,20 +241,15 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
       layer.classList.add('hidden');
     }
 
+    // 弹窗外壳：只留一个关闭按钮（标题与提示已并入工坊台头部，避免两层标题）
     const modal = el(
       'div',
-      { class: 'wheel-guide-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': '轮毂拍摄引导' },
+      { class: 'ws-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': '轮毂拍摄工坊' },
       el(
-        'div',
-        { class: 'wg-head' },
-        el('div', { class: 'wg-title' }, title),
-        el(
-          'button',
-          { type: 'button', class: 'wg-close', 'aria-label': '关闭拍摄引导', onClick: closeLayer },
-          '✕'
-        )
+        'button',
+        { type: 'button', class: 'ws-close ws-close--float', 'aria-label': '关闭拍摄工坊', onClick: closeLayer },
+        '✕'
       ),
-      el('div', { class: 'wg-sub' }, hint),
       guideUI.stage,
       thumbs,
       bar,
@@ -389,7 +260,7 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
       // 轮毂 recognition:false，这里本就不渲染识别行
       ...(recognition ? [recog] : [])
     );
-    const layer = el('div', { class: 'wheel-guide-layer hidden' }, modal);
+    const layer = el('div', { class: 'ws-layer hidden' }, modal);
     document.body.appendChild(layer);
 
     // 点遮罩空白处关闭（点弹窗内部不关）
@@ -400,7 +271,7 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
     // 任务名输入都在 stage 外，点它们不会误开文件选择；角度胶囊有自己的 handler。
     guideUI.stage.addEventListener('click', (e) => {
       if (e.target === input) return;
-      if (e.target.closest('.wg-tab')) return; // 胶囊已 stopPropagation，双保险
+      if (e.target.closest('.ws-item')) return; // 规格行已 stopPropagation，双保险
       input.click();
     });
     // 弹窗内拖拽 → 处理照片
@@ -415,15 +286,15 @@ function makeUploader({ title, hint, onFiles, recognition = true, guide = null }
     // 保持可达（hidden 不参与布局，不影响紧凑卡视觉）。
     zone = el(
       'div',
-      { class: 'dropzone wheel-guide-trigger', role: 'button', tabindex: '0', 'aria-label': '打开轮毂拍摄引导' },
-      el('div', { class: 'wgt-icon', 'aria-hidden': 'true' }, '📷'),
+      { class: 'dropzone ws-trigger', role: 'button', tabindex: '0', 'aria-label': '打开轮毂拍摄工坊' },
+      el('div', { class: 'ws-trigger__icon', 'aria-hidden': 'true' }),
       el(
         'div',
-        { class: 'wgt-body' },
+        { class: 'ws-trigger__body' },
         el('div', { class: 'dz-title' }, title),
-        el('div', { class: 'wgt-hint' }, hint)
+        el('div', { class: 'ws-trigger__hint' }, hint)
       ),
-      el('div', { class: 'wgt-go', 'aria-hidden': 'true' }, '›'),
+      el('div', { class: 'ws-trigger__go', 'aria-hidden': 'true' }, '›'),
       input
     );
     zone.addEventListener('click', (e) => {
@@ -728,10 +599,12 @@ export function createPanel(app, mount) {
     // 拍摄引导：方案 C 单图轮播——角度胶囊切换 + 单张大示意图（与车身引导解耦，只有轮毂示意图）
     guide: {
       // 按顺序对应三次拍摄；拍完一张自动切到下一个角度
+      // 用工程制图（SVG）当示意图：原素材是贴边裁切的白底产品照，轮辋上沿被切掉；
+      // 制图版完整不裁切、与工坊台的工程语言一致，且矢量任意尺寸都清晰
       items: [
-        { label: '正面', img: '/guides/wheel-front.png', desc: '镜头正对辐条面，轮毂居中占满画面' },
-        { label: '侧面', img: '/guides/wheel-side.png', desc: '拍轮毂桶身侧面，展现轮辋深度' },
-        { label: '斜 45°', img: '/guides/wheel-45.png', desc: '斜 45° 同时拍到辐条与桶身' },
+        { label: '正面', code: 'FRONT', img: '/guides/wheel-front-schematic.svg', desc: '镜头正对辐条面，轮毂居中占满画面' },
+        { label: '侧面', code: 'PROFILE', img: '/guides/wheel-side-schematic.svg', desc: '拍轮毂桶身侧面，展现轮辋深度' },
+        { label: '斜 45°', code: '3/4 VIEW', img: '/guides/wheel-45-schematic.svg', desc: '斜 45° 同时拍到辐条与桶身' },
       ],
     },
     onFiles: (files) => app.generateWheel(files),

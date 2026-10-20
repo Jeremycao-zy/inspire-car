@@ -1,0 +1,612 @@
+/**
+ * wheelStudio.css — 「轮毂工坊 · WHEEL STUDIO」轮毂生成页视觉
+ *
+ * 刻意与车模拍摄引导（photoGuide.css）区分开：
+ *   车模页 = 矩形相机取景框；轮毂页 = 回转体工程台（转盘刻度 + 规格清单 + 透明底产品件）。
+ *   强调色用靛蓝（与人偶助手「小灵」同色），与全站单色 off-white 体系并存。
+ */
+
+.ws-studio {
+  --ws-accent: #8b9bff;
+  --ws-accent-soft: rgba(139, 155, 255, 0.14);
+  --ws-line: rgba(255, 255, 255, 0.1);
+  --ws-line-2: rgba(255, 255, 255, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* =========================================================
+   顶部：工坊标识 + 进度
+   ========================================================= */
+.ws-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ws-mark {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+/* 徽标：同心圆（轮毂 = 回转体） */
+.ws-mark__glyph {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 155, 255, 0.45);
+  background: radial-gradient(circle at 50% 50%, rgba(139, 155, 255, 0.2), transparent 68%);
+  flex: 0 0 auto;
+}
+.ws-mark__glyph::after {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+/* 步骤标题（② 上传轮毂照片）+ 提示行 */
+.ws-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--ws-line, rgba(255, 255, 255, 0.1));
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.ws-hint {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+/* 步骤标题（② 上传轮毂照片）+ 提示行 */
+.ws-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--ws-line, rgba(255, 255, 255, 0.1));
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.ws-hint {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.ws-mark__eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  color: rgba(255, 255, 255, 0.42);
+}
+.ws-mark__title {
+  margin: 3px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.ws-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ws-progress__num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+.ws-progress__num i {
+  font-style: normal;
+  color: var(--text-faint);
+  margin: 0 3px;
+}
+.ws-progress__bar {
+  width: 128px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.ws-progress__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(139, 155, 255, 0.55), #aebaff);
+  transition: width 0.32s ease;
+}
+
+/* =========================================================
+   主体：左转盘画布 + 右规格清单
+   ========================================================= */
+.ws-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* ---- 转盘画布 ---- */
+.ws-stage {
+  position: relative;
+  min-height: 392px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 92% at 50% 6%, #17171e 0%, #0a0a0d 66%);
+}
+/* 极淡工程网格 */
+.ws-stage__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+  background-size: 36px 36px;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 26%, transparent 76%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 26%, transparent 76%);
+}
+/* 转盘：虚线外圈 + 靛蓝内圈 */
+.ws-stage__rings {
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.11);
+}
+.ws-stage__rings::after {
+  content: '';
+  position: absolute;
+  inset: 11%;
+  border-radius: 50%;
+  border: 1px solid var(--ws-accent-soft);
+}
+/* 中心十字：1px 细线，压在产品件之下 */
+.ws-stage__cross {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.12) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+    linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.12) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+}
+/* 四角定位角标 */
+.ws-stage__corners {
+  position: absolute;
+  inset: 14px;
+  z-index: 1;
+}
+.ws-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+.ws-corner--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.ws-corner--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.ws-corner--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.ws-corner--br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+
+/* 产品件（透明底轮毂图）：绝对定位 + contain，保证完整入画不被裁 */
+.ws-plate {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.ws-plate__img {
+  position: absolute;
+  inset: 30px;
+  width: calc(100% - 60px);
+  height: calc(100% - 60px);
+  object-fit: contain;
+  filter: drop-shadow(0 20px 34px rgba(0, 0, 0, 0.62));
+}
+.ws-plate__img--shot {
+  z-index: 3;
+}
+
+/* 左上角 SHOT 标签 */
+.ws-plate__tag {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.26em;
+  color: rgba(255, 255, 255, 0.45);
+}
+/* 底部尺寸标注 */
+.ws-plate__dim {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.3);
+}
+.ws-plate__dim-line {
+  display: block;
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.34), transparent);
+}
+
+/* ---- 规格清单 ---- */
+.ws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ws-list__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ws-list__title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+.ws-list__code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--text-faint);
+}
+.ws-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  width: 100%;
+  padding: 15px 15px 15px 17px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.ws-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 13px;
+  bottom: 13px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.18s ease;
+}
+.ws-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.ws-item.is-preview {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: var(--ws-line);
+}
+.ws-item.is-current::before {
+  background: var(--ws-accent);
+}
+.ws-item__no {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.ws-item.is-current .ws-item__no {
+  color: var(--ws-accent);
+}
+.ws-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.ws-item__label {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+.ws-item__code {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--text-faint);
+}
+.ws-item__desc {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.ws-item__state {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.ws-item__state.is-done {
+  color: #9fe0c0;
+  border-color: rgba(95, 169, 124, 0.42);
+  background: rgba(95, 169, 124, 0.1);
+}
+
+/* =========================================================
+   底部：拍摄动作
+   ========================================================= */
+.ws-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ws-foot__actions {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.ws-cta {
+  appearance: none;
+  cursor: pointer;
+  height: 42px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0d0d10;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.ws-cta:hover {
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+}
+.ws-cta:active {
+  transform: translateY(0);
+}
+.ws-cta__hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.ws-foot__note {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* =========================================================
+   弹窗外壳（遮罩 + 面板）
+   ========================================================= */
+.ws-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10050; /* 高于 #sfx-mute-btn(9999) / CRT 叠层(9998) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 6, 9, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.ws-layer.hidden {
+  display: none;
+}
+.ws-layer.over {
+  box-shadow: inset 0 0 0 2px rgba(139, 155, 255, 0.45);
+}
+.ws-modal {
+  width: min(1000px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 24px 22px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #121218 0%, #0c0c10 100%);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.62), 0 8px 30px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+/* 弹窗里的 .hidden 统一隐藏（实拍覆盖图由 JS 切 classList） */
+.ws-modal .hidden {
+  display: none !important;
+}
+.ws-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+.ws-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+.ws-modal__sub {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.ws-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.ws-close--float {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+}
+/* 关闭按钮浮在弹窗右上角（标题已并入工坊台头部，弹窗不再有第二层标题） */
+.ws-close--float {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+}
+.ws-close:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* =========================================================
+   侧栏紧凑触发卡（保留 .dropzone 类名 + 文案，e2e 契约可达）
+   ========================================================= */
+.ws-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  text-align: left;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.ws-trigger:hover,
+.ws-trigger.over {
+  border-color: rgba(139, 155, 255, 0.5);
+  background: rgba(139, 155, 255, 0.07);
+}
+/* 触发卡图标：同心圆徽标（与工坊页同一语言） */
+.ws-trigger__icon {
+  flex: 0 0 auto;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 155, 255, 0.45);
+  background: radial-gradient(circle at 50% 50%, rgba(139, 155, 255, 0.18), transparent 70%);
+}
+.ws-trigger__icon::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+.ws-trigger__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ws-trigger .dz-title {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  text-align: left;
+}
+.ws-trigger__hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.ws-trigger__go {
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ws-accent, #8b9bff);
+}
+
+/* =========================================================
+   响应式
+   ========================================================= */
+@media (max-width: 900px) {
+  .ws-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ws-stage {
+    min-height: 320px;
+  }
+  .ws-foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+@media (max-width: 640px) {
+  .ws-layer {
+    padding: 10px;
+  }
+  .ws-modal {
+    padding: 16px 16px 18px;
+    max-height: calc(100vh - 20px);
+  }
+  .ws-stage {
+    min-height: 260px;
+  }
+  .ws-plate {
+    padding: 22px;
+  }
+  .ws-progress__bar {
+    width: 72px;
+  }
+  .ws-item {
+    padding: 12px 12px 12px 14px;
+  }
+  .ws-item__desc {
+    font-size: 11.5px;
+  }
+  .ws-cta {
+    height: 40px;
+    padding: 0 20px;
+  }
+}

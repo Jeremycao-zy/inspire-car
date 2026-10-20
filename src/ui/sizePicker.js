@@ -115,8 +115,9 @@ export function recommendSizes(cur, oe) {
  * @param {number} current 当前值
  * @param {(v:number)=>void} onPick
  * @param {(v:number)=>string} fmt 值 → 展示文本
+ * @param {(tag:string, props?:Object, ...children:any[])=>HTMLElement} el DOM 构造辅助
  */
-function makeSelect(values, current, onPick, fmt) {
+function makeSelect(el, values, current, onPick, fmt) {
   const sel = el('select', { class: 'spec-select' });
   for (const v of values) {
     sel.appendChild(el('option', { value: String(v) }, fmt(v)));
@@ -152,6 +153,7 @@ export function createSpecPicker({ getSpec, applySpec, onChange, basis, el }) {
   const sizeCtl = el('div', { class: 'spec-ctl' });
 
   const widthSel = makeSelect(
+    el,
     TIRE_WIDTHS_MM,
     getSpec().tireWidthMm,
     (v) => {
@@ -162,6 +164,7 @@ export function createSpecPicker({ getSpec, applySpec, onChange, basis, el }) {
     (v) => `胎宽 ${v}mm`
   );
   const aspectSel = makeSelect(
+    el,
     TIRE_ASPECTS,
     getSpec().aspect,
     (v) => {
@@ -172,6 +175,7 @@ export function createSpecPicker({ getSpec, applySpec, onChange, basis, el }) {
     (v) => `扁平比 ${v}%`
   );
   const rimSel = makeSelect(
+    el,
     RIM_DIAMETERS_IN,
     getSpec().rimInch,
     (v) => {
@@ -193,6 +197,7 @@ export function createSpecPicker({ getSpec, applySpec, onChange, basis, el }) {
   const etNote = el('div', { class: 'spec-note' });
   const etCtl = el('div', { class: 'spec-ctl' });
   const etSel = makeSelect(
+    el,
     ET_VALUES_MM,
     getSpec().et,
     (v) => {
@@ -206,6 +211,7 @@ export function createSpecPicker({ getSpec, applySpec, onChange, basis, el }) {
   etRow.append(el('div', { class: 'spec-label' }, '偏距 / 轮辋宽'), etValue, etCtl, etNote);
 
   const jSel = makeSelect(
+    el,
     RIM_JS,
     getSpec().j,
     (v) => {
