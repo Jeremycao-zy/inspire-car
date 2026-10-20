@@ -39,8 +39,13 @@ server/carSpecs.user.db.json
 
 # large binary demo assets — kept on disk locally, not in git
 # (regenerate or add via Git LFS if a fresh clone must ship them)
-# 注意：真实车模 my-car.glb / wheel.glb 必须进仓库，否则 Railway 构建后线上无车模
+# 注意：真实车模 base-high-shaded.glb / wheel.glb 等必须进仓库，否则构建后线上无车模
 public/models/_test-part.glb
+
+# 已废弃的旧预设车模（2026-10-20 从 git 历史中清除，共 44MB 死重）。
+# presetCar.js 的 LEGACY_PRESET_URLS 已兼容旧方案里指向它的 URL，
+# 磁盘上若残留本地副本不要提交。
+public/models/my-car.glb
 
 # vite dev temporary configs
 vite.config.js.timestamp-*.mjs
