@@ -32,9 +32,45 @@ permissions:
   contents: read # 只需要读代码来构建，不需要写权限
 
 jobs:
+  # ---------------------------------------------------------------------
+  # 回归测试闸门：必须在部署前通过。
+  #
+  # 为什么单独一个 job：让"测试失败"和"部署失败"在 Actions 页面上一眼区分，
+  # 不必去翻日志找是哪一步挂的。
+  #
+  # 跑什么：npm run verify = 7 个可重复验证脚本，覆盖轮胎基准、车型参数库、
+  # 选型器、音效、ET 3D、轮毂门控、间隙计算——这些正是本项目的核心技术资产
+  # （实测轮位、保形门控、BANG 拆解链路），被无意改坏的代价极高。
+  # ---------------------------------------------------------------------
+  test:
+    name: Regression Gate (npm run verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: oven-sh/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # 与 Dockerfile / deploy job 保持一致：容忍 lockfile 漂移（@playwright/test
+      # 未登记在 lockfile 里），否则这里会先于部署失败。
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run verify suite
+        run: npm run verify
+        # 7 个脚本逐个串行；任一非零退出即 job 失败 → deploy 因 needs 而不触发
+
   deploy:
     name: Build & Deploy inspire-car
     runs-on: ubuntu-latest
+    # 必须等测试闸门通过，否则坏代码会直接进生产
+    needs: test
     # flyctl deploy --remote-only 走远端 BuildKit，首次构建可能较慢；
     # 留足余量避免超时被 kill（Fly 上正在滚动发布时被杀很难收拾）。
     timeout-minutes: 30
