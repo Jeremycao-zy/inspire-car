@@ -27,8 +27,8 @@
   border-radius: 16px;
   overflow: hidden;
   background: rgba(10, 10, 20, 0.96);
-  border: 1px solid rgba(0, 240, 255, 0.26);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 240, 255, 0.12);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 7px 30px rgba(0,0,0,0.102);
 }
 
 .legal-head {
@@ -37,8 +37,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid rgba(0, 240, 255, 0.16);
-  background: linear-gradient(100deg, rgba(255, 46, 151, 0.1), rgba(0, 240, 255, 0.08));
+  border-bottom: 1px solid var(--line-2);
+  background: linear-gradient(100deg, rgba(0,0,0,0.4), rgba(0,0,0,0.4));
 }
 
 .legal-head__title {
@@ -47,7 +47,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #eafcff;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+  
 }
 
 .legal-head__close {
@@ -63,8 +63,8 @@
   transition: all 0.15s ease;
 }
 .legal-head__close:hover {
-  color: #0a0a14;
-  background: var(--neon-cyan, #00f0ff);
+  color: var(--bg);
+  background: var(--neon-cyan, var(--accent));
 }
 
 .legal-body {
@@ -75,13 +75,13 @@
   line-height: 1.85;
   color: #c8dbe6;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 240, 255, 0.3) transparent;
+  scrollbar-color: rgba(0,0,0,0.4) transparent;
 }
 .legal-body::-webkit-scrollbar {
   width: 6px;
 }
 .legal-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 240, 255, 0.3);
+  background: rgba(0,0,0,0.4);
   border-radius: 3px;
 }
 
@@ -90,7 +90,7 @@
   font-size: 17px;
   font-weight: 700;
   color: #eafcff;
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+  
 }
 .legal-body h2 {
   margin: 26px 0 10px;
@@ -98,7 +98,7 @@
   font-weight: 700;
   color: #7fe9ff;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0, 240, 255, 0.16);
+  border-bottom: 1px solid var(--line-2);
 }
 .legal-body h3 {
   margin: 20px 0 8px;
@@ -148,7 +148,7 @@
 .legal-body hr {
   margin: 22px 0;
   border: 0;
-  border-top: 1px solid rgba(0, 240, 255, 0.16);
+  border-top: 1px solid var(--line-2);
 }
 
 .legal-body pre {

@@ -451,62 +451,18 @@ function startPreview(container) {
 /* ---------------------------- 卡片 ---------------------------- */
 
 /** 由方案 id 确定性生成条形码 SVG（真实条码：静区 + 宽窄相间条 + 首尾守卫条，纯装饰） */
-function barcodeSVG(seed, w = 220, h = 30) {
-  let s = 0;
-  const str = String(seed || 'inspire');
-  for (let i = 0; i < str.length; i++) s = (s * 31 + str.charCodeAt(i)) >>> 0;
-  let rnd = s || 1;
-  const next = () => {
-    rnd = (rnd * 1103515245 + 12345) >>> 0;
-    return rnd / 4294967296;
-  };
-  const bars = [];
-  let x = 4; // 左静区
-  // 粉 → 紫 → 青 三段渐变（按条的位置横向取色），对齐设计稿的霓虹条码
-  const colorAt = (t) => {
-    const lerp = (a, b, k) => a + (b - a) * k;
-    let r, g, b;
-    if (t < 0.5) {
-      const k = t / 0.5;
-      r = lerp(255, 168, k); g = lerp(48, 92, k); b = lerp(214, 255, k);
-    } else {
-      const k = (t - 0.5) / 0.5;
-      r = lerp(168, 62, k); g = lerp(92, 228, k); b = lerp(255, 255, k);
-    }
-    return `rgb(${r | 0},${g | 0},${b | 0})`;
-  };
-  const bar = (bw) => {
-    bars.push(`<rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="${colorAt(x / w)}"/>`);
-  };
-  // 首守卫条：细-粗-细（通高）
-  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5); x += 4.5;
-  // 数据区：窄条(1.5~3)与宽条(3.5~7.5)随机交错，间隙同样宽窄可变
-  while (x < w - 28) {
-    const bw = next() < 0.55 ? 1.5 + next() * 1.5 : 3.5 + next() * 4;
-    bar(bw);
-    x += bw + 1.5 + next() * 3.5;
-  }
-  // 尾守卫条：细-粗-细
-  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5);
-  return `<svg class="garage-card__barcode" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${bars.join('')}</svg>`;
-}
 
 function createCard(plan, onClick, onDelete, index = 0) {
-  const no = String((index ?? 0) + 1).padStart(3, '0');
-
-  // 缩略图容器：实时 3D 预览（动态旋转）画布由 PreviewEngine 挂载，最终嵌在塑料泡壳里
-  const thumb = el('div', { class: 'garage-card__thumb' });
-
+  // 3D 预览画布挂载点（PreviewEngine 接管）
+  const stage = el('div', { class: 'plan-card__stage' });
   if (!previewEngine.ok) {
-    // WebGL 不可用时退化成占位提示
-    thumb.appendChild(el('div', { class: 'garage-card__placeholder' }, '3D 预览不可用'));
+    stage.appendChild(el('div', { class: 'plan-card__placeholder' }, '3D 预览不可用'));
   }
 
-  // 删除按钮（收藏卡左上角，随卡片 3D 浮动）
   const del = el(
     'button',
     {
-      class: 'garage-card__delete',
+      class: 'plan-card__del',
       title: '删除此方案',
       'aria-label': '删除此方案',
       onClick: (e) => {
@@ -517,76 +473,34 @@ function createCard(plan, onClick, onDelete, index = 0) {
     '×'
   );
 
-  // 欧标挂孔不再用独立挂耳：卡面经 CSS mask 真挖空（见 garage.css 的 .garage-card__backing）
-
-  // 背卡水印字样（黑色收藏卡上的银色装饰字）
-  const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
-
-  // 透明塑料泡壳：绝对定位在 blister-zone 内，不再压住下方文字
-  const shell = el(
+  // 信息层级：车型名（主）→ 描述（次）→ 元信息（弱）
+  const info = el(
     'div',
-    { class: 'garage-card__shell' },
-    thumb,
-    el('div', { class: 'garage-card__blister-highlight' }),
-    el('div', { class: 'garage-card__blister-glare' }),
-    el('div', { class: 'garage-card__blister-rim' }),
-    el('div', { class: 'garage-card__blister-refraction' })
-  );
-  const blister = el('div', { class: 'garage-card__blister' }, shell);
-
-  // 泡壳占位区：在背卡流式布局中占据固定高度，避免与文字重叠
-  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
-
-  // 背卡（哑光黑收藏卡）：品牌字标 + 泡壳 + 车型信息 + 收藏编号/条形码 + 底部信息
-  const backing = el(
-    'div',
-    { class: 'garage-card__backing' },
+    { class: 'plan-card__info' },
+    el('h3', { class: 'plan-card__title' }, planDisplayName(plan)),
+    plan.desc ? el('p', { class: 'plan-card__desc' }, plan.desc) : null,
     el(
       'div',
-      { class: 'garage-card__brand' },
-      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
-      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
-      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
-      el(
-        'div',
-        { class: 'garage-card__brand-cn-row' },
-        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
-        el('div', { class: 'garage-card__no' }, no)
-      )
-    ),
-    blisterZone,
-    el(
-      'div',
-      { class: 'garage-card__model' },
-      el('h3', { class: 'garage-card__title' }, planDisplayName(plan)),
-      plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null,
-      watermark
-    ),
-    el(
-      'div',
-      { class: 'garage-card__meta' },
-      el('span', { class: 'garage-card__meta-no' }, '1/64')
-    ),
-    el('div', {
-      class: 'garage-card__barcode-wrap',
-      html: barcodeSVG(plan.id || plan.title || 'inspire'),
-    }),
-    el(
-      'div',
-      { class: 'garage-card__footer' },
-      el('span', { class: 'garage-card__footer-live' }, '● 实时 3D'),
-      el('span', { class: 'garage-card__footer-action' }, '进入改装 →')
+      { class: 'plan-card__meta' },
+      el('span', { class: 'plan-card__meta-src' }, plan.carModelUrl ? 'AI 生成车模' : '预设车模'),
+      plan.updatedAt || plan.createdAt
+        ? el('span', { class: 'plan-card__meta-time' }, fmtTime(plan.updatedAt || plan.createdAt))
+        : null
     )
   );
 
-  // 整包 = 背卡（卡面 mask 自带欧标挂孔挖空）+ 删除按钮
-  const pack = el('div', { class: 'garage-card__pack' }, backing, del);
+  const card = el(
+    'article',
+    { class: 'plan-card', onClick: () => onClick(plan) },
+    del,
+    stage,
+    info,
+    el('div', { class: 'plan-card__cta' }, '进入改装', el('span', { class: 'plan-card__cta-arrow' }, '→'))
+  );
 
-  const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
-
-  // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）；透传方案车型地址
+  // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）
   if (previewEngine.ok) {
-    requestAnimationFrame(() => previewEngine.mount(thumb, previewParamsOf(plan), plan.carModelUrl));
+    requestAnimationFrame(() => previewEngine.mount(stage, previewParamsOf(plan), plan.carModelUrl));
   }
   return card;
 }
@@ -594,66 +508,42 @@ function createCard(plan, onClick, onDelete, index = 0) {
 /** 空白占位卡：车库卡位里还没有用户自建方案时展示，点击进入创作（拍照引导）。
  *  复用真实卡片的卡框/泡壳/品牌/条形码/底部结构，仅泡壳与文字为空槽提示，无 3D 预览。 */
 function createBlankCard(index, onClick) {
-  const thumb = el(
+  const stage = el(
     'div',
-    { class: 'garage-card__thumb' },
-    el(
-      'div',
-      { class: 'garage-card__blank' },
+    { class: 'plan-card__stage plan-card__stage--blank' },
+    el('div', { class: 'plan-card__blank' },
       el('div', {
-        class: 'garage-card__blank-plus',
-        html:
-          '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+        class: 'plan-card__blank-plus',
+        html: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
       }),
-      el('div', { class: 'garage-card__blank-text' }, '空卡槽')
+      el('div', { class: 'plan-card__blank-text' }, '上传照片，生成你的 3D 车模')
     )
   );
-  const shell = el(
+  const info = el(
     'div',
-    { class: 'garage-card__shell' },
-    thumb,
-    el('div', { class: 'garage-card__blister-highlight' }),
-    el('div', { class: 'garage-card__blister-glare' }),
-    el('div', { class: 'garage-card__blister-rim' }),
-    el('div', { class: 'garage-card__blister-refraction' })
+    { class: 'plan-card__info' },
+    el('h3', { class: 'plan-card__title plan-card__title--blank' }, '空卡槽'),
+    el('p', { class: 'plan-card__desc' }, 'AI 识别车型并生成可改装的 3D 模型')
   );
-  const blister = el('div', { class: 'garage-card__blister' }, shell);
-  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
-  const backing = el(
-    'div',
-    { class: 'garage-card__backing' },
-    el(
-      'div',
-      { class: 'garage-card__brand' },
-      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
-      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
-      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
-      el(
-        'div',
-        { class: 'garage-card__brand-cn-row' },
-        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
-        el('div', { class: 'garage-card__no' }, String(index + 1).padStart(3, '0'))
-      )
-    ),
-    blisterZone,
-    el(
-      'div',
-      { class: 'garage-card__model' },
-      el('h3', { class: 'garage-card__title garage-card__title--blank' }, '空卡槽'),
-      el('p', { class: 'garage-card__desc' }, '上传一张爱车照片，AI 识别车型并生成 3D'),
-      el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR')
-    ),
-    el('div', { class: 'garage-card__meta' }, el('span', { class: 'garage-card__meta-no' }, '1/64')),
-    el('div', { class: 'garage-card__barcode-wrap', html: barcodeSVG('blank-' + index) }),
-    el(
-      'div',
-      { class: 'garage-card__footer' },
-      el('span', { class: 'garage-card__footer-live garage-card__footer-live--blank' }, '● 待创作'),
-      el('span', { class: 'garage-card__footer-action' }, '开始创作 →')
-    )
+  return el(
+    'article',
+    { class: 'plan-card plan-card--blank', onClick },
+    stage,
+    info,
+    el('div', { class: 'plan-card__cta' }, '开始创作', el('span', { class: 'plan-card__cta-arrow' }, '→'))
   );
-  const pack = el('div', { class: 'garage-card__pack' }, backing);
-  return el('article', { class: 'garage-card garage-card--blank', onClick }, pack);
+}
+
+/** 把时间戳格式化成「今天 / 昨天 / 3 天前 / 2026-09-01」 */
+function fmtTime(v) {
+  const t = typeof v === 'number' ? v : Date.parse(v);
+  if (!t || Number.isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (days <= 0) return '今天';
+  if (days === 1) return '昨天';
+  if (days < 30) return `${days} 天前`;
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function createEmptyState(onNew) {

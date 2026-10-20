@@ -1,30 +1,11 @@
 /* Professional workshop theme — visual override only. Keeps the existing DOM and interaction contracts intact. */
-:root {
-  --bg: #0b0d10;
-  --panel: #12161b;
-  --panel-2: #1a2027;
-  --line: #2d3742;
-  --text: #f2f5f7;
-  --text-dim: #a7b1bb;
-  --text-faint: #72808d;
-  --accent: #d8ff4e;
-  --accent-dim: rgba(216, 255, 78, .12);
-  --neon-cyan: #d8ff4e;
-  --neon-pink: #ff6b35;
-  --neon-purple: #778899;
-  --good: #76d572;
-  --warn: #ffbc4b;
-  --err: #ff6b5f;
-  --radius: 14px;
-}
-
-html, body { background: #0b0d10; }
+html, body { background: var(--bg); }
 body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif; }
 
 #appbar {
   flex-basis: 68px;
   padding: 0 28px;
-  background: rgba(11, 13, 16, .92);
+  background: rgba(10, 10, 11, .92);
   border-bottom-color: rgba(255,255,255,.10);
   backdrop-filter: blur(18px);
 }
@@ -34,26 +15,18 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
 .gb-back, .auth-userbar__btn {
   border-radius: 999px;
   background: var(--accent);
-  color: #11150b;
+  color: #14100a;
   border: 0;
   box-shadow: none;
 }
 
 .garage-layer {
-  background:
-    radial-gradient(900px 520px at 72% -8%, rgba(216,255,78,.10), transparent 62%),
-    radial-gradient(680px 480px at 5% 40%, rgba(77,109,142,.13), transparent 66%),
-    #0b0d10;
-}
-.garage-layer::before {
-  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: none; -webkit-mask-image: none; opacity: .55;
+  background: radial-gradient(130% 90% at 50% -10%, #17171b 0%, var(--bg) 62%);
 }
 .garage-layer::after { display: none; }
 .garage-header {
   padding: 18px 44px;
-  background: rgba(11,13,16,.78);
+  background: rgba(10,10,11,.78);
   border-bottom: 1px solid rgba(255,255,255,.10);
   box-shadow: none;
 }
@@ -61,31 +34,31 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
 .garage-brand__title { color: #fff; text-shadow: none; letter-spacing: .03em; }
 .garage-brand__sub { color: var(--accent); text-shadow: none; letter-spacing: .18em; }
 .garage-userchip, .auth-userbar {
-  background: rgba(28,34,40,.82);
+  background: rgba(30,30,34,.82);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
-.garage-userchip__btn { background: var(--accent); color: #11150b; }
+.garage-userchip__btn { background: var(--accent); color: #14100a; }
 
 .gb-btn { border-radius: 10px; height: 46px; font-weight: 750; }
 .gb-btn.primary {
-  color: #101409;
+  color: #14100a;
   background: var(--accent);
   border: 0;
-  box-shadow: 0 10px 30px rgba(216,255,78,.14);
+  box-shadow: 0 10px 30px rgba(212,180,131,.14);
 }
-.gb-btn.primary:hover { box-shadow: 0 12px 36px rgba(216,255,78,.22); }
-.gb-btn.ghost { color: #edf2f4; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.17); }
-.gb-btn.ghost:hover { background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(216,255,78,.6); }
+.gb-btn.primary:hover { box-shadow: 0 12px 36px rgba(212,180,131,.22); }
+.gb-btn.ghost { color: var(--text); background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.17); }
+.gb-btn.ghost:hover { background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(212,180,131,.6); }
 
 /* Tuning studio: the 3D vehicle remains the hero, controls read like an instrument panel. */
-#stage { background: radial-gradient(ellipse at 50% 46%, #252d35 0%, #13171c 42%, #0b0d10 78%); }
-#stage::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(11,13,16,.6), transparent 22%, transparent 78%, rgba(11,13,16,.6)); }
-.hud { background: rgba(18,22,27,.72); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; color: var(--text-dim); backdrop-filter: blur(12px); }
-.panel, .control-panel, .side-panel { background: rgba(18,22,27,.94); border-color: rgba(255,255,255,.10); box-shadow: -18px 0 48px rgba(0,0,0,.16); }
+#stage { background: radial-gradient(ellipse at 50% 46%, #1e1e22 0%, #121214 42%, var(--bg) 78%); }
+#stage::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(10,10,11,.6), transparent 22%, transparent 78%, rgba(10,10,11,.6)); }
+.hud { background: rgba(18,18,20,.72); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; color: var(--text-dim); backdrop-filter: blur(12px); }
+.panel, .control-panel, .side-panel { background: rgba(18,18,20,.94); border-color: rgba(255,255,255,.10); box-shadow: -18px 0 48px rgba(0,0,0,.16); }
 button, input, select { font-family: inherit; }
 input[type="range"] { accent-color: var(--accent); }
 
-.brand-loading { background: #0b0d10; }
+.brand-loading { background: var(--bg); }
 .brand-loading__text { color: rgba(255,255,255,.72); letter-spacing: .20em; }
 .brand-loading__text span { animation: none; color: inherit; text-shadow: none; }
 

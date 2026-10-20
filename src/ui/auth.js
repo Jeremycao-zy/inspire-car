@@ -16,7 +16,7 @@
 
 import './auth.css';
 import { register, login, sendPhoneCode } from '../auth.js';
-import logoMarkUrl from '../assets/logo-mark-neon.png';
+import logoMarkUrl from '../assets/logo-mark-nobg.png';
 import { openLegalModal } from './legalModal.js';
 
 function $(sel) {

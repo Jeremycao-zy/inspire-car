@@ -17,7 +17,7 @@
       .brand-loading__logo {
         width: 84px; height: 84px; object-fit: contain;
         /* 基底辉光 = 呼吸动画起点值，保证入场结束与呼吸开始无缝衔接 */
-        filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+        filter: brightness(0) invert(1);
         /* 启动页动画内联自包含：即便 styles.css（JS 注入）尚未加载也好看，彻底摆脱网络时序割裂。
            参数须与 styles.css 的 logoIn / logoPulse 一致，避免样式表接管时观感跳变。
            ① 平滑入场（淡入+轻微放大），不再"啪"地弹出来
@@ -37,7 +37,7 @@
         display: inline-block;
         opacity: 0.5;
         color: #fff;
-        text-shadow: 0 0 10px rgba(0,240,255,0.6), 0 0 22px rgba(0,240,255,0.3);
+        
         animation: blLetter 2.2s ease-in-out infinite;
         animation-delay: calc(var(--i) * 0.12s);
       }
@@ -49,8 +49,8 @@
       }
       /* logo 呼吸：光效明显（10px→30px），但单一转向点 + 正弦缓动 → 不跳跃 */
       @keyframes blLogo {
-        0%,100% { opacity: 0.62; filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45)); }
-        50%     { opacity: 1;    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(0, 240, 255, 1)); }
+        0%,100% { opacity: 0.62; filter: brightness(0) invert(1); }
+        50%     { opacity: 1;    filter: brightness(0) invert(1); }
       }
       @keyframes blLetter { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
       /* 首屏先藏顶部栏，等样式表接管后再由应用逻辑显示，避免未样式化大 logo 闪现 */

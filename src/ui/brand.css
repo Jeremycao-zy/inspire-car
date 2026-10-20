@@ -195,7 +195,7 @@
   font-weight: 900;
   letter-spacing: 0.14em;
   color: #eafcff;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 46, 151, 0.32);
+  
 }
 .jg-brand--overlay .jg-brand__sub {
   font-size: 11px;
@@ -217,7 +217,7 @@
   height: 160px;
   width: auto;
   object-fit: contain;
-  filter: invert(1) drop-shadow(0 0 12px rgba(0, 240, 255, 0.35));
+  filter: invert(1);
 }
 
 /* 内部轮毂：像车轮一样旋转，转速由 main.js 根据进度实时调整 */
@@ -227,7 +227,7 @@
   height: 160px;
   width: 100%;
   object-fit: contain;
-  filter: invert(1) drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  filter: invert(1);
   animation: jg-wheel-spin var(--jg-spin-dur, 2.6s) linear infinite;
 }
 
