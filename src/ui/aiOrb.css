@@ -43,12 +43,16 @@
   animation: ai-mascot-halo 4.2s ease-in-out infinite;
 }
 
-/* 人偶立绘 */
+/* 人偶立绘（外层 picture 控尺寸，内层 img 跑动画） */
 .ai-orb__mascot {
   position: relative;
-  width: 118px;
-  height: auto;
   display: block;
+  width: 118px;
+}
+.ai-orb__mascot img {
+  display: block;
+  width: 100%;
+  height: auto;
   filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
   animation: ai-mascot-float 4.2s ease-in-out infinite;
   transform-origin: 50% 92%;
@@ -64,6 +68,9 @@
 .ai-orb.is-speaking .ai-orb__mascot--active,
 .ai-orb.is-listening .ai-orb__mascot--active {
   display: block;
+}
+.ai-orb.is-speaking .ai-orb__mascot--active img,
+.ai-orb.is-listening .ai-orb__mascot--active img {
   animation: ai-mascot-talk 0.9s ease-in-out infinite;
 }
 
@@ -135,7 +142,7 @@
 }
 /* 离开首页时冻结所有动画（省电） */
 .ai-orb.is-paused::before,
-.ai-orb.is-paused .ai-orb__mascot {
+.ai-orb.is-paused .ai-orb__mascot img {
   animation-play-state: paused;
 }
 /* 离开首页 → 淡出（进 TUNING STUDIO 时收起助手） */

@@ -12,7 +12,9 @@
 
 import './aiOrb.css';
 import mascotIdleUrl from '../assets/mascot-idle.png';
+import mascotIdleWebpUrl from '../assets/mascot-idle.webp';
 import mascotActiveUrl from '../assets/mascot-active.png';
+import mascotActiveWebpUrl from '../assets/mascot-active.webp';
 
 /** 助手名字 */
 export const ASSISTANT_NAME = '小灵';
@@ -25,20 +27,24 @@ function mountAiOrb() {
   wrap.setAttribute('aria-label', `${ASSISTANT_NAME} · AI 改装助手（点击语音对话）`);
 
   // 两张立绘：待机（闭眼月牙）/ 活跃（睁眼发光，说话·聆听时切换）
-  const mascotIdle = document.createElement('img');
-  mascotIdle.className = 'ai-orb__mascot ai-orb__mascot--idle';
-  mascotIdle.src = mascotIdleUrl;
-  mascotIdle.alt = ASSISTANT_NAME;
-  mascotIdle.draggable = false;
-  mascotIdle.decoding = 'async';
-
-  const mascotActive = document.createElement('img');
-  mascotActive.className = 'ai-orb__mascot ai-orb__mascot--active';
-  mascotActive.src = mascotActiveUrl;
-  mascotActive.alt = '';
+  // 用 <picture> 走 webp（15KB）优先、png（90KB）兜底
+  const makeMascot = (cls, pngUrl, webpUrl, alt) => {
+    const pic = document.createElement('picture');
+    pic.className = `ai-orb__mascot ${cls}`;
+    const src = document.createElement('source');
+    src.srcset = webpUrl;
+    src.type = 'image/webp';
+    const img = document.createElement('img');
+    img.src = pngUrl;
+    img.alt = alt;
+    img.draggable = false;
+    img.decoding = 'async';
+    pic.append(src, img);
+    return pic;
+  };
+  const mascotIdle = makeMascot('ai-orb__mascot--idle', mascotIdleUrl, mascotIdleWebpUrl, ASSISTANT_NAME);
+  const mascotActive = makeMascot('ai-orb__mascot--active', mascotActiveUrl, mascotActiveWebpUrl, '');
   mascotActive.setAttribute('aria-hidden', 'true');
-  mascotActive.draggable = false;
-  mascotActive.decoding = 'async';
 
   const label = document.createElement('div');
   label.className = 'ai-orb__label';
