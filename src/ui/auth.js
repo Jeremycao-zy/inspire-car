@@ -43,6 +43,15 @@ function el(tag, props = {}, ...children) {
 
 let layer = null;
 let onDone = null;
+let onCancel = null;
+
+/** 关闭浮层（用户主动取消）：隐藏 + 通知上层 */
+function closeLayer() {
+  hide();
+  const cb = onCancel;
+  onCancel = null;
+  cb?.();
+}
 
 /* ---- 第三方登录（微信 / 苹果）图标 ---- */
 /* 微信官方风格双气泡 logo（取自 simple-icons，单色路径 fill=currentColor） */
@@ -203,9 +212,22 @@ function buildLayer() {
     el('div', { class: 'auth-oauth__row' }, wechatBtn, appleBtn)
   );
 
-  const card = el('div', { class: 'auth-card' }, brand, heading, hint, form, oauthSection);
+  // 关闭按钮：登录浮层现在是"浮在主页之上"的可选面板，必须能关掉回到主页
+  const closeBtn = el(
+    'button',
+    { type: 'button', class: 'auth-card__close', 'aria-label': '关闭', title: '关闭（Esc）' },
+    '×'
+  );
+  closeBtn.addEventListener('click', () => closeLayer());
+
+  const card = el('div', { class: 'auth-card' }, brand, heading, hint, form, oauthSection, closeBtn);
   layer = el('div', { class: 'auth-layer' }, card);
   document.body.appendChild(layer);
+
+  // 点遮罩空白处关闭（点在卡片内部不关）
+  layer.addEventListener('mousedown', (e) => {
+    if (e.target === layer) closeLayer();
+  });
 
   // 账号框输入时实时判断是否为手机号，决定是否显示验证码行
   accountField.querySelector('input').addEventListener('input', () => updatePhoneFields());
@@ -378,11 +400,20 @@ async function submitForm() {
 }
 
 /** 显示登录浮层；onSuccess 在登录/注册成功后回调（拿到 user） */
-export function showAuthOverlay(callback) {
+export function showAuthOverlay(callback, onCancelCb) {
   onDone = callback;
+  onCancel = onCancelCb || null;
   const L = buildLayer();
   L.style.display = 'flex';
   setTimeout(() => L._refs.accountField.querySelector('input').focus(), 30);
+}
+
+// Esc 关闭登录浮层（只绑定一次）
+if (!window.__authEscBound) {
+  window.__authEscBound = true;
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && layer && layer.style.display !== 'none') closeLayer();
+  });
 }
 
 /** 隐藏浮层 */

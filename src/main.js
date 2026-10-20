@@ -2901,23 +2901,25 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // 第一层入口：灵感车库（白色科技车库风）。选择方案 / 新建 → 进入 TUNING STUDIO。
-// 门禁：未登录先弹登录浮层，登录成功后再挂载车库；注销/令牌失效回到浮层。
+// 登录策略（2026-10-21 按用户要求调整）：开屏后直接进主页，主页不设登录门禁；
+// 登录入口在页面右上角 —— 未登录显示「登录」按钮，点击后原版登录浮层浮在主页之上；
+// 登录成功就地把右上角换成「用户名 + 注销」，注销后回到「登录」按钮。
 async function bootGarage() {
   consumeOAuthCallback(); // 第三方（微信/苹果）回跳带 oauth_token 时先落登录态
   const user = await fetchMe();
-  if (!user) {
-    showAuthOverlay((u) => {
-      mountGarageEntry(u);
-    });
-    return;
-  }
   mountGarageEntry(user);
 }
 
-function mountGarageEntry() {
-  // 已登录：确保浮层隐藏，挂载/重挂车库
+function mountGarageEntry(user) {
   installGlobalSfx(); // 全站操作音效（滑块/卡片/车身旋转/按钮）；首个用户手势解锁音频上下文
   garage = mountGarage({
+    user,
+    // 右上角「登录」→ 打开原版登录浮层（浮在主页之上，不遮挡主页内容）
+    onLogin() {
+      showAuthOverlay((u) => {
+        garage?.setUser?.(u);
+      });
+    },
     onEnter(plan) {
       // 新方案 / 还没有真实车模的方案 → 先走拍照引导，建模完成后再进 studio
       if (!plan || isPresetCarUrl(plan?.carModelUrl)) {
@@ -2935,17 +2937,10 @@ function mountGarageEntry() {
 document.getElementById('back-to-garage')?.addEventListener('click', returnToGarage);
 
 // 登录态变化（来自 auth.js：登录成功 / 401 失效 / 主动注销）
+// 只刷新右上角登录位，不再卸载主页 / 弹登录浮层（主页是开放浏览的）
 window.addEventListener('auth:change', (e) => {
-  const user = e.detail?.user;
-  if (!user) {
-    // 已登出：卸载车库，回到登录浮层
-    if (garage) {
-      garage.root?.classList?.add('hidden');
-    }
-    showAuthOverlay(() => {
-      mountGarageEntry();
-    });
-  }
+  const user = e.detail?.user || null;
+  garage?.setUser?.(user);
 });
 
 /* 品牌启动页淡出：最少展示 2.4s，让字母波浪动画完整播放（logo 已改为静态常亮，无动画） */

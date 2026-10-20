@@ -25,7 +25,7 @@ import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
 
 /**
  * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
- * 未登录（理论上进不到这里）回落到 anon，避免 KeyError。
+ * 未登录也能浏览主页（登录入口在右上角），此时回落到 anon，避免 KeyError。
  */
 function storageKey() {
   const u = currentUser();
@@ -545,7 +545,14 @@ function createEmptyState(onNew) {
  * "此网页重复出现问题" 崩溃。 */
 let _activeCleanup = null;
 
-export function mountGarage({ onEnter, mount } = {}) {
+/**
+ * @param {object} o
+ * @param {(plan:any)=>void} [o.onEnter] 进入 TUNING STUDIO
+ * @param {()=>void} [o.onLogin] 右上角「登录」按钮回调（由 main.js 打开登录浮层）
+ * @param {object|null} [o.user] 初始登录用户
+ * @param {Element} [o.mount] 挂载根节点
+ */
+export function mountGarage({ onEnter, onLogin, user: initialUser, mount } = {}) {
   const root = mount || $('#garage');
   if (!root) return null;
   if (_activeCleanup) {
@@ -569,22 +576,46 @@ export function mountGarage({ onEnter, mount } = {}) {
   let currentPage = null;
 
   /* 顶部品牌栏 */
-  const u = currentUser();
-  const userChip = el(
-    'div',
-    { class: 'garage-userchip' },
-    el('span', { class: 'garage-userchip__name' }, u?.username || '用户'),
-    el(
-      'button',
-      {
-        class: 'garage-userchip__btn',
-        type: 'button',
-        title: '注销登录',
-        onClick: () => logout(),
-      },
-      '注销'
-    )
-  );
+  const u = currentUser() || initialUser || null;
+
+  /* 右上角登录位：未登录 = 「登录」按钮；已登录 = 用户名 + 注销 */
+  const authSlot = el('div', { class: 'garage-authslot' });
+  function renderAuth(user) {
+    authSlot.innerHTML = '';
+    if (user) {
+      authSlot.appendChild(
+        el(
+          'div',
+          { class: 'garage-userchip' },
+          el('span', { class: 'garage-userchip__name' }, user.username || '用户'),
+          el(
+            'button',
+            {
+              class: 'garage-userchip__btn',
+              type: 'button',
+              title: '注销登录',
+              onClick: () => logout(),
+            },
+            '注销'
+          )
+        )
+      );
+    } else {
+      authSlot.appendChild(
+        el(
+          'button',
+          {
+            class: 'garage-login-btn',
+            type: 'button',
+            title: '登录 / 注册',
+            onClick: () => onLogin?.(),
+          },
+          '登录'
+        )
+      );
+    }
+  }
+  renderAuth(u);
   const subscribeBtn = el(
     'button',
     {
@@ -602,22 +633,16 @@ export function mountGarage({ onEnter, mount } = {}) {
     '订阅方案'
   );
 
+  // 头部：左侧只保留字标（中文名与标语已按用户要求移除），右侧 订阅方案 + 登录位
   const header = el(
     'header',
     { class: 'garage-header' },
     el(
       'div',
       { class: 'garage-brand' },
-      el('img', { class: 'garage-logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' }),
-      el(
-        'div',
-        { class: 'garage-brand__text' },
-        el('h1', { class: 'garage-brand__title' }, '灵感改装'),
-        el('p', { class: 'garage-brand__sub' }, 'MODIFY × EXPLORE × BEYOND')
-      ),
-      subscribeBtn
+      el('img', { class: 'garage-logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' })
     ),
-    userChip
+    el('div', { class: 'garage-header__right' }, subscribeBtn, authSlot)
   );
 
   /* Hero：文案 + 实时 3D 预览 */
@@ -952,6 +977,10 @@ export function mountGarage({ onEnter, mount } = {}) {
 
   return {
     root,
+    /** 登录态变化时刷新右上角登录位（登录 → 用户信息；登出 → 登录按钮） */
+    setUser(user) {
+      renderAuth(user || null);
+    },
     hide() {
       root.classList.add('hidden');
       stopPageLoops();
