@@ -13,6 +13,7 @@
 import './legal.css';
 import agreementMd from '../../docs/legal/USER-AGREEMENT.md?raw';
 import guidelinesMd from '../../docs/legal/COMMUNITY-GUIDELINES.md?raw';
+import privacyMd from '../../docs/legal/PRIVACY-POLICY.md?raw';
 
 /** HTML 转义，避免正文里的 < > & 破坏结构 */
 function esc(s) {
@@ -137,6 +138,7 @@ export function renderMarkdown(md) {
 
 export const LEGAL_DOCS = {
   agreement: { title: '用户协议', body: agreementMd },
+  privacy: { title: '隐私政策', body: privacyMd },
   guidelines: { title: '社区内容守则', body: guidelinesMd },
 };
 
@@ -144,7 +146,7 @@ let activeEl = null;
 
 /**
  * 打开协议弹窗。
- * @param {'agreement'|'guidelines'} which
+ * @param {'agreement'|'privacy'|'guidelines'} which
  */
 export function openLegalModal(which = 'agreement') {
   closeLegalModal();

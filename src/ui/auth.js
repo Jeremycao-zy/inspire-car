@@ -155,9 +155,9 @@ function buildLayer() {
         class: 'auth-link',
         onClick: (e) => {
           e.preventDefault();
-          openLegalModal('guidelines');
+          openLegalModal('privacy');
         },
-      }, '《社区内容守则》')
+      }, '《隐私政策》')
     )
   );
 
