@@ -222,13 +222,14 @@
     0 6px 26px rgba(0,0,0,0.238);
 }
 
-/* 底层：当前角度示例图蓝图化——即「车辆方位的虚线轮廓」参照 */
+/* 底层：当前角度示例图蓝图化——即「车辆方位的虚线轮廓」参照。
+   用户强调：示例车必须完整入镜、居中，不允许 cover 裁掉车头/车尾。 */
 .photo-guide__ghost {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   filter: grayscale(1) contrast(0.35) brightness(1.55);
   opacity: 0.42;
   transition: opacity 0.25s ease;
@@ -339,6 +340,7 @@
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
+  object-fit: contain; /* 用户照片完整显示、不裁切不拉伸 */
   border: none;
   border-radius: 0;
   box-shadow: none;
