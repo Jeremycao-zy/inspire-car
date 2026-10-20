@@ -21,7 +21,7 @@ import { mountAiOrb } from './aiOrb.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
 import { createForum, createNews } from './community.js';
 import './garage.css';
-import logoMarkUrl from '../assets/logo-mark-nobg.png';
+import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
 
 /**
  * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
@@ -55,26 +55,6 @@ function el(tag, props = {}, ...children) {
     node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
   }
   return node;
-}
-
-/** 灵感车库「风火轮风格」玩具卡背 logo SVG（替代原 Hot Wheels logo） */
-/** 卡片头部品牌字样：只保留文字（原火焰图形已按用户要求移除） */
-function inspireLogoSVG() {
-  return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感改装 INSPIRE CAR">
-    <defs>
-      <linearGradient id="brandWord" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#ff3d3d"/>
-        <stop offset=".5" stop-color="#ff6a00"/>
-        <stop offset="1" stop-color="#ffd700"/>
-      </linearGradient>
-    </defs>
-    <text x="110" y="44" text-anchor="middle" font-size="32" font-weight="900"
-          fill="url(#brandWord)" stroke="#fff" stroke-width="5" paint-order="stroke"
-          style="font-style:italic;letter-spacing:2px;font-family:'PingFang SC','Microsoft YaHei',sans-serif">灵感改装</text>
-    <rect x="38" y="52" width="144" height="2.5" rx="1.25" fill="url(#brandWord)" opacity=".85"/>
-    <text x="110" y="66" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" letter-spacing="5"
-          style="font-family:'Share Tech Mono','Menlo',monospace">INSPIRE CAR</text>
-  </svg>`;
 }
 
 /** 卡片展示名：优先用户/系统设置过的方案名（「未命名方案」视为未定制），
@@ -628,12 +608,12 @@ export function mountGarage({ onEnter, mount } = {}) {
     el(
       'div',
       { class: 'garage-brand' },
-      el('img', { class: 'garage-logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
+      el('img', { class: 'garage-logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' }),
       el(
         'div',
         { class: 'garage-brand__text' },
         el('h1', { class: 'garage-brand__title' }, '灵感改装'),
-        el('p', { class: 'garage-brand__sub' }, 'INSPIRE CAR')
+        el('p', { class: 'garage-brand__sub' }, 'MODIFY × EXPLORE × BEYOND')
       ),
       subscribeBtn
     ),

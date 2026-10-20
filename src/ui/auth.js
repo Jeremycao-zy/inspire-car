@@ -16,7 +16,7 @@
 
 import './auth.css';
 import { register, login, sendPhoneCode } from '../auth.js';
-import logoMarkUrl from '../assets/logo-mark-nobg.png';
+import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
 import { openLegalModal } from './legalModal.js';
 
 function $(sel) {
@@ -69,12 +69,11 @@ async function startOAuth(provider) {
 function buildLayer() {
   if (layer) return layer;
 
-  const logo = el('img', { class: 'auth-card__logo', src: logoMarkUrl, alt: 'INSPIRE CAR' });
+  const logo = el('img', { class: 'auth-card__logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' });
   const brandText = el(
     'div',
     { class: 'auth-card__brand-text' },
-    el('h1', { class: 'auth-card__title' }, '灵感改装'),
-    el('p', { class: 'auth-card__sub' }, 'INSPIRE CAR')
+    el('h1', { class: 'auth-card__title' }, '灵感改装')
   );
   const brand = el('div', { class: 'auth-card__brand' }, logo, brandText);
 

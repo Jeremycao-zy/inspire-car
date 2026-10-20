@@ -36,9 +36,9 @@
   gap: 12px;
   margin-bottom: 6px;
 }
-/* 登录卡片 logo：用中性素材（不再用霓虹青线条源图），无辉光 */
+/* 登录卡片 logo = 品牌字标（白色，透明底，宽 19.3:1）。12px 高 ≈ 232px 宽。 */
 .auth-card__logo {
-  height: 34px;
+  height: 12px;
   width: auto;
   display: block;
 }

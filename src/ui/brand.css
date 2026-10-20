@@ -1,91 +1,25 @@
 /**
- * brand.css — 「灵感改装 / Inspire Car」品牌标识样式
+ * brand.css — 「灵感改装 / INSPIRE CAR」品牌标识样式（2026-10-20 新字标版）
  *
- * 设计基调：用户上传的品牌图（白底圆角图标 + 斜体英文/中文名称）。
+ * 品牌视觉：白色定制字标（透明底）+ 宽字距小型大写标语，单色电影感。
  * 全部类名以 jg- 开头，避免与侧栏/面板既有样式冲突。
- * 字体只用系统字体栈：本机有透明代理，@font-face / CDN 字体拉不到。
+ * 注意：字标图本身就是白色，不要再加 invert / 滤镜；也不要垫背景色。
  */
 
 .jg-brand {
-  --jg-font: 'DIN Alternate', 'Bebas Neue', 'Impact', -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
-  /* 科技感主色板，与品牌图的黑线白底形成对比 */
-  --jg-cyan: #22e6ff;
-  --jg-blue: #3b82f6;
-  --jg-violet: #8b5cf6;
-  --jg-title-grad: linear-gradient(
-    100deg,
-    var(--jg-cyan) 0%,
-    #9ad9ff 42%,
-    var(--jg-violet) 100%
-  );
-
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-family: var(--jg-font);
+  font-family: var(--font-sans);
   user-select: none;
   -webkit-font-smoothing: antialiased;
 }
 
-.jg-brand__icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  line-height: 0;
-}
-
-/* 去背资源本身就是「透明底 + 纯黑线」，所以白底卡片、圆角、描边、投影全部去掉，
-   只剩图形本身。
-   侧栏 / 水印 / 加载遮罩三处都是深色背景，反相后黑线变白线 —— 原图是纯灰度，
-   反相无损。注意不要给这里的图片加任何背景色，否则又会出现白色方块。 */
-.jg-brand__icon .jg-icon {
+.jg-wordmark {
   display: block;
-  object-fit: contain;
-  filter: invert(1);
-}
-
-.jg-brand__text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-/* 主标：霓虹渐变文字 */
-.jg-brand__title {
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  text-transform: uppercase;
-  font-style: italic;
-  background: var(--jg-title-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 18px rgba(34, 230, 255, 0.22),
-    0 0 34px rgba(139, 92, 246, 0.12);
-  transform: skewX(-8deg);
-  display: inline-block;
-}
-
-@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
-  .jg-brand__title {
-    color: #e8edf5;
-    -webkit-text-fill-color: #e8edf5;
-  }
-}
-
-/* 副标：斜体，呼应品牌图中 Inspire Car 的字形 */
-.jg-brand__sub {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: #6f8299;
-  white-space: nowrap;
-  font-style: italic;
+  width: auto;
+  height: auto;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------- */
@@ -98,40 +32,18 @@
   box-sizing: border-box;
   padding: 14px 16px 13px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(
-    100deg,
-    rgba(34, 230, 255, 0.09) 0%,
-    rgba(59, 130, 246, 0.05) 46%,
-    rgba(139, 92, 246, 0.09) 100%
-  );
 }
 
-/* 左侧竖向渐变强调条 + 底部一道青色细线，科技仪表盘感 */
+/* 左侧一道发丝光条：全站唯一的装饰性竖线，单色、无辉光 */
 .jg-brand--sidebar::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 12%;
-  bottom: 12%;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--jg-cyan), var(--jg-violet));
-  box-shadow: 0 0 10px rgba(34, 230, 255, 0.5);
-}
-
-.jg-brand--sidebar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(34, 230, 255, 0.55),
-    rgba(139, 92, 246, 0.28) 55%,
-    transparent 100%
-  );
+  top: 22%;
+  bottom: 22%;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.06));
 }
 
 /* ---------------------------------------------------------------- */
@@ -143,7 +55,6 @@
   right: 16px;
   bottom: 14px;
   z-index: 5;
-  gap: 8px;
   opacity: 0.35;
   pointer-events: none;
   transition: opacity 0.25s ease;
@@ -154,96 +65,42 @@
   opacity: 0.55;
 }
 
-/* 水印压在 3D 画面上，用实色而非渐变文字，保证可读性 */
-.jg-brand--watermark .jg-brand__title {
-  font-size: 12.5px;
-  background: none;
-  color: #ffffff;
-  -webkit-text-fill-color: #ffffff;
-}
-
-.jg-brand--watermark .jg-brand__sub {
-  font-size: 8px;
-  color: rgba(255, 255, 255, 0.85);
-}
-
 /* ---------------------------------------------------------------- */
 /* 3. 加载遮罩居中                                                     */
 /* ---------------------------------------------------------------- */
 
 .jg-brand--overlay {
   /* 遮罩本身是 flex column + 居中，这里作为普通 flex 子元素插在最前面，
-     品牌字标在上、徽标在下、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
+     字标在上、标语在下、spinner 与文案在下，比绝对定位更不容易在小屏上跑出可视区 */
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 6px;
+  gap: 22px;
+  margin-bottom: 10px;
   text-align: center;
   pointer-events: none;
 }
 
-/* 加载遮罩里的字标：保持静止，只用霓虹辉光 */
-.jg-brand--overlay .jg-brand__text {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* 遮罩里的大字标：宽度自适应，小屏不溢出 */
+.jg-wordmark--overlay {
+  width: min(480px, 72vw);
+  height: auto;
 }
-.jg-brand--overlay .jg-brand__title {
+
+/* 宽字距标语：MODIFY × EXPLORE × BEYOND */
+.jg-brand__tagline {
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: var(--text);
-  
-}
-.jg-brand--overlay .jg-brand__sub {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--text-dim, #9aa7c7);
+  letter-spacing: 0.52em;
+  padding-left: 0.52em; /* 追踪字距后视觉居中 */
+  color: rgba(255, 255, 255, 0.42);
+  white-space: nowrap;
 }
-
-.jg-brand--overlay .jg-brand__icon {
-  position: relative;
-  display: block;
-  width: min-content;
-  height: 160px;
-}
-
-/* 六边形外框：静止不动 */
-.jg-brand--overlay .jg-icon--hex {
-  display: block;
-  height: 160px;
-  width: auto;
-  object-fit: contain;
-  filter: invert(1);
-}
-
-/* 内部轮毂：像车轮一样旋转，转速由 main.js 根据进度实时调整 */
-.jg-brand--overlay .jg-icon--wheel {
-  position: absolute;
-  inset: 0;
-  height: 160px;
-  width: 100%;
-  object-fit: contain;
-  filter: invert(1);
-  animation: jg-wheel-spin var(--jg-spin-dur, 2.6s) linear infinite;
-}
-
-@keyframes jg-wheel-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .jg-brand--overlay .jg-icon--wheel {
-    animation: none;
-  }
+.jg-brand__tagline i {
+  font-style: normal;
+  margin: 0 1.4em;
+  color: rgba(255, 255, 255, 0.18);
 }
 
 /* ---------------------------------------------------------------- */
@@ -253,18 +110,19 @@
 @media (max-width: 720px) {
   .jg-brand--sidebar {
     padding: 10px 12px 10px 14px;
-    gap: 8px;
   }
-  .jg-brand--sidebar .jg-brand__title {
-    font-size: 13.5px;
+  .jg-brand--sidebar .jg-wordmark {
+    max-width: 100%;
   }
-  .jg-brand--sidebar .jg-brand__sub {
-    display: none;
+  .jg-wordmark--overlay {
+    width: min(380px, 80vw);
   }
-  .jg-brand--overlay .jg-brand__icon,
-  .jg-brand--overlay .jg-icon--hex,
-  .jg-brand--overlay .jg-icon--wheel {
-    height: 120px;
-    width: auto;
+  .jg-brand__tagline {
+    font-size: 9px;
+    letter-spacing: 0.4em;
+    padding-left: 0.4em;
+  }
+  .jg-brand__tagline i {
+    margin: 0 0.9em;
   }
 }

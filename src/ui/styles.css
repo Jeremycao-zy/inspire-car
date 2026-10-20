@@ -1,34 +1,34 @@
-/* styles.css — 灵感改装 INSPIRE CAR · 极简高级（Minimal Premium）
+/* styles.css — 灵感改装 INSPIRE CAR · 电影感极简（Cinematic Minimal）
  *
- * 设计原则（2026-10-20 全站 UI 重做，取代此前的"复古电子 / 霓虹赛博 synthwave"）：
- *   1. 中性深灰为底，不带紫、不带彩 —— 让 3D 车模成为画面里唯一的彩色主体
- *   2. 单一暖金强调色，只用于主要动作与关键状态，绝不做装饰性大面积铺设
- *   3. 层级靠明度差 + 1px 发丝线，不靠发光（glow）和描边
- *   4. 大留白、紧凑字距、明确字号阶梯；圆角取小（4~10px）
+ * 设计原则（2026-10-20 二次重做：暖金 → 单色电影感，对齐品牌视觉基准图）：
+ *   1. 深炭黑为底 + 全局影院光晕（顶部天光、底部地平线反光），画面有纵深不做"平面感"
+ *   2. 单色系（off-white 强调），品牌字标白色宽字距；彩色只留给 3D 车模与状态色
+ *   3. 层级靠明度差 + 1px 发丝线 + 微渐变面板（上亮下沉），不靠发光描边
+ *   4. 宽字距小型大写标签（MODIFY × EXPLORE × BEYOND 语系），大留白
  *   5. 动效短而克制（120~320ms），只做淡入与位移，不做弹跳
  */
 
 :root {
   /* ---- 表面（明度阶梯即层级）---- */
-  --bg: #0a0a0b;
-  --panel: #121214;
-  --panel-2: #17171a;
-  --panel-3: #1e1e22;
-  --line: #232327;
-  --line-2: #2e2e34;
+  --bg: #060608;
+  --panel: #0f0f12;
+  --panel-2: #141418;
+  --panel-3: #1a1a20;
+  --line: #232329;
+  --line-2: #2e2e36;
 
   /* ---- 文字 ---- */
-  --text: #f4f4f5;
-  --text-dim: #a2a2a9;
-  --text-faint: #70707a;
+  --text: #f5f5f6;
+  --text-dim: #a4a4ac;
+  --text-faint: #6f6f79;
 
-  /* ---- 强调：暖金（唯一彩色）---- */
-  --accent: #d4b483;
-  --accent-strong: #e3c89c;
-  --accent-dim: rgba(212, 180, 131, 0.12);
-  --accent-text: #e8d5b3; /* 深色底上的强调文字，保证对比度 */
+  /* ---- 强调：单色 off-white（primary 按钮白底黑字，链接/高亮纯白）---- */
+  --accent: #e9e9ec;
+  --accent-strong: #ffffff;
+  --accent-dim: rgba(233, 233, 236, 0.09);
+  --accent-text: #ffffff;
 
-  /* 历史别名：原霓虹三色，现统一收敛到中性/暖金，
+  /* 历史别名：原霓虹三色，现统一收敛到单色系，
      保留变量名是为了不破坏仍引用它们的旧代码 */
   --neon-cyan: var(--accent);
   --neon-pink: var(--accent);
@@ -105,6 +105,18 @@ h1, h2, h3, h4 {
   box-sizing: border-box;
 }
 
+/* 全局影院光晕：顶部天光 + 底部地平线反光，给纯黑画面纵深（不随滚动） */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 55% at 50% -12%, rgba(255, 255, 255, 0.06), transparent 62%),
+    radial-gradient(110% 45% at 50% 118%, rgba(255, 255, 255, 0.035), transparent 58%);
+}
+
 /* =========================================================
    品牌启动页：进入首页前的全屏 loading（logo + 英文名闪动）
    ========================================================= */
@@ -134,88 +146,71 @@ h1, h2, h3, h4 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 0;
 }
 
-/* logo 已移除：开屏只保留文字，文字居中呈现 */
+/* 开屏视觉：新字标 + 宽字距标语 + 地平线光效（与 index.html 内联首屏 CSS 一致） */
+.brand-loading__logo {
+  width: min(560px, 74vw);
+  height: auto;
+  user-select: none;
+  pointer-events: none;
+  animation:
+    blLogoIn 1.2s cubic-bezier(0.22, 1, 0.36, 1) both,
+    blGlow 3.2s ease-in-out 1.2s infinite;
+  will-change: opacity, transform;
+}
 
-.brand-loading__text {
-  font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
-  font-size: 28px;
-  font-weight: 400;
-  letter-spacing: 0.32em;
-  color: rgba(255, 255, 255, 0.35);
-  text-transform: uppercase;
+.brand-loading__tag {
+  margin-top: 34px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.55em;
+  padding-left: 0.55em; /* 追踪字距后视觉居中 */
+  color: rgba(255, 255, 255, 0.42);
   white-space: nowrap;
-  text-align: center;
   user-select: none;
 }
-
-/* 文字部分还原为原本的方案（用户确认这一版是好的：光效明显、逐字波浪） */
-.brand-loading__text span {
-  display: inline-block;
-  animation: letterPulse 2.2s ease-in-out infinite;
-  animation-fill-mode: forwards;
-  animation-delay: calc(var(--i) * 0.08s);
+.brand-loading__tag i {
+  font-style: normal;
+  margin: 0 1.5em;
+  color: rgba(255, 255, 255, 0.18);
 }
 
-.brand-loading__space {
-  display: inline-block;
-  width: 0.55em;
-  animation: none !important;
+.brand-loading__horizon {
+  margin-top: 52px;
+  width: min(760px, 84vw);
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent, rgba(255, 255, 255, 0.28) 22%, rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.28) 78%, transparent);
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.16);
+  animation: blHorizon 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* logo 入场/呼吸动画已移除（用户要求开屏 logo 静态常亮、无闪动），相关 keyframes 已删除。 */
-
-/* 文字：还原原本方案（逐字波浪 + 霓虹辉光起伏） */
-@keyframes letterPulse {
-  0%, 100% {
-    opacity: 0.3;
-    color: rgba(255, 255, 255, 0.45);
-    text-shadow: none;
-    transform: translateY(0);
-  }
-  35%, 65% {
-    opacity: 1;
-    color: #fff;
-    
-    transform: translateY(-1px);
-  }
-  50% {
-    opacity: 1;
-    color: #fff;
-    
-    transform: translateY(-2px);
-  }
+@keyframes blLogoIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
 }
-
-/* 移动端：文字沿用原本的 lite 方案（只动 opacity、不逐帧改 text-shadow，省移动端重绘）。
-   logo 不做降级 —— 光效起伏是用户明确要求保留的效果，且只有一张小图，开销可控。 */
-@media (max-width: 768px) {
-  .brand-loading__text span {
-    color: #fff;
-    
-    animation: letterPulseLite 2.2s ease-in-out infinite;
-    animation-fill-mode: forwards;
-    animation-delay: calc(var(--i) * 0.12s);
-    will-change: opacity;
-  }
+@keyframes blGlow {
+  0%, 100% { opacity: 0.88; }
+  50%      { opacity: 1; }
 }
-
-@keyframes letterPulseLite {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
+@keyframes blTagIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes blHorizon {
+  from { opacity: 0; transform: scaleX(0.6); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
+.brand-loading__tag { animation: blTagIn 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both; }
 
 @media (max-width: 480px) {
-  .brand-loading__logo {
-    width: 68px;
-    height: 68px;
-  }
-  .brand-loading__text {
-    font-size: 20px;
-    letter-spacing: 0.24em;
-  }
+  .brand-loading__tag { margin-top: 26px; }
+  .brand-loading__horizon { margin-top: 40px; }
+}
 }
 
 /* 顶部登录用户条（注销入口） */
@@ -291,14 +286,11 @@ body {
   min-width: 0;
 }
 
-/* 顶栏是深色（--panel #14171c），去背徽标是黑线图，反相成白线；
-   不再需要白色方块托底。18px 略高于标题的 14px 字号。 */
+/* 顶栏 logo = 品牌字标（白色，透明底）。12px 高 ≈ 232px 宽，略高于 14px 标题字号。 */
 .appbar-logo {
-  height: 18px;
+  height: 12px;
   width: auto;
-  aspect-ratio: 353 / 324;
   display: block;
-  filter: invert(1);
 }
 
 .appbar-title {
@@ -1719,8 +1711,7 @@ body {
 .susp-val,
 .pricing-card__price .num,
 .appbar-loc {
-  font-family: 'Share Tech Mono', 'VT323', ui-monospace, SFMono-Regular, Menlo,
-    monospace;
+  font-family: var(--font-mono);
 }
 
 /* ---- 霓虹滑块 ---- */

@@ -10,7 +10,8 @@
  */
 
 import { generateModel, GenerateError } from '../api/generate.js';
-import logoMarkUrl from '../assets/logo-mark-nobg.png';
+import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
+import logoGlyphUrl from '../assets/logo-glyph-white.png';
 import { loading3D } from './loading3d.js';
 import './photoGuide.css';
 
@@ -189,7 +190,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     el(
       'div',
       { class: 'photo-guide__brand' },
-      el('img', { class: 'photo-guide__logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
+      el('img', { class: 'photo-guide__logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' }),
       '灵感改装 · 拍摄引导'
     ),
     el(
@@ -340,7 +341,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   );
 
   // 进度/错误覆盖层（程序化 3D 组装动画 + 改装知识 + 进度条/小车 logo 引导）
-  const progressMarker = el('img', { class: 'photo-guide__bar-marker', src: logoMarkUrl, alt: '' });
+  const progressMarker = el('img', { class: 'photo-guide__bar-marker', src: logoGlyphUrl, alt: '' });
   const progressFill = el('div', { class: 'photo-guide__bar-fill' }, progressMarker);
   const overlayIcon = el('div', { class: 'photo-guide__overlay-icon' });
   const overlayAnimationHost = el('div', {
@@ -641,7 +642,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     // 完成时释放 WebGL 并切换为品牌 logo；处理中复用唯一的轻量 3D 组装场景。
     if (isDone) {
       loading3D.dispose(overlayAnimationHost);
-      overlayIcon.innerHTML = `<img class="photo-guide__overlay-icon--done" src="${logoMarkUrl}" alt="INSPIRE CAR">`;
+      overlayIcon.innerHTML = `<img class="photo-guide__overlay-icon--done" src="${logoGlyphUrl}" alt="INSPIRE CAR">`;
       stopTips();
     } else {
       if (!overlayIcon.contains(overlayAnimationHost)) {

@@ -48,7 +48,7 @@
   justify-content: space-between;
   gap: 12px;
   pointer-events: none;
-  font-family: 'Share Tech Mono', 'SFMono-Regular', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.16em;
   color: rgba(224, 252, 255, 0.82);

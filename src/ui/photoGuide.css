@@ -64,9 +64,14 @@
 }
 
 .photo-guide__logo {
-  height: 28px;
+  height: 13px;
   width: auto;
-  filter:;
+}
+
+/* 进度条上的小车标记：品牌字形 IC */
+.photo-guide__bar-marker {
+  height: 18px;
+  width: auto;
 }
 
 .photo-guide__back-icon {
@@ -389,7 +394,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--neon-purple, var(--accent));
-  font-family: 'Share Tech Mono', 'VT323', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   text-shadow: 0 0 10px rgba(0,0,0,0.4);
 }
 
@@ -490,7 +495,7 @@
   color: var(--neon-cyan, var(--accent));
   background: rgba(0,0,0,0.4);
   border: 1px solid var(--line-2);
-  font-family: 'Share Tech Mono', 'VT323', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -657,7 +662,7 @@
 .photo-guide__counter {
   font-size: 13px;
   color: var(--text-dim, #9aa7c7);
-  font-family: 'Share Tech Mono', 'VT323', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.02em;
 }
 

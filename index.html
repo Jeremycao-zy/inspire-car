@@ -4,8 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- 首屏关键 CSS：在 JS 注入的样式表生效前，先把品牌启动页画成黑底居中、logo 定尺寸，
-         避免裸 HTML 闪现（白底 + 两个未样式化的大 logo）。appbar 被全屏 brand-loading 盖住，不闪。 -->
+    <!-- 首屏关键 CSS：在 JS 注入的样式表生效前，先把品牌启动页画成纯黑全屏 + 新字标，
+         避免裸 HTML 闪现。appbar 被全屏 brand-loading 盖住，不闪。
+         动画内联自包含：即便 styles.css（JS 注入）尚未加载也好看，彻底摆脱网络时序割裂。
+         参数须与 styles.css 的品牌启动页区块一致，避免样式表接管时观感跳变。 -->
     <style>
       html, body { margin: 0; height: 100%; background: #000; }
       #brand-loading {
@@ -13,46 +15,47 @@
         display: flex; align-items: center; justify-content: center;
         background: #000;
       }
-      .brand-loading__inner { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+      .brand-loading__inner { display: flex; flex-direction: column; align-items: center; }
       .brand-loading__logo {
-        width: 84px; height: 84px; object-fit: contain;
-        /* 基底辉光 = 呼吸动画起点值，保证入场结束与呼吸开始无缝衔接 */
-        filter: brightness(0) invert(1);
-        /* 启动页动画内联自包含：即便 styles.css（JS 注入）尚未加载也好看，彻底摆脱网络时序割裂。
-           参数须与 styles.css 的 logoIn / logoPulse 一致，避免样式表接管时观感跳变。
-           ① 平滑入场（淡入+轻微放大），不再"啪"地弹出来
-           ② 呼吸时光效起伏保持明显（辉光 10px→30px），但单一转向点 + 正弦缓动，不跳跃 */
+        width: min(560px, 74vw); height: auto;
+        user-select: none; pointer-events: none;
         animation:
-          blLogoIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
-          blLogo 2.6s cubic-bezier(0.45, 0, 0.55, 1) 0.6s infinite;
-        will-change: opacity, transform, filter;
+          blLogoIn 1.2s cubic-bezier(0.22, 1, 0.36, 1) both,
+          blGlow 3.2s ease-in-out 1.2s infinite;
+        will-change: opacity, transform;
       }
-      .brand-loading__text {
-        font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
-        font-size: 28px; letter-spacing: 0.32em; color: rgba(255, 255, 255, 0.35);
-        text-transform: uppercase; white-space: nowrap; user-select: none;
+      .brand-loading__tag {
+        margin-top: 34px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+        font-size: 11px; font-weight: 500;
+        letter-spacing: 0.55em; padding-left: 0.55em; /* 追踪字距后视觉居中 */
+        color: rgba(255, 255, 255, 0.42);
+        white-space: nowrap; user-select: none;
+        animation: blTagIn 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
       }
-      /* 文字部分还原为原本方案（逐字波浪 + 霓虹辉光起伏，用户确认这版是好的） */
-      .brand-loading__text span {
-        display: inline-block;
-        opacity: 0.5;
-        color: #fff;
-        
-        animation: blLetter 2.2s ease-in-out infinite;
-        animation-delay: calc(var(--i) * 0.12s);
+      .brand-loading__tag i { font-style: normal; margin: 0 1.5em; color: rgba(255, 255, 255, 0.18); }
+      .brand-loading__horizon {
+        margin-top: 52px;
+        width: min(760px, 84vw); height: 1px;
+        background: linear-gradient(90deg,
+          transparent, rgba(255, 255, 255, 0.28) 22%, rgba(255, 255, 255, 0.7) 50%,
+          rgba(255, 255, 255, 0.28) 78%, transparent);
+        box-shadow: 0 0 24px rgba(255, 255, 255, 0.16);
+        animation: blHorizon 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      .brand-loading__space { animation: none !important; }
-      /* logo 入场：结束值等于 blLogo 起点，衔接不跳变 */
       @keyframes blLogoIn {
-        0%   { opacity: 0;   transform: scale(0.94); }
-        100% { opacity: 0.62; transform: scale(1); }
+        from { opacity: 0; transform: scale(0.97); }
+        to   { opacity: 1; transform: scale(1); }
       }
-      /* logo 呼吸：光效明显（10px→30px），但单一转向点 + 正弦缓动 → 不跳跃 */
-      @keyframes blLogo {
-        0%,100% { opacity: 0.62; filter: brightness(0) invert(1); }
-        50%     { opacity: 1;    filter: brightness(0) invert(1); }
+      @keyframes blGlow { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }
+      @keyframes blTagIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
       }
-      @keyframes blLetter { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @keyframes blHorizon {
+        from { opacity: 0; transform: scaleX(0.6); }
+        to   { opacity: 1; transform: scaleX(1); }
+      }
       /* 首屏先藏顶部栏，等样式表接管后再由应用逻辑显示，避免未样式化大 logo 闪现 */
       #appbar { display: none; }
     </style>
@@ -65,33 +68,23 @@
     <meta name="apple-mobile-web-app-title" content="灵感改装" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
 
-    <!-- 复古电子 / 像素 + 霓虹赛博 字体（首屏关键资源，preconnect 加速） -->
+    <!-- 品牌字体：Inter（拉丁，宽字距排版）+ Noto Sans SC（中文）。首屏关键资源，preconnect 加速 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Share+Tech+Mono&family=Noto+Sans+SC:wght@400;500;700;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
 
     <title>灵感改装 · INSPIRE CAR · 汽车改装 3D 预览</title>
   </head>
   <body>
-    <!-- 品牌启动页：首页资源就绪前显示，仅英文名（logo 已移除，文字居中） -->
+    <!-- 品牌启动页：纯黑全屏 + 新字标 + 品牌标语 + 地平线光效 -->
     <div id="brand-loading" class="brand-loading" aria-hidden="true">
       <div class="brand-loading__inner">
-        <div class="brand-loading__text" aria-label="INSPIRE CAR">
-          <span style="--i:0">I</span>
-          <span style="--i:1">N</span>
-          <span style="--i:2">S</span>
-          <span style="--i:3">P</span>
-          <span style="--i:4">I</span>
-          <span style="--i:5">R</span>
-          <span style="--i:6">E</span>
-          <span class="brand-loading__space"></span>
-          <span style="--i:7">C</span>
-          <span style="--i:8">A</span>
-          <span style="--i:9">R</span>
-        </div>
+        <img class="brand-loading__logo" src="/src/assets/logo-wordmark-white.png" alt="INSPIRE CAR" />
+        <div class="brand-loading__tag">MODIFY<i>×</i>EXPLORE<i>×</i>BEYOND</div>
+        <div class="brand-loading__horizon"></div>
       </div>
     </div>
 
@@ -99,7 +92,7 @@
       <!-- 第二层（TUNING STUDIO）顶部返回栏：返回灵感车库并保存方案 -->
       <header id="appbar">
         <div class="appbar-left">
-          <img class="appbar-logo" src="/src/assets/logo-mark-nobg.png" alt="INSPIRE CAR" />
+          <img class="appbar-logo" src="/src/assets/logo-wordmark-white.png" alt="INSPIRE CAR" />
           <span class="appbar-title">INSPIRE CAR</span>
           <span class="appbar-sep">/</span>
           <span class="appbar-loc">TUNING STUDIO</span>

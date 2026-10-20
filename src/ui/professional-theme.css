@@ -15,7 +15,7 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
 .gb-back, .auth-userbar__btn {
   border-radius: 999px;
   background: var(--accent);
-  color: #14100a;
+  color: #0d0d10;
   border: 0;
   box-shadow: none;
 }
@@ -30,18 +30,18 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
   border-bottom: 1px solid rgba(255,255,255,.10);
   box-shadow: none;
 }
-.garage-logo { filter: none; height: 42px; }
+.garage-logo { filter: none; height: 16px; }
 .garage-brand__title { color: #fff; text-shadow: none; letter-spacing: .03em; }
 .garage-brand__sub { color: var(--accent); text-shadow: none; letter-spacing: .18em; }
 .garage-userchip, .auth-userbar {
   background: rgba(30,30,34,.82);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
-.garage-userchip__btn { background: var(--accent); color: #14100a; }
+.garage-userchip__btn { background: var(--accent); color: #0d0d10; }
 
 .gb-btn { border-radius: 10px; height: 46px; font-weight: 750; }
 .gb-btn.primary {
-  color: #14100a;
+  color: #0d0d10;
   background: var(--accent);
   border: 0;
   box-shadow: 0 10px 30px rgba(212,180,131,.14);
@@ -58,14 +58,11 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
 button, input, select { font-family: inherit; }
 input[type="range"] { accent-color: var(--accent); }
 
-.brand-loading { background: var(--bg); }
-.brand-loading__text { color: rgba(255,255,255,.72); letter-spacing: .20em; }
-.brand-loading__text span { animation: none; color: inherit; text-shadow: none; }
 
 @media (max-width: 720px) {
   #appbar { flex-basis: 58px; padding: 0 14px; }
   .garage-header { padding: 14px 18px; }
-  .garage-logo { height: 34px; }
+  .garage-logo { height: 12px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
