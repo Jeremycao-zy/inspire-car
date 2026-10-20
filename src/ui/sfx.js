@@ -520,18 +520,20 @@ function mountMuteButton() {
   btn.textContent = '音效 开';
   Object.assign(btn.style, {
     position: 'fixed',
-    right: '14px',
-    bottom: '14px',
-    zIndex: '9999',
-    padding: '6px 12px',
-    fontSize: '12px',
+    // 让位给右下角的人偶助手（人偶宽 118 + 右边距 20 → 占到 right 138）
+    right: '152px',
+    bottom: '26px',
+    // 需高于车库层(100)，否则被盖住点不到；低于模态框(1000)
+    zIndex: '160',
+    padding: '5px 11px',
+    fontSize: '11px',
     fontFamily: 'inherit',
-    letterSpacing: '0.04em',
-    color: '#c8b6ff',
-    background: 'rgba(10,10,18,0.76)',
-    border: '1px solid rgba(160,140,255,0.5)',
+    letterSpacing: '0.16em',
+    color: 'rgba(255,255,255,0.62)',
+    background: 'rgba(14,14,18,0.72)',
+    border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: '999px',
-    boxShadow: '0 0 12px rgba(120,100,255,0.35)',
+    boxShadow: 'none',
     cursor: 'pointer',
     backdropFilter: 'blur(6px)',
     userSelect: 'none',
@@ -540,8 +542,8 @@ function mountMuteButton() {
     e.stopPropagation();
     const on = sfx.toggle();
     btn.textContent = on ? '音效 开' : '音效 关';
-    btn.style.color = on ? '#c8b6ff' : '#ff9aa6';
-    btn.style.borderColor = on ? 'rgba(160,140,255,0.5)' : 'rgba(255,150,160,0.5)';
+    btn.style.color = on ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.38)';
+    btn.style.borderColor = on ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)';
   });
   document.body.appendChild(btn);
 }

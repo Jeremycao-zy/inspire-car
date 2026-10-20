@@ -1,123 +1,55 @@
 /**
- * aiOrb.js — 首页「发光点阵球」AI 对话入口
+ * aiOrb.js — 首页「小灵」AI 人偶（语音助手入口）
  *
- * 视觉：右下角悬浮的 Three.js 点阵球（Fibonacci 球面分布 + 加法混合 + 辉光贴图 +
- *       缓慢自转 + 轻微浮动 + CSS 呼吸光环），点击展开侧滑对话面板。
+ * 视觉：右下角悬浮的可爱人偶（品牌定制角色：靛蓝云朵头 + 深色面罩 + 胸口 `>_` 终端）。
+ *       两张立绘切换：待机（闭眼月牙）/ 说话·聆听（睁眼发光）。
+ *       纯 CSS 动画（浮动 + 呼吸 + 说话时轻弹），不再占用 WebGL 上下文 ——
+ *       此前这里是第 3 个 WebGL 上下文（另两个是 hero 车模预览与卡片缩略图），
+ *       在 iOS Safari 上是 jetsam 闪退的元凶之一。换成 <img> 后该压力直接消失。
  * 对话：面板调用后端 POST /api/chat（OpenAI 兼容、流式 SSE），无 key 时有兜底文案。
- *
- * 性能：独占一个小的 WebGLRenderer；离开首页（garage 隐藏）时 pause() 停渲染、
- *       dispose() 释放上下文，避免和车库 hero 预览 / studio 视口叠加出移动端
- *       WebGL 上下文过多导致的闪回问题。
+ * 语音：点击人偶直接开始识别（连续续听），回复走 /api/tts 真人音色，失败退回系统语音。
  */
 
-import * as THREE from 'three';
 import './aiOrb.css';
+import mascotIdleUrl from '../assets/mascot-idle.png';
+import mascotActiveUrl from '../assets/mascot-active.png';
 
-/** 生成柔和圆形辉光贴图（白色核心 → 青色 → 透明），给点阵球做发光感 */
-function makeGlowTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.25, 'rgba(180,246,255,0.95)');
-  grd.addColorStop(1, 'rgba(0,229,255,0)');
-  g.fillStyle = grd;
-  g.beginPath();
-  g.arc(32, 32, 32, 0, Math.PI * 2);
-  g.fill();
-  const t = new THREE.CanvasTexture(c);
-  t.needsUpdate = true;
-  return t;
-}
+/** 助手名字 */
+export const ASSISTANT_NAME = '小灵';
 
 function mountAiOrb() {
   /* ---------- DOM ---------- */
   const wrap = document.createElement('div');
   wrap.className = 'ai-orb';
-  const canvas = document.createElement('canvas');
-  canvas.className = 'ai-orb__canvas';
+  wrap.setAttribute('role', 'button');
+  wrap.setAttribute('aria-label', `${ASSISTANT_NAME} · AI 改装助手（点击语音对话）`);
+
+  // 两张立绘：待机（闭眼月牙）/ 活跃（睁眼发光，说话·聆听时切换）
+  const mascotIdle = document.createElement('img');
+  mascotIdle.className = 'ai-orb__mascot ai-orb__mascot--idle';
+  mascotIdle.src = mascotIdleUrl;
+  mascotIdle.alt = ASSISTANT_NAME;
+  mascotIdle.draggable = false;
+  mascotIdle.decoding = 'async';
+
+  const mascotActive = document.createElement('img');
+  mascotActive.className = 'ai-orb__mascot ai-orb__mascot--active';
+  mascotActive.src = mascotActiveUrl;
+  mascotActive.alt = '';
+  mascotActive.setAttribute('aria-hidden', 'true');
+  mascotActive.draggable = false;
+  mascotActive.decoding = 'async';
+
   const label = document.createElement('div');
   label.className = 'ai-orb__label';
-  label.textContent = 'AI';
+  label.textContent = ASSISTANT_NAME;
+
   const hint = document.createElement('div');
   hint.className = 'ai-orb__hint';
   hint.textContent = '点我说话';
-  wrap.append(canvas, label, hint);
+
+  wrap.append(mascotIdle, mascotActive, label, hint);
   document.body.appendChild(wrap);
-
-  /* ---------- Three.js 点阵球 ---------- */
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-  const SIZE = 132;
-  renderer.setSize(SIZE, SIZE, false);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
-  camera.position.z = 2.25;
-
-  const N = 720;
-  const positions = new Float32Array(N * 3);
-  const colors = new Float32Array(N * 3);
-  const col = new THREE.Color('#00e5ff');
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < N; i++) {
-    const y = 1 - (i / (N - 1)) * 2;
-    const r = Math.sqrt(Math.max(0, 1 - y * y));
-    const th = golden * i;
-    positions[i * 3] = Math.cos(th) * r;
-    positions[i * 3 + 1] = y;
-    positions[i * 3 + 2] = Math.sin(th) * r;
-    colors[i * 3] = col.r;
-    colors[i * 3 + 1] = col.g;
-    colors[i * 3 + 2] = col.b;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const tex = makeGlowTexture();
-  const mat = new THREE.PointsMaterial({
-    size: 0.1,
-    map: tex,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    vertexColors: true,
-    sizeAttenuation: true,
-  });
-  const points = new THREE.Points(geo, mat);
-  scene.add(points);
-
-  let raf = 0;
-  let running = true;
-  let t = 0;
-  /* 这个球是首页上第 3 个 WebGL 上下文（另两个是 hero 车模预览和卡片缩略图预览引擎）。
-   * 它原先无条件跑满 60fps、且从不因页面不可见而停 —— 是移动端持续 GPU 负载的来源之一，
-   * 叠加那些动辄 30~48MB 的车模，很容易把 Safari 顶到 jetsam（页面重载＝用户看到的"闪退"）。
-   * 现在：①限帧 30fps（点阵旋转在这个速度下肉眼无差别，步进加倍以保持原转速）
-   *      ②页面切到后台（document.hidden）时只驱动时间、不渲染 */
-  const FRAME_MS = 1000 / 30;
-  let last = 0;
-  function frame() {
-    if (!running) {
-      raf = 0;
-      return;
-    }
-    raf = requestAnimationFrame(frame);
-    const now = performance.now();
-    if (document.hidden) {
-      last = now;
-      return;
-    }
-    if (now - last < FRAME_MS) return;
-    last = now;
-    t += 0.01;
-    points.rotation.y = t;
-    points.rotation.x = Math.sin(t * 0.5) * 0.18;
-    points.position.y = Math.sin(t * 1.4) * 0.04;
-    renderer.render(scene, camera);
-  }
-  frame();
 
   /* ---------- 对话面板 ---------- */
   // 朗读音色：默认 Cherry（百炼 qwen-tts 真人音色），可在面板里切换并持久化
@@ -126,7 +58,7 @@ function mountAiOrb() {
   panel.className = 'ai-chat';
   panel.innerHTML = `
     <div class="ai-chat__head">
-      <div class="ai-chat__title">AI 改装助手<small>轮毂 · 姿态 · 车漆建议</small></div>
+      <div class="ai-chat__title">小灵 · 改装助手<small>轮毂 · 姿态 · 车漆建议</small></div>
       <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
         <span>音色</span>
         <select class="ai-chat__voice-sel">
@@ -223,7 +155,7 @@ function mountAiOrb() {
   function openPanel() {
     panel.classList.add('open');
     if (!list.children.length) {
-      addBubble('ai', '你好，我是灵感改装 AI 助手。想换轮毂、调姿态还是改车漆？告诉我你的车型，我帮你出方案。');
+      addBubble('ai', `你好，我是${ASSISTANT_NAME}，灵感改装的 AI 助手。想换轮毂、调姿态还是改车漆？告诉我你的车型，我帮你出方案。`);
     }
     setTimeout(() => ta.focus(), 280);
   }
@@ -365,6 +297,7 @@ function mountAiOrb() {
      只要用户没主动结束就自动重启，避免"说了一半就断开"（对话时灵时不灵的主因）。 */
   let wanting = false;
   let restartTimer = 0;
+  let netErrCount = 0; // 连续网络失败次数（超过阈值退回文字面板）
 
   function stopListening() {
     wanting = false;
@@ -411,11 +344,12 @@ function mountAiOrb() {
     recog.onerror = (ev) => {
       const code = ev?.error || '';
       if (code === 'not-allowed' || code === 'service-not-allowed') {
-        // 麦克风权限被拒：给明确指引，并退回文字面板
+        // 麦克风权限被拒：给明确指引，并退回文字面板（否则用户会卡在"聆听中"进退两难）
         wanting = false;
         listening = false;
         wrap.classList.remove('is-listening');
-        showCaption('麦克风被禁用，请在浏览器地址栏允许麦克风权限。', 5000);
+        showCaption('麦克风被禁用，已切换文字对话；可在浏览器地址栏允许麦克风权限。', 5000);
+        openPanel();
         return;
       }
       if (code === 'no-speech') {
@@ -424,6 +358,16 @@ function mountAiOrb() {
       }
       if (code === 'network') {
         showCaption('网络不稳定，正在重试聆听…', 2500);
+        netErrCount += 1;
+        if (netErrCount >= 3) {
+          // 连续网络失败：放弃语音，直接给文字面板，避免无限重试
+          wanting = false;
+          listening = false;
+          wrap.classList.remove('is-listening');
+          showCaption('语音识别连不上，已切换文字对话。', 4000);
+          openPanel();
+          return;
+        }
         restartListening(800);
         return;
       }
@@ -439,6 +383,7 @@ function mountAiOrb() {
         return;
       }
       stopListening();
+      netErrCount = 0;
       if (!text) return;
       showCaption(`你说：${text}\n思考中…`, 0);
       try {
@@ -467,6 +412,7 @@ function mountAiOrb() {
       return;
     }
     wanting = true;
+    netErrCount = 0;
     showCaption('正在聆听…', 0);
     try {
       recog.start();
@@ -481,13 +427,13 @@ function mountAiOrb() {
   });
 
   /* ---------- 生命周期 ---------- */
+  // 人偶是纯 CSS 动画：离开首页（进 TUNING STUDIO / 页面进后台）时淡出并冻结动画，
+  // 回到首页再淡入。旧实现是 WebGL 球"原地冻住"，看着像渲染卡死。
   function pause() {
-    running = false;
-    if (raf) cancelAnimationFrame(raf);
-    raf = 0;
+    wrap.classList.add('is-paused', 'is-hidden');
   }
   function resume() {
-    if (!running) { running = true; frame(); }
+    wrap.classList.remove('is-paused', 'is-hidden');
   }
   function dispose() {
     pause();
@@ -508,10 +454,6 @@ function mountAiOrb() {
     }
     clearTimeout(captionTimer);
     caption.remove();
-    renderer.dispose();
-    geo.dispose();
-    mat.dispose();
-    tex.dispose();
     wrap.remove();
     panel.remove();
   }
