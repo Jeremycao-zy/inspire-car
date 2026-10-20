@@ -2967,10 +2967,26 @@ void bootGarage().finally(hideBrandLoading);
  * 这里不再重复赋值——重复会把上面那份覆盖掉。 */
 
 /* PWA：仅生产构建下注册 Service Worker，让「添加到主屏幕」后可离线打开首屏。
- * 开发模式（HMR）下不注册，避免缓存干扰热更新。 */
+ * 开发模式（HMR）下不注册，避免缓存干扰热更新。
+ * 2026-10-21 补充更新流：SW 每次加载都 check 更新；新 SW 接管（controllerchange）
+ * 后自动整页刷新一次（sessionStorage 防循环），保证发版后用户不再困在旧外壳里。 */
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // 每次进站主动查一次更新（不依赖浏览器自带的 24h 节流）
+      reg.update().catch(() => {});
+      // 新 SW 已接管：整页刷新一次，拿到新外壳
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;
+        try {
+          if (sessionStorage.getItem('sw-reloaded') === '1') return;
+          sessionStorage.setItem('sw-reloaded', '1');
+        } catch { /* 隐私模式拿不到 sessionStorage 就放弃自动刷新 */ }
+        reloaded = true;
+        location.reload();
+      });
+    }).catch((err) => {
       console.warn('[PWA] Service Worker 注册失败:', err);
     });
   });
