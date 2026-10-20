@@ -2286,10 +2286,14 @@ function handleGenerateError(kind, e) {
 /**
  * 被云端明确拒绝过的票（存 tokenId 短哈希）。
  *
- * 为什么要单独记：/api/health 只知道"凭证文件存不存在、里面写的过期时间到没到"，
+ * 历史背景：早期 /api/health 只知道"凭证文件存不存在、里面写的过期时间到没到"，
  * 但票可能被提前吊销、也可能用户抄错一位——这两种情况下文件还在、时间还没到，
  * 云端却直接 401。只有把"这张票刚被拒过"记下来，状态卡才能如实显示已失效；
  * 等用户真换了票、tokenId 变了，自然就不在这个集合里，状态卡自动恢复。
+ *
+ * 现在后端已做真实性探测（engines[].verified），比这个本地补丁更权威，
+ * 见下方 classifyHealth 的优先判断。此集合仍保留作为兜底：
+ * 探测超时/探不出（verified === null）时，本地记忆仍能派上用场。
  */
 const rejectedTokenIds = new Set();
 
@@ -2301,6 +2305,10 @@ function classifyHealth(h, engine = 'hunyuan') {
     return e?.available ? 'live' : 'demo';
   }
   if (e?.mode !== 'live') return 'demo';
+  // 后端已用无害请求真验过凭证：云端明确拒绝 → 直接判失效。
+  // 这比"文件里声明的过期时间"和下面的本地记忆都可靠，且能覆盖提前吊销、
+  // 抄错一位、平台令牌过期等所有"文件还在但云端不认"的情况。
+  if (e.verified === false) return 'expired';
   // 云端已经拒过这张票，比文件里声明的过期时间更可信
   if (e.tokenId && rejectedTokenIds.has(e.tokenId)) return 'expired';
   // Hyper3D / fal 等 API Key 无固定过期时间，expiresAt 为 null 时直接视为 live

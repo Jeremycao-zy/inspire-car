@@ -41,6 +41,7 @@ import * as newsBot from './newsBot.mjs';
 import { handleChat } from './chat.mjs';
 import { handleTts } from './voice.mjs';
 import { handleClientError } from './clientErrors.mjs';
+import { probeEnginesCached } from './engineProbe.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2089,6 +2090,30 @@ async function handleRequest(req, res) {
     const tk = resolveToken();
     const hk = hyper3d.resolveToken();
     const fk = fal.resolveToken();
+
+    /* ---- 凭证真实性探测 ----
+     * 原来的 mode 只看"令牌字符串非空"，导致过期/被吊销的凭证也显示 live
+     * （真实案例：一个 8-30 过期的平台令牌连续 7 周显示 live，云端实际 401）。
+     * 这里用各引擎客户端发无害请求真验一次，结果放在 verified 字段：
+     *   true  云端接受凭证（含额度用完——那反而证明凭证有效）
+     *   false 云端明确拒绝（401/invalid key）
+     *   null  探不出来（网络/超时/该引擎无可靠探测端点）
+     * mode 字段语义不变（是否配置了凭证），避免破坏既有前端逻辑。
+     * 探测带 30s TTL 缓存；?noprobe=1 可跳过（排查性能问题时用）。 */
+    let probe = {};
+    if (u.searchParams.get('noprobe') !== '1') {
+      try {
+        probe = await probeEnginesCached({
+          hunyuan: tk.token,
+          hyper3d: hk.token,
+          fal: fk.token,
+        });
+      } catch (e) {
+        // 探测整体失败不能拖垮健康检查本身
+        probe = { _error: String(e?.message || e).slice(0, 120) };
+      }
+    }
+
     const health = {
       ok: true,
       dbMode: db.dbMode,
@@ -2102,6 +2127,8 @@ async function handleRequest(req, res) {
           mode: tk.token ? 'live' : 'demo',
           expiresAt: tk.expiresAt || null,
           tokenId: tk.tokenId || null,
+          verified: probe.hunyuan?.verified ?? null,
+          verifiedReason: probe.hunyuan?.reason || null,
         },
         hyper3d: {
           mode: hk.token ? 'live' : 'demo',
@@ -2109,6 +2136,8 @@ async function handleRequest(req, res) {
           tokenId: hk.tokenId || null,
           // API Key 通常无固定过期时间；null 表示按 Key 本身状态判断
           expiresAt: null,
+          verified: probe.hyper3d?.verified ?? null,
+          verifiedReason: probe.hyper3d?.reason || null,
         },
         fal: {
           mode: fk.token ? 'live' : 'demo',
@@ -2116,10 +2145,15 @@ async function handleRequest(req, res) {
           model: fal.MODEL,
           tokenId: fk.tokenId || null,
           expiresAt: null,
+          verified: probe.fal?.verified ?? null,
+          verifiedReason: probe.fal?.reason || null,
         },
         higen3d: { available: higen.available(), endpoint: higen.ENDPOINT_INFO.ENDPOINT },
         vision: vision.getVisionStatus(),
       },
+      // 探测缓存命中时前端可知道这个结果可能不是最新的
+      probeCached: probe._cached === true,
+      probeAt: probe._probedAt ? new Date(probe._probedAt).toISOString() : null,
       hint: tk.token
         ? '已配置凭证，将真实调用混元 3D'
         : '未配置凭证，当前为离线演示模式',
