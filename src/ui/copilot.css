@@ -120,7 +120,7 @@
   align-self: flex-end;
   max-width: 84%;
   color: var(--bg);
-  background: linear-gradient(100deg, var(--cop-pink), #ff66c4 55%, var(--cop-cyan));
+  background: var(--accent);
   font-weight: 500;
 }
 

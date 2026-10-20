@@ -21,7 +21,7 @@ import { mountAiOrb } from './aiOrb.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
 import { createForum, createNews } from './community.js';
 import './garage.css';
-import logoMarkUrl from '../assets/logo-mark-neon.png';
+import logoMarkUrl from '../assets/logo-mark-nobg.png';
 
 /**
  * 方案按登录用户隔离：每个用户一套命名空间，互不串台。

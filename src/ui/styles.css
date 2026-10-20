@@ -1001,7 +1001,7 @@ input[type='range']::-moz-range-thumb {
   height: 32px;
   border-radius: 50%;
   border: 1px solid var(--line-2);
-  background: rgba(12, 10, 22, 0.62);
+  background: rgba(10, 10, 11, 0.62);
   color: var(--neon-cyan);
   font-size: 15px;
   line-height: 1;
@@ -1725,10 +1725,10 @@ body {
 
 /* ---- 霓虹滑块 ---- */
 input[type='range']::-webkit-slider-thumb {
-  box-shadow: 0 0 8px var(--neon-cyan), 0 1px 5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
 }
 input[type='range']::-moz-range-thumb {
-  box-shadow: 0 0 8px var(--neon-cyan);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 input[type='range'] {
   background: linear-gradient(90deg, rgba(0,0,0,0.4), var(--line));
@@ -1743,15 +1743,15 @@ input[type='range'] {
   background: rgba(0, 0, 0, 0.25);
 }
 *::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--neon-purple), var(--neon-cyan));
+  background: #3d3d45;
   border-radius: 6px;
   border: 2px solid rgba(10, 10, 20, 0.9);
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--neon-pink), var(--neon-cyan));
+  background: #4a4a53;
 }
 #sidebar::-webkit-scrollbar-thumb {
-  background: #3a2f5e;
+  background: #3d3d45;
 }
 
 /* ---- 霓虹按钮 / 选中态统一发光 ---- */
@@ -1792,14 +1792,14 @@ input[type='range'] {
 
 /* 顶部登录用户条：改为深紫玻璃 + 霓虹按钮 */
 .auth-userbar {
-  background: rgba(18, 16, 31, 0.72);
+  background: rgba(18, 18, 20, 0.72);
   box-shadow: 0 6px 18px rgba(0,0,0,0.126), inset 0 0 0 1px rgba(255,255,255,0.09);
 }
 .auth-userbar__name {
   color: var(--text);
 }
 .auth-userbar__btn {
-  background: linear-gradient(100deg, var(--neon-pink) 0%, var(--neon-purple) 100%);
+  background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 14px rgba(0,0,0,0.245);
 }
 
@@ -2397,7 +2397,7 @@ input[type='range'] {
 .wg-tab.is-current {
   background: var(--neon-cyan, var(--accent));
   border-color: var(--neon-cyan, var(--accent));
-  color: #0b0820;
+  color: var(--bg);
   box-shadow: 0 4px 16px rgba(0,0,0,0.34);
 }
 /* 已拍角度：✓ 亮起（当前角度上的 ✓ 反白） */
@@ -2411,7 +2411,7 @@ input[type='range'] {
   display: inline;
 }
 .wg-tab.is-done.is-current .wg-tab__check {
-  color: #0b0820;
+  color: var(--bg);
   text-shadow: none;
 }
 /* 正在预览（点胶囊回看）：描边提亮，不一定是要拍的角度 */
@@ -2428,7 +2428,7 @@ input[type='range'] {
   aspect-ratio: 1 / 1;
   border-radius: 16px;
   overflow: hidden;
-  background: #0c0820;
+  background: var(--bg);
   border: 1px solid var(--line-2);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.5),
@@ -2703,7 +2703,7 @@ input[type='range'] {
   gap: 10px;
   padding: 12px;
   border-radius: 12px;
-  background: linear-gradient(170deg, rgba(26, 16, 48, 0.6) 0%, rgba(12, 8, 32, 0.6) 100%);
+  background: linear-gradient(170deg, rgba(26, 16, 48, 0.6) 0%, rgba(10, 10, 11, 0.6) 100%);
   border: 1px solid var(--line-2);
 }
 .spec-row {

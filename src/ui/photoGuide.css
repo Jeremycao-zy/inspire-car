@@ -21,27 +21,12 @@
     radial-gradient(520px 460px at 50% 6%, rgba(0,0,0,0.4), transparent 68%),
     radial-gradient(900px 520px at 82% -12%, rgba(0,0,0,0.4), transparent 60%),
     radial-gradient(1000px 600px at 12% 2%, rgba(0,0,0,0.4), transparent 55%),
-    linear-gradient(180deg, #0b0820 0%, var(--bg) 46%, #120a24 100%);
+    linear-gradient(180deg, var(--bg) 0%, var(--bg) 46%, var(--panel) 100%);
   background-attachment: fixed;
   color: var(--text, #e8f6ff);
   font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   overflow: hidden;
-}
-
-/* 蓝图格点叠层：霓虹青/粉细线，强化「工位」感（仿车库层） */
-.photo-guide-layer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(0,0,0,0.4) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,0.4) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
-  -webkit-mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
-  z-index: 0;
 }
 
 .photo-guide-layer.hidden {
@@ -62,7 +47,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 24px;
-  background: rgba(12, 10, 22, 0.62);
+  background: rgba(10, 10, 11, 0.62);
   border-bottom: 1px solid var(--line-2);
   backdrop-filter: blur(14px);
   box-shadow: 0 6px 24px rgba(0,0,0,0.102);
@@ -163,7 +148,7 @@
   gap: 12px;
   padding: 14px;
   border-radius: 16px;
-  background: linear-gradient(170deg, #1a1030 0%, #120a24 55%, #0c0820 100%);
+  background: linear-gradient(170deg, var(--panel-2) 0%, var(--panel) 55%, var(--bg) 100%);
   border: 1px solid var(--line-2);
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.45),
@@ -177,7 +162,7 @@
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--neon-cyan, var(--accent)) 0%, var(--neon-purple, var(--accent)) 100%);
+  background: var(--accent);
   color: #fff;
   display: grid;
   place-items: center;
@@ -223,7 +208,7 @@
   aspect-ratio: 4 / 3;
   border-radius: 18px;
   overflow: hidden;
-  background: #0c0820;
+  background: var(--bg);
   border: 1px solid var(--line-2);
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.5),
@@ -352,7 +337,7 @@
   border: none;
   border-radius: 0;
   box-shadow: none;
-  background: #0c0820;
+  background: var(--bg);
 }
 
 /* 取景框底部居中的大上传触发按钮 */
@@ -364,7 +349,7 @@
   transform: translateX(-50%);
   padding: 13px 26px;
   border-radius: 999px;
-  background: rgba(12, 8, 32, 0.72);
+  background: rgba(10, 10, 11, 0.72);
   backdrop-filter: blur(8px);
   box-shadow: 0 5px 20px rgba(0,0,0,0.297);
   font-size: 15px;
@@ -461,7 +446,7 @@
   padding: 10px;
   border-radius: 14px;
   cursor: pointer;
-  background: linear-gradient(170deg, #1a1030 0%, #120a24 55%, #0c0820 100%);
+  background: linear-gradient(170deg, var(--panel-2) 0%, var(--panel) 55%, var(--bg) 100%);
   border: 1px solid var(--line-2);
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.45),
@@ -510,7 +495,7 @@
 }
 
 .photo-guide__strip-item--active .photo-guide__strip-index {
-  background: linear-gradient(100deg, var(--neon-cyan, var(--accent)), #7af0ff);
+  background: var(--accent);
   color: var(--bg);
   box-shadow: 0 3px 12px rgba(0,0,0,0.468);
 }
@@ -527,7 +512,7 @@
   aspect-ratio: 4 / 3;
   border-radius: 10px;
   overflow: hidden;
-  background: #0c0820;
+  background: var(--bg);
   border: 1px solid var(--line-2);
 }
 
@@ -566,7 +551,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(100deg, var(--neon-cyan, var(--accent)), #7af0ff);
+  background: var(--accent);
   color: var(--bg);
   font-size: 11px;
   font-weight: 800;
@@ -621,7 +606,7 @@
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: 12px;
-  background: #0c0820;
+  background: var(--bg);
   border: 1px solid var(--line-2);
   box-shadow: inset 0 4px 18px rgba(0,0,0,0.068);
 }
@@ -654,7 +639,7 @@
   bottom: 0;
   z-index: 110;
   padding: 16px 24px 22px;
-  background: rgba(12, 10, 22, 0.72);
+  background: rgba(10, 10, 11, 0.72);
   border-top: 1px solid var(--line-2);
   backdrop-filter: blur(14px);
   box-shadow: 0 -6px 24px rgba(0,0,0,0.084);
@@ -686,7 +671,7 @@
   padding: 12px 28px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: linear-gradient(100deg, var(--neon-pink, var(--accent)) 0%, #ff66c4 45%, var(--neon-cyan, var(--accent)) 100%);
+  background: var(--accent);
   color: var(--bg);
   font-family: inherit;
   font-size: 15px;
@@ -733,7 +718,7 @@
   padding: 28px;
   border-radius: 20px;
   text-align: center;
-  background: linear-gradient(170deg, #1a1030 0%, #120a24 55%, #0c0820 100%);
+  background: linear-gradient(170deg, var(--panel-2) 0%, var(--panel) 55%, var(--bg) 100%);
   border: 1px solid var(--line-2);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.6),
@@ -958,7 +943,7 @@
 
 .photo-guide__overlay-btn.primary {
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: linear-gradient(100deg, var(--neon-pink, var(--accent)) 0%, #ff66c4 45%, var(--neon-cyan, var(--accent)) 100%);
+  background: var(--accent);
   color: var(--bg);
   box-shadow: 0 5px 22px rgba(0,0,0,0.297);
 }

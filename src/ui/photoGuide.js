@@ -10,7 +10,7 @@
  */
 
 import { generateModel, GenerateError } from '../api/generate.js';
-import logoMarkUrl from '../assets/logo-mark-neon.png';
+import logoMarkUrl from '../assets/logo-mark-nobg.png';
 import { loading3D } from './loading3d.js';
 import './photoGuide.css';
 
