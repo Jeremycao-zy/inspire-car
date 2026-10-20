@@ -44,6 +44,7 @@ import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
 import { loading3D } from './ui/loading3d.js';
+import { initErrorReporter } from './ui/errorReporter.js';
 import './ui/styles.css';
 import './ui/professional-theme.css';
 
@@ -2952,6 +2953,9 @@ function hideBrandLoading() {
     setTimeout(() => el.classList.add('hidden'), 760);
   }, remain);
 }
+
+// 错误上报必须最早初始化：晚于 bootGarage() 就会漏掉启动阶段的报错
+initErrorReporter();
 
 // 启动门禁
 void bootGarage().finally(hideBrandLoading);

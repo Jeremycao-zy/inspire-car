@@ -40,6 +40,7 @@ import * as wheels from './wheels.mjs';
 import * as newsBot from './newsBot.mjs';
 import { handleChat } from './chat.mjs';
 import { handleTts } from './voice.mjs';
+import { handleClientError } from './clientErrors.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2074,6 +2075,13 @@ async function handleRequest(req, res) {
    * 保证 /api/generate 的 SSE 流不会被静态逻辑接管。 */
   if (staticServer.enabled && !isApiPath(u.pathname)) {
     await staticServer.handle(req, res, u.pathname);
+    return;
+  }
+
+  /* ---------- 客户端错误收集（自建监控）----------
+   * 放在最前面：它必须永远成功返回，不该被任何鉴权/限流逻辑挡住。 */
+  if (u.pathname === '/api/client-error' && req.method === 'POST') {
+    await handleClientError(req, res);
     return;
   }
 
