@@ -52,7 +52,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js 22
-        uses: oven-sh/setup-node@v4
+        # ⚠️ 组织名是 actions，不是 oven-sh（oven-sh 是 Bun 的组织，没有 setup-node 仓库）。
+        #    写错 org 会报 "Unable to resolve action oven-sh/setup-node, repository not found"。
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -81,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js 22
-        uses: oven-sh/setup-node@v4
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           # package-lock.json 已提交，用 npm ci 严格按 lockfile 安装，保证构建可复现。
@@ -101,11 +103,13 @@ jobs:
 
       # ---------------------------------------------------------------------
       # Fly.io CLI
-      # 用固定大版本 @2 而非 @master：master 是移动目标，上游一次不兼容改动
-      # 就会让我们的部署静默翻车，且难以归因。
+      # 用 @master（Fly 官方文档的推荐用法）。该 action 只负责安装 flyctl 二进制，
+      # 实际 CLI 版本由下面的 flyctl-version 控制，所以 @master 的"移动目标"风险很低。
+      # ⚠️ 不要改成 @v2：该仓库没有 v2 标签（只有 v1.4 / v1 / 1.x），
+      #    写错会直接 "Unable to resolve action, repository not found"。
       # ---------------------------------------------------------------------
       - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@2
+        uses: superfly/flyctl-actions/setup-flyctl@master
         with:
           flyctl-version: latest
 
