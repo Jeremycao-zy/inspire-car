@@ -518,12 +518,30 @@ function mountMuteButton() {
   btn.id = 'sfx-mute-btn';
   btn.type = 'button';
   btn.textContent = '音效 开';
+  // 桌面：右下角让人偶（人偶宽 118 + 右边距 20 → 占到 right 138）。
+  // 窄屏（≤640px）：右下角有人偶 + 拍摄引导页底部是全宽 CTA，
+  // 固定 right:152/bottom:26 会压住「开始建模/开始生成轮毂」按钮——
+  // 改放左侧、抬到 footer 上方；用 matchMedia 跟随旋转/缩放实时切换。
+  const applyMutePos = () => {
+    const mobile = window.matchMedia('(max-width: 640px)').matches;
+    if (mobile) {
+      btn.style.left = '12px';
+      btn.style.right = 'auto';
+      btn.style.bottom = '96px';
+    } else {
+      btn.style.left = 'auto';
+      btn.style.right = '152px';
+      btn.style.bottom = '26px';
+    }
+  };
+  applyMutePos();
+  try {
+    window.matchMedia('(max-width: 640px)').addEventListener('change', applyMutePos);
+  } catch {
+    window.addEventListener('resize', applyMutePos); // 老浏览器兜底
+  }
   Object.assign(btn.style, {
     position: 'fixed',
-    // 让位给右下角的人偶助手（人偶宽 118 + 右边距 20 → 占到 right 138）
-    right: '152px',
-    bottom: '26px',
-    // 需高于车库层(100)，否则被盖住点不到；低于模态框(1000)
     zIndex: '160',
     padding: '5px 11px',
     fontSize: '11px',

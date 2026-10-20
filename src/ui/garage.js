@@ -552,7 +552,7 @@ let _activeCleanup = null;
  * @param {object|null} [o.user] 初始登录用户
  * @param {Element} [o.mount] 挂载根节点
  */
-export function mountGarage({ onEnter, onLogin, user: initialUser, mount } = {}) {
+export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, mount } = {}) {
   const root = mount || $('#garage');
   if (!root) return null;
   if (_activeCleanup) {
@@ -828,7 +828,9 @@ export function mountGarage({ onEnter, onLogin, user: initialUser, mount } = {})
         } catch (e) {
           /* ignore */
         }
-        onEnter?.(null);
+        // 「去生成轮毂」必须走轮毂工坊全屏页，绝不能再落到车模拍摄引导（用户明确要求）
+        if (typeof onNewWheel === 'function') onNewWheel();
+        else onEnter?.(null);
       },
     });
     pageWheels.appendChild(warehouse.el);
@@ -1002,6 +1004,11 @@ export function mountGarage({ onEnter, onLogin, user: initialUser, mount } = {})
     upsertPlan(plan) {
       upsertPlan(plan);
       renderGrid();
+    },
+    /** 外部导航到顶层分页（garage | wheels | forum | news）；
+     *  轮毂工坊建模完成后用 openPage('wheels') 直接落在轮毂仓库。 */
+    openPage(id) {
+      setPage(id);
     },
     getPlanById(id) {
       const plans = readPlans() || [];

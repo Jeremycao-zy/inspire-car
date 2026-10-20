@@ -1044,3 +1044,197 @@
     height: 26px;
   }
 }
+
+/* ============================================================
+   轮毂工坊模式（.photo-guide--wheel）— 2026-10-21
+   与车模拍摄引导完全不同的视觉语言：工程制图 / 转盘定位环 /
+   SHOT LIST 规格清单 / 靛蓝 accent（与工作台「轮毂拍摄工坊」同一语言）。
+   ============================================================ */
+
+.photo-guide--wheel {
+  --wg-accent: #8b9bff;
+  --wg-accent-soft: rgba(139, 155, 255, 0.35);
+  --wg-accent-dim: rgba(139, 155, 255, 0.14);
+}
+
+/* 标题组：overline 眉标 + 主标题 */
+.photo-guide__title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.photo-guide__overline {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--wg-accent, var(--accent));
+}
+
+/* 顶部栏：靛蓝细线代替车模版的纯黑分隔 */
+.photo-guide--wheel .photo-guide__header {
+  border-bottom: 1px solid rgba(139, 155, 255, 0.18);
+}
+
+/* 取景框：工程蓝图底 + 靛蓝描边 */
+.photo-guide--wheel .photo-guide__viewfinder {
+  border-color: rgba(139, 155, 255, 0.28);
+  background:
+    radial-gradient(120% 100% at 50% 0%, #0d0e16 0%, #060608 62%);
+}
+
+/* 示意图：本来就是深底线稿，不再做灰度蓝图化，完整显示不裁切 */
+.photo-guide--wheel .photo-guide__ghost {
+  filter: none;
+  opacity: 0.92;
+}
+
+/* 四角相机括号换靛蓝 */
+.photo-guide--wheel .photo-guide__guide-corner {
+  border-color: rgba(139, 155, 255, 0.75);
+}
+
+/* 转盘定位环：虚线圆 + 内圈 + 轴心点（仅轮毂模式显示） */
+.photo-guide__turntable {
+  display: none;
+}
+
+.photo-guide--wheel .photo-guide__turntable {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 66%;
+  max-width: 420px;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  border: 1.5px dashed rgba(139, 155, 255, 0.42);
+  border-radius: 50%;
+}
+
+.photo-guide--wheel .photo-guide__turntable::before {
+  content: '';
+  position: absolute;
+  inset: 7%;
+  border: 1px solid rgba(139, 155, 255, 0.18);
+  border-radius: 50%;
+}
+
+.photo-guide--wheel .photo-guide__turntable::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(139, 155, 255, 0.8);
+  box-shadow: 0 0 10px rgba(139, 155, 255, 0.6);
+}
+
+/* SHOT LIST 眉标 */
+.photo-guide__strip-headline {
+  padding: 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(233, 233, 236, 0.5);
+}
+
+/* 规格行工程代号（FRONT / PROFILE / 3/4 VIEW） */
+.photo-guide__strip-code {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(139, 155, 255, 0.85);
+  border: 1px solid rgba(139, 155, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* 队列项：靛蓝高亮 + 示意图完整 contain（线稿不允许被 cover 裁切） */
+.photo-guide--wheel .photo-guide__strip-item--active {
+  border-color: var(--wg-accent-soft);
+  box-shadow:
+    0 0 0 1px rgba(139, 155, 255, 0.35),
+    0 14px 32px rgba(0, 0, 0, 0.5);
+}
+
+.photo-guide--wheel .photo-guide__strip-index {
+  color: var(--wg-accent);
+}
+
+.photo-guide--wheel .photo-guide__strip-item--active .photo-guide__strip-index {
+  background: var(--wg-accent);
+  color: #0d0d10;
+}
+
+.photo-guide--wheel .photo-guide__strip-img {
+  object-fit: contain;
+  filter: none;
+  opacity: 0.85;
+  background: #0b0b10;
+}
+
+/* 底部 CTA：靛蓝实心（车模版是暖白 accent） */
+.photo-guide--wheel .photo-guide__start {
+  background: linear-gradient(180deg, #9aa7ff 0%, #7c8bef 100%);
+  color: #0d0d10;
+}
+
+.photo-guide--wheel .photo-guide__start:disabled {
+  background: rgba(139, 155, 255, 0.16);
+  color: rgba(233, 233, 236, 0.4);
+}
+
+.photo-guide--wheel .photo-guide__counter strong {
+  color: var(--wg-accent);
+}
+
+/* 提示卡图标底：靛蓝浸染 */
+.photo-guide--wheel .photo-guide__tip-icon {
+  background: var(--wg-accent-dim);
+  border-color: rgba(139, 155, 255, 0.25);
+}
+
+/* 移动端顶栏防挤压：品牌文字不允许竖排换行；窄屏缩字号，仍放不下就只留字标 */
+.photo-guide__brand {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.photo-guide__brand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .photo-guide__header {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  .photo-guide__brand {
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .photo-guide__back {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  /* 极窄屏：品牌文字（灵感改装 · 轮毂工坊 / 拍摄引导）退场，只留 INSPIRE CAR 字标 */
+  .photo-guide__brand-text {
+    display: none;
+  }
+}

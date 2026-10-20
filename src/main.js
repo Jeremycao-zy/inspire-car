@@ -40,6 +40,7 @@ import { mountBrandAll } from './ui/brand.js';
 import { mountGarage } from './ui/garage.js';
 import { mountPhotoGuide } from './ui/photoGuide.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
+import { addWheel } from './api/wheels.js';
 import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
@@ -2852,8 +2853,7 @@ function returnToGarage() {
 
 // 打开拍照引导层。existingPlan 为 null 表示新建方案；传入已有但尚未建模的方案时，
 // 建模完成后会把 carModelUrl 写回该方案再进入 studio。
-function showPhotoGuide(existingPlan = null) {
-  if (photoGuide) {
+function showPhotoGuide(existingPlan = null) {  if (photoGuide) {
     photoGuide.destroy();
     photoGuide = null;
   }
@@ -2870,6 +2870,42 @@ function showPhotoGuide(existingPlan = null) {
         photoGuide = null;
       }
       enterTuner(plan, { sourceFiles: files });
+    },
+    onCancel() {
+      if (photoGuide) {
+        photoGuide.destroy();
+        photoGuide = null;
+      }
+      mountGarageEntry();
+    },
+  });
+}
+
+// 轮毂工坊全屏页（2026-10-21）：轮毂仓库「去生成轮毂」专属入口。
+// 与车模拍摄引导共用 photoGuide 基建，但 mode:'wheel' —— 3 个工程制图角度、
+// SHOT LIST 清单、kind:'wheel' 直接走 Hyper3D，与车模页完全是两套视觉与流程。
+function showWheelGuide() {
+  if (photoGuide) {
+    photoGuide.destroy();
+    photoGuide = null;
+  }
+  garage?.hide?.();
+
+  photoGuide = mountPhotoGuide({
+    mode: 'wheel',
+    onModeled({ url }) {
+      if (photoGuide) {
+        photoGuide.destroy();
+        photoGuide = null;
+      }
+      // 登记进账户轮毂仓库（失败不挡流程：GLB 已在手，下次生成会再登记）
+      addWheel({ url, name: '' })
+        .catch((e) => console.warn('[wheelGuide] 仓库登记失败（忽略）:', e))
+        .finally(() => {
+          // 回主页并直接落在「轮毂仓库」页——enterPage('wheels') 会自动 refresh
+          mountGarageEntry();
+          garage?.openPage?.('wheels');
+        });
     },
     onCancel() {
       if (photoGuide) {
@@ -2919,6 +2955,10 @@ function mountGarageEntry(user) {
       showAuthOverlay((u) => {
         garage?.setUser?.(u);
       });
+    },
+    // 轮毂仓库「去生成轮毂」→ 轮毂工坊全屏页（不是车模拍摄引导）
+    onNewWheel() {
+      showWheelGuide();
     },
     onEnter(plan) {
       // 新方案 / 还没有真实车模的方案 → 先走拍照引导，建模完成后再进 studio

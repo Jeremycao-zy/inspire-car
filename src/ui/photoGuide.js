@@ -62,8 +62,8 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-/** 5 个拍摄角度定义：正面 → 侧前 → 正侧 → 正后 → 侧后 */
-const ANGLES = [
+/** 车模 5 个拍摄角度定义：正面 → 侧前 → 正侧 → 正后 → 侧后 */
+const CAR_ANGLES = [
   {
     id: 'front',
     title: '正面',
@@ -95,6 +95,78 @@ const ANGLES = [
     img: '/guides/rear-right.png',
   },
 ];
+
+/** 轮毂 3 个拍摄角度：正面 → 侧面 → 斜 45°。
+ * 示意图用工程制图 SVG（与工作台「轮毂拍摄工坊」同一套素材）：
+ * 完整不裁切、深色底、与轮毂工坊的工程视觉语言一致。 */
+const WHEEL_ANGLES = [
+  {
+    id: 'front',
+    code: 'FRONT',
+    title: '正面',
+    desc: '镜头正对辐条面，轮毂居中占满画面，拍清辐条与中心孔。',
+    img: '/guides/wheel-front-schematic.svg',
+  },
+  {
+    id: 'side',
+    code: 'PROFILE',
+    title: '侧面',
+    desc: '拍轮毂桶身侧面，展现轮辋深度与螺栓孔位。',
+    img: '/guides/wheel-side-schematic.svg',
+  },
+  {
+    id: 'threeQuarter',
+    code: '3/4 VIEW',
+    title: '斜 45°',
+    desc: '斜 45° 同时拍到辐条面与桶身，立体关系最完整。',
+    img: '/guides/wheel-45-schematic.svg',
+  },
+];
+
+/**
+ * 双模式配置：car = 车模拍摄引导（原版），wheel = 轮毂工坊（2026-10-21 新增）。
+ * 轮毂版与车模版共用了整套拍摄/压缩/续等基建，但文案、角度、数量、
+ * 生成参数（kind: 'wheel'）与视觉皮肤（--wheel 修饰类）完全独立，
+ * 保证「轮毂生成页 ≠ 车模生成页」。
+ */
+const MODES = {
+  car: {
+    rootClass: 'photo-guide--car',
+    brand: '灵感改装 · 拍摄引导',
+    overline: '',
+    title: '拍出你的车，开始 3D 建模',
+    subtitle: '对照取景框内的虚线轮廓，按右侧队列逐个拍摄或上传照片。光线充足、镜头干净，模型会更准确。',
+    tips: [
+      { icon: '☀️', title: '白天拍摄', text: '自然光下车身纹理更清晰，避免夜景或过暗环境。' },
+      { icon: '🧽', title: '擦净摄像头', text: '油污、指纹会让模型边缘模糊，拍前请擦拭镜头。' },
+      { icon: '🚙', title: '完整入镜', text: '每张照片都要让整车的四个角都在画面内。' },
+    ],
+    stripHead: '',
+    startLabel: '开始建模',
+    busyLabel: '建模中…',
+    genKind: 'car',
+    genTitle: '我的车',
+    doneText: '建模完成，正在进入工作室…',
+  },
+  wheel: {
+    rootClass: 'photo-guide--wheel',
+    brand: '灵感改装 · 轮毂工坊',
+    overline: 'WHEEL STUDIO · 轮毂拍摄工坊',
+    title: '三个角度，生成你的专属轮毂',
+    subtitle: '按右侧 SHOT LIST 逐个拍摄或上传，每张画面里只放一只轮毂、不要带车身。三张齐了就开始生成。',
+    tips: [
+      { icon: '🎯', title: '纯色背景', text: '白墙或地面垫一张纯色纸，轮毂轮廓会干净得多。' },
+      { icon: '💡', title: '光线均匀', text: '避免强反光与重阴影，辐条立体感全靠均匀光。' },
+      { icon: '⭕', title: '只拍轮毂', text: '画面里不要出现车身、制动卡钳等杂物，只留一只轮毂。' },
+    ],
+    stripHead: '拍摄角度 · SHOT LIST',
+    startLabel: '开始生成轮毂',
+    busyLabel: '生成中…',
+    genKind: 'wheel',
+    genTitle: '我的轮毂',
+    doneText: '轮毂生成完成，正在放入轮毂仓库…',
+  },
+};
 
 const STORAGE_KEY = 'photo-guide-draft';
 
@@ -159,17 +231,23 @@ async function makeThumbBlob(file, maxSide = 420) {
 
 /**
  * @param {Object} opts
+ * @param {('car'|'wheel')=} opts.mode 拍摄引导模式：car=车模（默认），wheel=轮毂工坊
  * @param {(result: {url:string, mode:string, files:File[]}) => void} opts.onModeled
  * @param {() => void} [opts.onCancel]
  * @param {string} [opts.mount] 挂载目标选择器，默认 #photo-guide
  */
-export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
+export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {}) {
+  const M = MODES[mode] || MODES.car;
+  // 本轮渲染生效的角度集（车模 5 角 / 轮毂 3 角），遮蔽模块级 CAR_ANGLES 命名
+  const ANGLES = mode === 'wheel' ? WHEEL_ANGLES : CAR_ANGLES;
+
   const root = $(mount || '#photo-guide');
   if (!root) {
     console.error('[photoGuide] mount target not found');
     return null;
   }
   root.classList.remove('hidden');
+  root.classList.add(M.rootClass);
 
   // 状态：每个角度对应一个 File
   const filesById = {};
@@ -191,7 +269,8 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       'div',
       { class: 'photo-guide__brand' },
       el('img', { class: 'photo-guide__logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' }),
-      '灵感改装 · 拍摄引导'
+      // 包一层 span：移动端防竖排换行 / 极窄屏整体隐藏都靠它
+      el('span', { class: 'photo-guide__brand-text' }, M.brand)
     ),
     el(
       'button',
@@ -208,49 +287,30 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     )
   );
 
-  // 标题
-  const title = el('h1', { class: 'photo-guide__title' }, '拍出你的车，开始 3D 建模');
-  const subtitle = el(
-    'p',
-    { class: 'photo-guide__subtitle' },
-    '对照取景框内的虚线轮廓，按右侧队列逐个拍摄或上传照片。光线充足、镜头干净，模型会更准确。'
+  // 标题（轮毂模式带工程制图风格的 overline 眉标）
+  const title = el(
+    'div',
+    { class: 'photo-guide__title-wrap' },
+    ...(M.overline ? [el('p', { class: 'photo-guide__overline' }, M.overline)] : []),
+    el('h1', { class: 'photo-guide__title' }, M.title)
   );
+  const subtitle = el('p', { class: 'photo-guide__subtitle' }, M.subtitle);
 
-  // 提示卡片
+  // 提示卡片（数据驱动：车模 / 轮毂各一套）
   const tips = el(
     'div',
     { class: 'photo-guide__tips' },
-    el(
-      'div',
-      { class: 'photo-guide__tip' },
-      el('div', { class: 'photo-guide__tip-icon' }, '☀️'),
+    ...M.tips.map((t) =>
       el(
         'div',
-        { class: 'photo-guide__tip-content' },
-        el('div', { class: 'photo-guide__tip-title' }, '白天拍摄'),
-        el('p', { class: 'photo-guide__tip-text' }, '自然光下车身纹理更清晰，避免夜景或过暗环境。')
-      )
-    ),
-    el(
-      'div',
-      { class: 'photo-guide__tip' },
-      el('div', { class: 'photo-guide__tip-icon' }, '🧽'),
-      el(
-        'div',
-        { class: 'photo-guide__tip-content' },
-        el('div', { class: 'photo-guide__tip-title' }, '擦净摄像头'),
-        el('p', { class: 'photo-guide__tip-text' }, '油污、指纹会让模型边缘模糊，拍前请擦拭镜头。')
-      )
-    ),
-    el(
-      'div',
-      { class: 'photo-guide__tip' },
-      el('div', { class: 'photo-guide__tip-icon' }, '🚙'),
-      el(
-        'div',
-        { class: 'photo-guide__tip-content' },
-        el('div', { class: 'photo-guide__tip-title' }, '完整入镜'),
-        el('p', { class: 'photo-guide__tip-text' }, '每张照片都要让整车的四个角都在画面内。')
+        { class: 'photo-guide__tip' },
+        el('div', { class: 'photo-guide__tip-icon' }, t.icon),
+        el(
+          'div',
+          { class: 'photo-guide__tip-content' },
+          el('div', { class: 'photo-guide__tip-title' }, t.title),
+          el('p', { class: 'photo-guide__tip-text' }, t.text)
+        )
       )
     )
   );
@@ -267,7 +327,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
     el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--tr' }),
     el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--bl' }),
     el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--br' }),
-    el('div', { class: 'photo-guide__guide-cross' })
+    el('div', { class: 'photo-guide__guide-cross' }),
+    // 轮毂工坊专属：转盘定位环（虚线圆 + 中心轴点），CSS 仅在 --wheel 模式显示
+    el('div', { class: 'photo-guide__turntable' })
   );
   // 顶层：用户照片（与队列缩略图共享同一 blob URL，不额外占内存）
   const vfThumb = el('img', {
@@ -294,7 +356,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   const vf = el('div', { class: 'photo-guide__viewfinder' }, vfGhost, vfGuides, vfThumb, vfUpload);
 
   // 取景框下方（框外）：当前角度标题 + 说明 + 重选按钮
-  const vfIndex = el('span', { class: 'photo-guide__angle-index' }, '1/5');
+  const vfIndex = el('span', { class: 'photo-guide__angle-index' }, `1/${ANGLES.length}`);
   const vfTitle = el('h3', { class: 'photo-guide__angle-title' }, ANGLES[0].title);
   const vfDesc = el('p', { class: 'photo-guide__angle-desc' }, ANGLES[0].desc);
   const vfRetake = el(
@@ -311,8 +373,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   );
   const vfCol = el('div', { class: 'photo-guide__viewfinder-col' }, vf, vfMeta);
 
-  // ---------- 右侧角度队列：5 个缩略项，点击切换取景框角度 ----------
+  // ---------- 右侧角度队列：N 个缩略项，点击切换取景框角度（轮毂模式带 SHOT LIST 眉标） ----------
   const strip = el('div', { class: 'photo-guide__strip' });
+  if (M.stripHead) strip.appendChild(el('div', { class: 'photo-guide__strip-headline' }, M.stripHead));
   ANGLES.forEach((angle, i) => {
     const item = renderStripItem(angle, i);
     cardsById[angle.id] = item;
@@ -323,11 +386,11 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
   const stage = el('div', { class: 'photo-guide__stage' }, vfCol, strip);
 
   // 底部建模栏
-  const counter = el('span', { class: 'photo-guide__counter' }, '已拍摄 0/5 张');
+  const counter = el('span', { class: 'photo-guide__counter' }, `已拍摄 0/${ANGLES.length} 张`);
   const startBtn = el(
     'button',
     { class: 'photo-guide__start', onClick: handleStart, disabled: true },
-    '开始建模'
+    M.startLabel
   );
   const footer = el(
     'footer',
@@ -446,7 +509,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
         'div',
         { class: 'photo-guide__strip-head' },
         el('span', { class: 'photo-guide__strip-index' }, String(index + 1)),
-        el('span', { class: 'photo-guide__strip-label' }, angle.title)
+        el('span', { class: 'photo-guide__strip-label' }, angle.title),
+        // 轮毂模式：工程代号（FRONT / PROFILE / 3/4 VIEW）
+        ...(angle.code ? [el('span', { class: 'photo-guide__strip-code' }, angle.code)] : [])
       ),
       el(
         'div',
@@ -556,9 +621,9 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
   function updateCounter() {
     const count = Object.values(filesById).filter(Boolean).length;
-    counter.innerHTML = `已拍摄 <strong>${count}/5</strong> 张`;
-    startBtn.disabled = count < 5 || generating;
-    startBtn.textContent = generating ? '建模中…' : '开始建模';
+    counter.innerHTML = `已拍摄 <strong>${count}/${ANGLES.length}</strong> 张`;
+    startBtn.disabled = count < ANGLES.length || generating;
+    startBtn.textContent = generating ? M.busyLabel : M.startLabel;
   }
 
   // ---------- 建模等待期：改装知识轮播 + 科幻 3D 组装动画 ----------
@@ -605,7 +670,7 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       if (f) f.angleId = a.id;
       return f;
     }).filter(Boolean);
-    if (files.length < 5) return;
+    if (files.length < ANGLES.length) return;
 
     generating = true;
     updateCounter();
@@ -613,16 +678,16 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
     try {
       const result = await generateModel({
-        kind: 'car',
+        kind: M.genKind,
         files,
-        title: '我的车',
+        title: M.genTitle,
         onProgress: (s) => {
           showOverlay(s.stage, Math.min(0.98, s.progress || 0.02), s.message);
         },
       });
 
       clearDraft();
-      showOverlay('done', 1, '建模完成，正在进入工作室…');
+      showOverlay('done', 1, M.doneText);
       setTimeout(() => {
         hideOverlay();
         if (typeof onModeled === 'function') {
@@ -738,13 +803,13 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
 
     try {
       const result = await generateModel({
-        kind: 'car',
+        kind: M.genKind,
         files,
         resumeJobId: jobId,
         onProgress: (s) => showOverlay(s.stage, Math.min(0.98, s.progress || 0.02), s.message),
       });
       clearDraft();
-      showOverlay('done', 1, '建模完成，正在进入工作室…');
+      showOverlay('done', 1, M.doneText);
       setTimeout(() => {
         hideOverlay();
         if (typeof onModeled === 'function') {
@@ -775,6 +840,8 @@ export function mountPhotoGuide({ onModeled, onCancel, mount } = {}) {
       }
       root.innerHTML = '';
       root.classList.add('hidden');
+      // 摘掉本轮模式皮肤，避免车模/轮毂两种模式类名互相残留
+      root.classList.remove('photo-guide--car', 'photo-guide--wheel');
     },
   };
 }
