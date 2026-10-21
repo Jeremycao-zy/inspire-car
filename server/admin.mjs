@@ -151,6 +151,10 @@ function recentPlanFiles(dir, n = 5) {
 function isHumanView(e) {
   const p = (e.path || '').toLowerCase();
   if (p === '/sw.js' || p === '/favicon.ico') return false;
+  // 常见扫描器/探针路径：即使 UA 不像 bot 也要排除（WP 探测、sitemap、robots、.env、phpmyadmin 等）
+  if (p.startsWith('/wp-') || p.startsWith('/wp_') || p === '/xmlrpc.php' ||
+      p.startsWith('/sitemap') || p === '/robots.txt' || p.includes('.env') ||
+      p.includes('phpmyadmin') || p.startsWith('/.git')) return false;
   if (STATIC_EXT.some((ext) => p.endsWith(ext))) return false;
   const ua = (e.ua || '').toLowerCase();
   if (/bot|crawl|spider|slurp|bingpreview|facebookexternalhit|python-requests|curl|go-http|node-fetch|axios|http-client/.test(ua)) return false;
