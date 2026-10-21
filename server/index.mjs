@@ -43,6 +43,7 @@ import { handleTts } from './voice.mjs';
 import { handleClientError } from './clientErrors.mjs';
 import { probeEnginesCached } from './engineProbe.mjs';
 import { createStaticServer, sendFileCachable } from './static.mjs';
+import * as admin from './admin.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -2060,6 +2061,14 @@ const isApiPath = (p) => p === '/api' || p.startsWith('/api/');
  */
 async function handleRequest(req, res) {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  /* ---------- 运营看板（访问统计 + /admin 路由）----------
+   * 在静态/API 路由之前拦截 /admin 与 /api/admin，并全程记录页面访问。 */
+  if (u.pathname.startsWith('/admin') || u.pathname.startsWith('/api/admin')) {
+    await admin.handleAdmin(req, res, u);
+    return;
+  }
+  admin.trackVisit(req, u);
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {

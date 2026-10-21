@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵感改装 · 运营看板</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:#0b1120;color:#e2e8f0;padding:22px}
+a{color:#60a5fa}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.topbar h1{font-size:19px;margin:0;font-weight:600}
+.topbar .sub{color:#94a3b8;font-size:12px;margin-top:3px}
+.btn{background:#334155;color:#e2e8f0;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px}
+.btn:hover{background:#475569}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#1e293b;border:1px solid #273449;border-radius:14px;padding:16px}
+.card .k{font-size:12px;color:#94a3b8}
+.card .v{font-size:26px;font-weight:600;margin-top:6px;color:#f8fafc}
+.card .v.small{font-size:18px}
+.section{background:#1e293b;border:1px solid #273449;border-radius:14px;padding:18px;margin-bottom:18px}
+.section h2{font-size:15px;margin:0 0 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.section h2 .hint{font-size:12px;color:#64748b;font-weight:400}
+/* 柱状图 */
+.chart{display:flex;align-items:flex-end;gap:6px;height:150px;padding-top:10px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.bar .col{width:100%;background:linear-gradient(180deg,#3b82f6,#1d4ed8);border-radius:5px 5px 0 0;min-height:2px}
+.bar .lab{font-size:10px;color:#64748b;margin-top:6px;transform:rotate(0)}
+.bar .num{font-size:10px;color:#cbd5e1;margin-bottom:3px}
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #273449;white-space:nowrap}
+th{color:#94a3b8;font-weight:500;font-size:12px}
+td.path,td.ua{white-space:normal;max-width:280px}
+.tag{display:inline-block;background:#0ea5e9;color:#04263a;border-radius:6px;padding:1px 7px;font-size:11px;margin:1px}
+.muted{color:#64748b}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}}
+.live{margin-left:8px;font-size:11px;font-weight:500}
+.live.on{color:#34d399}
+.live.off{color:#fbbf24}
+.live.poll{color:#60a5fa}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <h1>灵感改装 · 运营看板</h1>
+    <div class="sub" id="sub">加载中… <span id="live" class="live off">● 连接中</span></div>
+  </div>
+  <button class="btn" id="logout">退出登录</button>
+</div>
+
+<div class="cards" id="kpi"></div>
+
+<div class="section">
+  <h2>近 14 天访问趋势 <span class="hint">蓝柱=访问量，悬停看独立IP</span></h2>
+  <div class="chart" id="chart"></div>
+</div>
+
+<div class="grid2">
+  <div class="section">
+    <h2>热门页面 <span class="hint">按访问次数</span></h2>
+    <table id="topPages"><thead><tr><th>页面</th><th>访问</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="section">
+    <h2>最近访客 <span class="hint">最新 25 条</span></h2>
+    <table id="recent"><thead><tr><th>时间</th><th>IP</th><th>页面</th><th>来源/浏览器</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<div class="section">
+  <h2>用户资产 <span class="hint">来自 .cache 业务数据</span></h2>
+  <div class="cards" id="assets" style="margin-bottom:14px"></div>
+  <div class="grid2">
+    <div>
+      <h3 style="font-size:13px;color:#94a3b8;font-weight:500">最近注册用户</h3>
+      <table id="recentUsers"><thead><tr><th>用户名</th><th>邮箱/手机</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div>
+      <h3 style="font-size:13px;color:#94a3b8;font-weight:500">最近方案</h3>
+      <table id="recentPlans"><thead><tr><th>用户ID</th><th>更新时间</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+const fmt = (n) => (n ?? 0).toLocaleString('zh-CN');
+const shortUa = (ua) => {
+  if (!ua) return '';
+  if (/iPhone|Android|Mobile/i.test(ua)) return '📱 ' + (ua.match(/(iPhone|Android)[^;)]*/) || 'Mobile');
+  if (/Macintosh|Windows|Linux/i.test(ua)) return '💻 ' + (ua.match(/(Macintosh|Windows NT|Linux)[^;)]*/) || 'Desktop');
+  return ua.slice(0, 40);
+};
+const hostOf = (ref) => { try { return new URL(ref).host; } catch { return ref || '—'; } };
+
+async function load() {
+  try {
+    const r = await fetch('/api/admin/stats', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/admin'; return; }
+    const d = await r.json();
+    render(d);
+  } catch { /* 由 SSE 或轮询兜底 */ }
+}
+
+function render(d) {
+  document.getElementById('sub').innerHTML =
+    `数据时间 ${d.generatedAt.replace('T', ' ').slice(0, 19)} · 今日 ${d.today} <span id="live" class="live ${liveMode}">${liveText}</span>`;
+
+  // KPI
+  const v = d.visits, a = d.assets;
+  const kpis = [
+    ['今日访问', fmt(v.today)],
+    ['总访问量', fmt(v.total)],
+    ['今日独立IP', fmt(v.uniqueToday)],
+    ['总独立IP', fmt(v.uniqueTotal)],
+    ['注册用户', fmt(a.users)],
+    ['改装方案', fmt(a.plans)],
+    ['轮毂配置', fmt(a.wheels)],
+    ['社区帖/回', `${fmt(a.forumTopics)}/${fmt(a.forumReplies)}`],
+    ['资讯文章', fmt(a.news)],
+  ];
+  document.getElementById('kpi').innerHTML = kpis.map(([k, val]) =>
+    `<div class="card"><div class="k">${k}</div><div class="v">${val}</div></div>`).join('');
+
+  // 14天柱状图
+  const max = Math.max(1, ...v.last14.map(x => x.views));
+  document.getElementById('chart').innerHTML = v.last14.map(x => {
+    const h = Math.round((x.views / max) * 120);
+    const mm = x.date.slice(5);
+    return `<div class="bar" title="${x.date}：访问 ${x.views}，独立IP ${x.uniq}">
+      <div class="num">${x.views || ''}</div>
+      <div class="col" style="height:${h}px"></div>
+      <div class="lab">${mm}</div></div>`;
+  }).join('');
+
+  // 热门页
+  document.querySelector('#topPages tbody').innerHTML = (v.topPaths.length
+    ? v.topPaths.map(p => `<tr><td class="path">${p.path}</td><td>${fmt(p.count)}</td></tr>`).join('')
+    : `<tr><td colspan="2" class="muted">暂无页面访问记录</td></tr>`);
+
+  // 最近访客
+  document.querySelector('#recent tbody').innerHTML = (v.recent.length
+    ? v.recent.map(e => `<tr><td>${e.t}</td><td>${e.ip}</td><td class="path">${e.path}</td><td class="ua">${hostOf(e.ref)} ${shortUa(e.ua)}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="muted">暂无访客记录</td></tr>`);
+
+  // 资产卡
+  document.getElementById('assets').innerHTML = [
+    ['用户', fmt(a.users)], ['方案', fmt(a.plans)], ['轮毂', fmt(a.wheels)],
+    ['帖子', fmt(a.forumTopics)], ['回复', fmt(a.forumReplies)], ['资讯', fmt(a.news)],
+  ].map(([k, val]) => `<div class="card"><div class="k">${k}</div><div class="v small">${val}</div></div>`).join('');
+
+  // 最近用户
+  document.querySelector('#recentUsers tbody').innerHTML = (a.recentUsers.length
+    ? a.recentUsers.map(u => `<tr><td>${u.username}</td><td class="muted">${u.email || u.phone || '—'}</td></tr>`).join('')
+    : `<tr><td colspan="2" class="muted">暂无用户</td></tr>`);
+
+  // 最近方案
+  document.querySelector('#recentPlans tbody').innerHTML = (a.recentPlans.length
+    ? a.recentPlans.map(p => `<tr><td class="muted">${p.id}</td><td class="muted">${new Date(p.mtime).toLocaleString('zh-CN')}</td></tr>`).join('')
+    : `<tr><td colspan="2" class="muted">暂无方案</td></tr>`);
+}
+
+document.getElementById('logout').onclick = async () => {
+  await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+  location.href = '/admin';
+};
+
+/* ----------------- 实时连接：优先 SSE，失败回退轮询 ----------------- */
+let liveMode = 'off', liveText = '● 连接中';
+let polling = false;
+
+function setLive(mode, text) {
+  liveMode = mode; liveText = text;
+  const el = document.getElementById('live');
+  if (el) { el.className = 'live ' + mode; el.textContent = text; }
+}
+
+function startPolling() {
+  if (polling) return;
+  polling = true;
+  setLive('poll', '◐ 轮询(5s)');
+  load();
+  setInterval(load, 5000);
+}
+
+function connectStream() {
+  const es = new EventSource('/api/admin/stream', { withCredentials: true });
+  es.onmessage = (ev) => {
+    try { setLive('on', '● 实时'); render(JSON.parse(ev.data)); } catch {}
+  };
+  es.onerror = () => {
+    es.close();
+    setLive('off', '● 重连中');
+    // 1.5s 后改用轮询兜底
+    setTimeout(startPolling, 1500);
+  };
+}
+
+load();              // 先拉一帧，保证立刻有内容
+connectStream();     // 再建立实时流
+</script>
+</body>
+</html>
