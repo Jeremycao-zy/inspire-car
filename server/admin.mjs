@@ -145,6 +145,18 @@ function recentPlanFiles(dir, n = 5) {
   } catch { return []; }
 }
 
+/* 判定一次访问是否为「真人页面访问」：排除 Service Worker 心跳、favicon、
+ * 静态资源(css/js/图片/字体)、以及爬虫/机器人 UA。这一口径下得到的数字
+ * 才接近真实的「人来逛了你的网站」次数，不会被自动轮询和扫描虚高。 */
+function isHumanView(e) {
+  const p = (e.path || '').toLowerCase();
+  if (p === '/sw.js' || p === '/favicon.ico') return false;
+  if (STATIC_EXT.some((ext) => p.endsWith(ext))) return false;
+  const ua = (e.ua || '').toLowerCase();
+  if (/bot|crawl|spider|slurp|bingpreview|facebookexternalhit|python-requests|curl|go-http|node-fetch|axios|http-client/.test(ua)) return false;
+  return true;
+}
+
 function aggregateVisits() {
   const today = new Date().toISOString().slice(0, 10);
   let raw = '';
@@ -155,8 +167,12 @@ function aggregateVisits() {
   const total = tail.length;
 
   let todayCount = 0;
+  let humanTotal = 0;
+  let humanToday = 0;
   const uniqToday = new Set();
   const uniqTotal = new Set();
+  const humanUniqToday = new Set();
+  const humanUniqTotal = new Set();
   const dayMap = new Map(); // date -> {views, ips:Set}
   const pathCount = new Map();
   const recent = [];
@@ -170,6 +186,12 @@ function aggregateVisits() {
     if (!d) continue;
     if (d === today) { todayCount++; if (e.ip) uniqToday.add(e.ip); }
     if (e.ip) uniqTotal.add(e.ip);
+    // 真人页面访问（剔除 SW 心跳 / favicon / 静态资源 / 爬虫）
+    if (isHumanView(e)) {
+      humanTotal++;
+      if (d === today) { humanToday++; if (e.ip) humanUniqToday.add(e.ip); }
+      if (e.ip) humanUniqTotal.add(e.ip);
+    }
     if (!dayMap.has(d)) dayMap.set(d, { views: 0, ips: new Set() });
     const dm = dayMap.get(d); dm.views++; if (e.ip) dm.ips.add(e.ip);
     if (e.path) pathCount.set(e.path, (pathCount.get(e.path) || 0) + 1);
@@ -217,6 +239,10 @@ function aggregateVisits() {
     today: todayCount,
     uniqueToday: uniqToday.size,
     uniqueTotal: uniqTotal.size,
+    humanTotal,
+    humanToday,
+    humanUniqueToday: humanUniqToday.size,
+    humanUniqueTotal: humanUniqTotal.size,
     last14: days,
     topPaths,
     recent: recentVisitors,

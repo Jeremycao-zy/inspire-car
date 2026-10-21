@@ -18,6 +18,10 @@ a{color:#60a5fa}
 .card .k{font-size:12px;color:#94a3b8}
 .card .v{font-size:26px;font-weight:600;margin-top:6px;color:#f8fafc}
 .card .v.small{font-size:18px}
+.card.real{border-color:#0e7490;background:linear-gradient(180deg,#0c2d3a,#1e293b)}
+.card.real .k{color:#67e8f9}
+.card.real .v{color:#a5f3fc}
+.card .note{font-size:11px;color:#64748b;margin-top:6px;line-height:1.4}
 .section{background:#1e293b;border:1px solid #273449;border-radius:14px;padding:18px;margin-bottom:18px}
 .section h2{font-size:15px;margin:0 0 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
 .section h2 .hint{font-size:12px;color:#64748b;font-weight:400}
@@ -127,23 +131,25 @@ async function load() {
 
 function render(d) {
   document.getElementById('sub').innerHTML =
-    `数据时间 ${d.generatedAt.replace('T', ' ').slice(0, 19)} · 今日 ${d.today} · 数据自 ${d.firstDate || d.today} 起 <span id="live" class="live ${liveMode}">${liveText}</span>`;
+    `数据时间 ${d.generatedAt.replace('T', ' ').slice(0, 19)} · 今日真人 ${d.visits.humanToday} / 总 ${d.today} · 数据自 ${d.firstDate || d.today} 起 <span id="live" class="live ${liveMode}">${liveText}</span>`;
 
   // KPI
   const v = d.visits, a = d.assets;
   const kpis = [
-    ['今日访问', fmt(v.today)],
-    ['总访问量', fmt(v.total)],
-    ['今日独立IP', fmt(v.uniqueToday)],
-    ['总独立IP', fmt(v.uniqueTotal)],
-    ['注册用户', fmt(a.users)],
-    ['改装方案', fmt(a.plans)],
-    ['轮毂配置', fmt(a.wheels)],
-    ['社区帖/回', `${fmt(a.forumTopics)}/${fmt(a.forumReplies)}`],
-    ['资讯文章', fmt(a.news)],
+    ['今日真人访问', fmt(v.humanToday), 'real', '已剔除SW心跳/爬虫/静态资源'],
+    ['今日总访问', fmt(v.today), '', '含机器流量，会虚高'],
+    ['累计真人访问', fmt(v.humanTotal), 'real', ''],
+    ['累计总访问', fmt(v.total), '', ''],
+    ['今日独立IP', fmt(v.uniqueToday), '', ''],
+    ['总独立IP', fmt(v.uniqueTotal), '', ''],
+    ['注册用户', fmt(a.users), '', ''],
+    ['改装方案', fmt(a.plans), '', ''],
+    ['轮毂配置', fmt(a.wheels), '', ''],
+    ['社区帖/回', `${fmt(a.forumTopics)}/${fmt(a.forumReplies)}`, '', ''],
+    ['资讯文章', fmt(a.news), '', ''],
   ];
-  document.getElementById('kpi').innerHTML = kpis.map(([k, val]) =>
-    `<div class="card"><div class="k">${k}</div><div class="v">${val}</div></div>`).join('');
+  document.getElementById('kpi').innerHTML = kpis.map(([k, val, cls, note]) =>
+    `<div class="card ${cls}"><div class="k">${k}</div><div class="v">${val}</div>${note ? `<div class="note">${note}</div>` : ''}</div>`).join('');
 
   // 14天柱状图
   const max = Math.max(1, ...v.last14.map(x => x.views));
