@@ -27,6 +27,17 @@ a{color:#60a5fa}
 .bar .col{width:100%;background:linear-gradient(180deg,#3b82f6,#1d4ed8);border-radius:5px 5px 0 0;min-height:2px}
 .bar .lab{font-size:10px;color:#64748b;margin-top:6px;transform:rotate(0)}
 .bar .num{font-size:10px;color:#cbd5e1;margin-bottom:3px}
+/* 24小时分布 */
+.chart24{gap:2px;height:130px}
+.chart24 .bar .col{background:linear-gradient(180deg,#22d3ee,#0891b2)}
+.chart24 .bar.cur .col{background:linear-gradient(180deg,#f472b6,#db2777);box-shadow:0 0 10px rgba(244,114,182,.55)}
+.chart24 .bar.cur .lab{color:#f9a8d4;font-weight:600}
+/* 访问端分布 */
+.devrow{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:13px}
+.devk{width:104px;color:#cbd5e1;flex:none}
+.devbar{flex:1;height:11px;background:#0f172a;border-radius:6px;overflow:hidden}
+.devbar i{display:block;height:100%;background:linear-gradient(90deg,#3b82f6,#22d3ee)}
+.devn{width:104px;text-align:right;color:#94a3b8;font-size:12px;flex:none}
 /* 表格 */
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #273449;white-space:nowrap}
@@ -56,6 +67,17 @@ td.path,td.ua{white-space:normal;max-width:280px}
 <div class="section">
   <h2>近 14 天访问趋势 <span class="hint">蓝柱=访问量，悬停看独立IP</span></h2>
   <div class="chart" id="chart"></div>
+</div>
+
+<div class="grid2">
+  <div class="section">
+    <h2>24 小时活跃分布 <span class="hint">北京时区 · 粉柱=当前小时</span></h2>
+    <div class="chart chart24" id="chart24"></div>
+  </div>
+  <div class="section">
+    <h2>访问端分布 <span class="hint">手机 / 电脑 / 爬虫</span></h2>
+    <div id="devices"></div>
+  </div>
 </div>
 
 <div class="grid2">
@@ -105,7 +127,7 @@ async function load() {
 
 function render(d) {
   document.getElementById('sub').innerHTML =
-    `数据时间 ${d.generatedAt.replace('T', ' ').slice(0, 19)} · 今日 ${d.today} <span id="live" class="live ${liveMode}">${liveText}</span>`;
+    `数据时间 ${d.generatedAt.replace('T', ' ').slice(0, 19)} · 今日 ${d.today} · 数据自 ${d.firstDate || d.today} 起 <span id="live" class="live ${liveMode}">${liveText}</span>`;
 
   // KPI
   const v = d.visits, a = d.assets;
@@ -132,6 +154,26 @@ function render(d) {
       <div class="num">${x.views || ''}</div>
       <div class="col" style="height:${h}px"></div>
       <div class="lab">${mm}</div></div>`;
+  }).join('');
+
+  // 24小时分布
+  const bh = v.byHour || new Array(24).fill(0);
+  const maxH = Math.max(1, ...bh);
+  const curH = (new Date().getUTCHours() + 8) % 24;
+  document.getElementById('chart24').innerHTML = bh.map((n, i) => {
+    const h = Math.round((n / maxH) * 100);
+    return `<div class="bar ${i === curH ? 'cur' : ''}" title="${i}:00-${i}:59 共 ${n} 次">
+      <div class="num">${n || ''}</div><div class="col" style="height:${h}px"></div>
+      <div class="lab">${i}</div></div>`;
+  }).join('');
+
+  // 访问端分布
+  const dev = v.byDevice || { mobile: 0, desktop: 0, bot: 0, other: 0 };
+  const devTotal = (dev.mobile + dev.desktop + dev.bot + dev.other) || 1;
+  const devRows = [['📱 手机', dev.mobile], ['💻 电脑', dev.desktop], ['🤖 爬虫/程序', dev.bot], ['❓ 其他', dev.other]];
+  document.getElementById('devices').innerHTML = devRows.map(([k, n]) => {
+    const pct = Math.round((n / devTotal) * 100);
+    return `<div class="devrow"><span class="devk">${k}</span><span class="devbar"><i style="width:${pct}%"></i></span><span class="devn">${fmt(n)} (${pct}%)</span></div>`;
   }).join('');
 
   // 热门页

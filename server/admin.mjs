@@ -160,6 +160,9 @@ function aggregateVisits() {
   const dayMap = new Map(); // date -> {views, ips:Set}
   const pathCount = new Map();
   const recent = [];
+  const byHour = new Array(24).fill(0); // 按北京时区(UTC+8)的小时分布
+  const byDevice = { mobile: 0, desktop: 0, bot: 0, other: 0 };
+  let firstDate = '';
 
   for (const line of tail) {
     let e; try { e = JSON.parse(line); } catch { continue; }
@@ -170,6 +173,18 @@ function aggregateVisits() {
     if (!dayMap.has(d)) dayMap.set(d, { views: 0, ips: new Set() });
     const dm = dayMap.get(d); dm.views++; if (e.ip) dm.ips.add(e.ip);
     if (e.path) pathCount.set(e.path, (pathCount.get(e.path) || 0) + 1);
+    // 端分布 + 小时分布（北京时区 = UTC+8）
+    const ua = (e.ua || '').toLowerCase();
+    if (/bot|crawl|spider|slurp|bingpreview|facebookexternalhit|python-requests|curl|go-http|node-fetch|axios|http-client/.test(ua)) byDevice.bot++;
+    else if (/iphone|ipod|android|mobile|ipad|tablet|harmonyos|micromessenger/.test(ua)) byDevice.mobile++;
+    else if (/macintosh|windows nt|windows|linux|x11|crkey|playstation/.test(ua)) byDevice.desktop++;
+    else byDevice.other++;
+    const dt = new Date(e.t || '');
+    if (!isNaN(dt.getTime())) {
+      byHour[(dt.getUTCHours() + 8) % 24]++;
+      const fd = (e.t || '').slice(0, 10);
+      if (!firstDate || fd < firstDate) firstDate = fd;
+    }
     recent.push(e);
   }
 
@@ -205,6 +220,9 @@ function aggregateVisits() {
     last14: days,
     topPaths,
     recent: recentVisitors,
+    byHour,
+    byDevice,
+    firstDate,
   };
 }
 
