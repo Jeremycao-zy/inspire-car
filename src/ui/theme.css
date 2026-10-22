@@ -6,6 +6,13 @@
  *
  * 选择器统一带 :root[data-theme='light'] 前缀（特异性 0,2,x），
  * 无需关心本文件与各组件 CSS 的导入顺序。
+ *
+ * 2026-10-23 v2 修订：修复 v1 遗漏的「深字深底 / 白字白底」组合——
+ *  - 硬编码近白字（#eafcff/#fff）的标题/卡片文本 → 随主题变深
+ *  - 「浅底 + 硬编码深字」按钮（.ai-chat__send / .ws-cta，color:#0d0d10
+ *    配 background:var(--accent)）→ 浅色下强调色变深，字必须反白
+ *  - copilot 面板整体浅色化
+ *  - brand 加载屏保持深色（白字标只在深底可见，不做浅色）
  */
 
 :root[data-theme='light'] {
@@ -36,19 +43,25 @@
   --err: #ad453a;
 }
 
-/* ---------------- 车库层：深空渐变 → 浅色暖白渐变 ---------------- */
+/* ================= 车库层：深空渐变 → 浅色暖白渐变 ================= */
 :root[data-theme='light'] .garage-layer {
   background: radial-gradient(130% 90% at 50% -10%, #ffffff 0%, var(--bg) 62%);
 }
 
-/* ---------------- 顶部整体条：深色玻璃 → 浅色玻璃 ---------------- */
+/* ================= 顶部整体条：深色玻璃 → 浅色玻璃 ================= */
 :root[data-theme='light'] .garage-topbar {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.89) 100%);
   border-bottom-color: var(--line-2);
   box-shadow: 0 10px 28px rgba(20, 24, 40, 0.08);
 }
 
-/* ---------------- 车库卡片 ---------------- */
+/* ================= Hero / 页标题（原硬编码 #eafcff 近白字） ================= */
+:root[data-theme='light'] .garage-hero__title,
+:root[data-theme='light'] .garage-page__title {
+  color: var(--text);
+}
+
+/* ================= 车库卡片（原硬编码白字族） ================= */
 :root[data-theme='light'] .garage-card {
   border-color: var(--line-2);
   box-shadow:
@@ -60,12 +73,38 @@
 :root[data-theme='light'] .garage-card__backing {
   background: var(--panel);
 }
+:root[data-theme='light'] .garage-card__backing,
+:root[data-theme='light'] .garage-card__title,
+:root[data-theme='light'] .garage-card__brand-cn,
+:root[data-theme='light'] .garage-card__footer-action,
+:root[data-theme='light'] .garage-card__no {
+  color: var(--text);
+}
+:root[data-theme='light'] .garage-card__brand-en1 {
+  color: var(--text);
+  text-shadow: none; /* 原白色辉光在浅底上是脏影 */
+}
+:root[data-theme='light'] .garage-card__desc,
+:root[data-theme='light'] .garage-card__footer {
+  color: var(--text-dim);
+}
+:root[data-theme='light'] .garage-card__placeholder,
+:root[data-theme='light'] .garage-card__title--blank {
+  color: var(--text-faint);
+}
+:root[data-theme='light'] .garage-card__delete {
+  color: var(--err);
+}
 :root[data-theme='light'] .plan-card {
   background: var(--panel);
   border-color: var(--line-2);
 }
+/* 方案卡底部动作条：原 accent-text 白字，浅卡上不可见 */
+:root[data-theme='light'] .plan-card__cta {
+  color: var(--text-dim);
+}
 
-/* ---------------- 导航 pill：黑底 → 浅灰底 ---------------- */
+/* ================= 导航 pill：黑底 → 浅灰底 ================= */
 :root[data-theme='light'] .garage-nav__item {
   background: rgba(26, 27, 32, 0.04);
   border-color: var(--line-2);
@@ -81,7 +120,7 @@
   box-shadow: 0 4px 16px rgba(20, 24, 40, 0.12);
 }
 
-/* ---------------- ghost 按钮：白色描边 → 深色描边 ---------------- */
+/* ================= ghost 按钮：白色描边 → 深色描边 ================= */
 :root[data-theme='light'] .gb-btn.ghost {
   color: var(--text-dim);
   box-shadow: inset 0 0 0 1px var(--line-2), 0 3px 14px rgba(20, 24, 40, 0.06);
@@ -92,7 +131,15 @@
   box-shadow: inset 0 0 0 1px var(--text), 0 5px 22px rgba(20, 24, 40, 0.1);
 }
 
-/* ---------------- 订阅 / 登录 胶囊 ---------------- */
+/* ================= 「浅底 + 硬编码深字」按钮 → 黑底白字 =================
+ * .ai-chat__send / .ws-cta 原是 background:var(--accent) + color:#0d0d10
+ * （深色主题下 accent 是浅灰所以成立）；浅色主题 accent 变近黑，字必须反白。 */
+:root[data-theme='light'] .ai-chat__send,
+:root[data-theme='light'] .ws-cta {
+  color: #ffffff;
+}
+
+/* ================= 订阅 / 登录 胶囊 ================= */
 :root[data-theme='light'] .garage-subscribe-btn,
 :root[data-theme='light'] .garage-login-btn {
   color: var(--text-dim);
@@ -109,14 +156,14 @@
   border-color: var(--line-2);
 }
 
-/* ---------------- Hero 徽标（实时 3D 预览）：荧光绿 → 墨绿 ---------------- */
+/* ================= Hero 徽标（实时 3D 预览）：荧光绿 → 墨绿 ================= */
 :root[data-theme='light'] .garage-hero__badge {
   color: var(--good);
   background: rgba(46, 125, 84, 0.1);
   border-color: rgba(46, 125, 84, 0.28);
 }
 
-/* ---------------- AI 球：标签 / 悬停 / 字幕 / 对话面板 ---------------- */
+/* ================= AI 球：标签 / 悬停 / 字幕 / 对话面板 ================= */
 :root[data-theme='light'] .ai-orb__label {
   color: var(--text-dim);
   background: rgba(255, 255, 255, 0.88);
@@ -142,12 +189,14 @@
   border-bottom-color: var(--line-2);
 }
 :root[data-theme='light'] .ai-bubble.user {
-  color: var(--accent-text);
+  color: #ffffff;
   background: var(--accent);
+  border-color: var(--accent);
 }
 :root[data-theme='light'] .ai-bubble.ai {
   color: var(--text);
   background: var(--panel-3);
+  border-color: var(--line-2);
 }
 :root[data-theme='light'] .ai-chat__voice-sel {
   color: var(--text);
@@ -155,13 +204,40 @@
   border-color: var(--line-2);
 }
 
-/* ---------------- 品牌加载屏：黑底 → 白底 ---------------- */
-:root[data-theme='light'] .brand-loading {
-  background: #ffffff;
-  color: #17181c;
+/* ================= Copilot 面板（改装工程师侧栏）整体浅色化 ================= */
+:root[data-theme='light'] .cop-panel {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.97);
+  border-left-color: var(--line-2);
+}
+:root[data-theme='light'] .cop-head {
+  border-bottom-color: var(--line-2);
+}
+:root[data-theme='light'] .cop-head__title {
+  color: var(--text);
+}
+:root[data-theme='light'] .cop-speaker {
+  color: var(--text-dim);
+  border-color: var(--line-2);
+}
+:root[data-theme='light'] .cop-speaker:hover {
+  color: var(--text);
+  background: var(--accent-dim);
+}
+:root[data-theme='light'] .cop-msg--assistant {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--line-2);
+}
+:root[data-theme='light'] .cop-log::-webkit-scrollbar-thumb {
+  background: var(--line-2);
 }
 
-/* ---------------- 工作室侧栏（.panel 主体用变量自动跟随，这里补硬编码件） ---------------- */
+/* ================= 品牌加载屏：保持深色（不做浅色） =================
+ * 白字标 + 白标语只在深底可见；强行浅色会整屏隐字。启动遮罩是瞬时品牌时刻，
+ * 深底是设计选择，不是遗漏。 */
+
+/* ================= 工作室侧栏（.panel 主体用变量自动跟随，这里补硬编码件） ================= */
 :root[data-theme='light'] .panel {
   border-left-color: var(--line-2);
 }
@@ -169,12 +245,12 @@
   border-bottom-color: var(--line-2);
 }
 
-/* ---------------- 拍照引导：取景框底色 ---------------- */
+/* ================= 拍照引导：取景框底色 ================= */
 :root[data-theme='light'] .photo-guide {
   background: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, var(--bg) 65%);
 }
 
-/* ---------------- 主题切换按钮（深浅两态通用） ---------------- */
+/* ================= 主题切换按钮（深浅两态通用） ================= */
 .theme-toggle {
   appearance: none;
   cursor: pointer;
@@ -213,4 +289,58 @@
   position: absolute;
   top: 16px;
   right: 14px;
+}
+
+/* ================= v2 补充①：全站「accent 底 + 硬编码深字」按钮统一反白 =================
+ * 这些按钮原是 background:var(--accent) + color:#0d0d10/#04121a/#06121f 等深字
+ * （深色主题下 accent 是浅灰所以成立）；浅色主题 accent 变近黑，字必须反白，
+ * 否则就是「纯黑按钮 + 看不见字」。auth/subscribe 的按钮用 var(--bg) 已自动跟随。 */
+:root[data-theme='light'] .gb-btn.primary,
+:root[data-theme='light'] .gb-back,
+:root[data-theme='light'] .auth-userbar__btn,
+:root[data-theme='light'] .garage-userchip__btn,
+:root[data-theme='light'] .ai-chat__send,
+:root[data-theme='light'] .ws-cta,
+:root[data-theme='light'] .gw-preview__equip,
+:root[data-theme='light'] .gw-empty__cta,
+:root[data-theme='light'] .seg-btn.on,
+:root[data-theme='light'] .cm-subtab.active,
+:root[data-theme='light'] .cm-chip.active,
+:root[data-theme='light'] .photo-guide--wheel .photo-guide__start,
+:root[data-theme='light'] .photo-guide--wheel .photo-guide__strip-item--active .photo-guide__strip-index {
+  color: #ffffff;
+}
+
+/* 滑块拇指：深色圆 + 深色描边，浅模式下糊成一片 → 描边改白 */
+:root[data-theme='light'] input[type='range']::-webkit-slider-thumb,
+:root[data-theme='light'] input[type='range']::-moz-range-thumb {
+  border-color: #ffffff;
+}
+
+/* ================= v2 补充②：photoGuide / wheelStudio 的硬编码白字 ================= */
+:root[data-theme='light'] .photo-guide__brand,
+:root[data-theme='light'] .photo-guide__title,
+:root[data-theme='light'] .photo-guide__tip-title,
+:root[data-theme='light'] .photo-guide__angle-title,
+:root[data-theme='light'] .photo-guide__strip-label,
+:root[data-theme='light'] .photo-guide__overlay-title {
+  color: var(--text);
+}
+:root[data-theme='light'] .ws-mark__eyebrow,
+:root[data-theme='light'] .ws-plate__tag,
+:root[data-theme='light'] .ws-plate__dim {
+  color: var(--text-dim);
+}
+
+/* ================= v2 补充③：拍照引导幽灵示例图 =================
+ * 原滤镜 brightness(1.5) 是为深底提亮的；浅底下会淡到看不见 → 压暗并保可辨。 */
+:root[data-theme='light'] .photo-guide__ghost {
+  filter: grayscale(0.9) contrast(0.55) brightness(0.82);
+  opacity: 0.5;
+}
+/* 取景框投影在浅底下太重 → 收敛 */
+:root[data-theme='light'] .photo-guide__viewfinder {
+  box-shadow:
+    0 14px 34px rgba(20, 24, 40, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
