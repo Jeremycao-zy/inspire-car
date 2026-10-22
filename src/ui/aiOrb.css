@@ -79,8 +79,9 @@
   50%      { transform: translateY(-7px) rotate(0.6deg); }
 }
 @keyframes ai-mascot-talk {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50%      { transform: translateY(-5px) scale(1.03); }
+  /* 说话/聆听：轻弹 + 小幅左右摆（以脚为轴），抬起的手臂会随之轻轻挥动 */
+  0%, 100% { transform: translateY(0) scale(1) rotate(-2.4deg); }
+  50%      { transform: translateY(-5px) scale(1.03) rotate(2.4deg); }
 }
 @keyframes ai-mascot-halo {
   0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.9); }
