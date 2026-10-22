@@ -104,6 +104,11 @@ export function mountWheelWarehouse({ onEquip, onNewWheel } = {}) {
   section.appendChild(body);
   section.appendChild(empty);
 
+  // 初始两种状态都隐藏，等 refresh() 拉到数据后再决定显示哪一种，
+  // 否则挂载瞬间「展示台画框」会短暂裸露（见下方 refresh 同步隐藏）。
+  body.style.display = 'none';
+  empty.style.display = 'none';
+
   let holo = null;
   let wheels = [];
   let selected = null;
@@ -131,7 +136,16 @@ export function mountWheelWarehouse({ onEquip, onNewWheel } = {}) {
   }
 
   async function refresh() {
-    wheels = await listWheels();
+    // 进入/刷新前先隐藏两种状态，避免异步拉取期间残留上一帧的「展示台画框」闪现
+    // （尤其重复进入轮毂仓库时，旧选中轮毂的画框会先露一下再被刷新覆盖）。
+    body.style.display = 'none';
+    empty.style.display = 'none';
+    try {
+      wheels = await listWheels();
+    } catch (e) {
+      console.warn('[wheels] 拉取轮毂失败，回退到空状态', e);
+      wheels = [];
+    }
     countBadge.textContent = `${wheels.length} 款`;
     grid.innerHTML = '';
     if (!wheels.length) {
