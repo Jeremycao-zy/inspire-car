@@ -24,3 +24,11 @@ Thumbs.db
 
 # 临时/诊断脚本产物
 /tmp
+
+# 测试与验证产物（不应进入镜像，缩小构建上下文、降低远程构建器掉线概率）
+test-results/
+dist-verify/
+playwright-report/
+coverage/
+output/
+outputs/
