@@ -62,17 +62,25 @@ function mountAiOrb() {
   document.body.appendChild(wrap);
 
   /* ---------- 对话面板 ---------- */
-  // 朗读音色：默认 Nini「邻家妹妹」甜美自然（qwen3-tts-flash），可在面板里切换并持久化。
-  // 迁移：老默认 Cherry → Nini（用户明确要求换掉原音色）
+  // 朗读音色：默认 Andre「安德雷」男声·磁性沉稳自然舒服（qwen3-tts-flash），可在面板切换并持久化。
+  // 一次性迁移：老默认（无 / Cherry / Nini）→ Andre；用户显式选过的其他音色保留。
   let currentVoice = localStorage.getItem('aiOrbVoice');
-  if (!currentVoice || currentVoice === 'Cherry') {
-    currentVoice = 'Nini';
+  if (!localStorage.getItem('aiOrbVoiceMigrated')) {
+    if (!currentVoice || currentVoice === 'Cherry' || currentVoice === 'Nini') {
+      currentVoice = 'Andre';
+      try {
+        localStorage.setItem('aiOrbVoice', 'Andre');
+      } catch {
+        /* ignore */
+      }
+    }
     try {
-      localStorage.setItem('aiOrbVoice', 'Nini');
+      localStorage.setItem('aiOrbVoiceMigrated', '1');
     } catch {
       /* ignore */
     }
   }
+  if (!currentVoice) currentVoice = 'Andre';
   const panel = document.createElement('div');
   panel.className = 'ai-chat';
   panel.innerHTML = `
@@ -81,12 +89,14 @@ function mountAiOrb() {
       <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
         <span>音色</span>
         <select class="ai-chat__voice-sel">
+          <option value="Andre">Andre · 磁性沉稳</option>
+          <option value="Kai">Kai · 温和悦耳</option>
+          <option value="Ethan">Ethan · 阳光温暖</option>
           <option value="Nini">Nini · 甜美自然</option>
           <option value="Momo">Momo · 撒娇可爱</option>
           <option value="Cherry">Cherry · 阳光亲切</option>
           <option value="Serena">Serena · 温柔知性</option>
           <option value="Chelsie">Chelsie · 二次元灵动</option>
-          <option value="Ethan">Ethan · 沉稳男声</option>
         </select>
       </label>
       <button class="ai-chat__close" aria-label="关闭">×</button>
