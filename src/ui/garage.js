@@ -806,8 +806,14 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
     }
   }
 
-  root.appendChild(header);
-  root.appendChild(nav);
+  /* 顶部整体条：logo 条 + 功能导航条融合为一个吸顶单元。
+   * 之前两条各自 sticky top:0、z-index 不同（nav 30 > header 10），下拉时导航条
+   * 会把 logo 条顶掉/盖住。现在包进同一容器、同一玻璃底，作为整体定死在顶部：
+   * logo / 订阅方案 / 登录注册 任何滚动位置都可见。 */
+  const topbar = el('div', { class: 'garage-topbar' });
+  topbar.appendChild(header);
+  topbar.appendChild(nav);
+  root.appendChild(topbar);
   root.appendChild(pageGarage);
   root.appendChild(pageWheels);
   root.appendChild(pageForum);

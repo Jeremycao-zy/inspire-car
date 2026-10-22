@@ -86,22 +86,35 @@
   box-shadow: inset 0 0 0 1px var(--neon-cyan), 0 5px 22px rgba(0,0,0,0.306);
 }
 
-/* ---------------- 顶部品牌栏 ---------------- */
-
-.garage-header {
+/* ---------------- 顶部整体条（logo 条 + 功能导航 融合吸顶） ----------------
+ * 两条包进同一容器、共享同一深色玻璃底与同一条底边，下拉后作为整体定死在顶部：
+ * logo / 订阅方案 / 登录注册始终可见，导航条不会再顶掉 logo 条。 */
+.garage-topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 30;
+  flex: 0 0 auto;
+  background: linear-gradient(180deg, rgba(14, 12, 26, 0.96) 0%, rgba(10, 10, 20, 0.94) 100%);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* ---------------- 顶部品牌栏（整体条的第一行） ---------------- */
+
+.garage-header {
+  position: static; /* 吸顶交给 .garage-topbar，本行融入整体条 */
+  z-index: auto;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 32px;
-  background: rgba(10, 10, 11, 0.62);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line-2);
-  box-shadow: 0 6px 24px rgba(0,0,0,0.102);
+  padding: 12px 32px;
+  background: transparent; /* 与下行共享整体条底色，消除接缝 */
+  border-bottom: none;
+  box-shadow: none;
 }
 
 .garage-brand {
@@ -287,22 +300,20 @@
 
 /* ---------------- 顶层分页导航（车库 / 轮毂 / 论坛 / 资讯） ---------------- */
 
-/* 吸顶：滚到任何位置都能一键切页；背景要实心，否则滚动内容会透过导航 */
+/* 吸顶：滚到任何位置都能一键切页；背景要实心，否则滚动内容会透过导航。
+ * 现为整体条的第二行：自身透明，沿用 .garage-topbar 的底色，仅留一条极淡分区线。 */
 .garage-nav {
-  position: sticky;
-  top: 0;
-  z-index: 30;
+  position: static;
+  z-index: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 10px 24px;
-  /* 深空紫黑实底 + 霓虹分隔线，与车库整体 synthwave 基调一致 */
-  background: linear-gradient(180deg, rgba(11, 8, 32, 0.98) 0%, rgba(10, 10, 20, 0.94) 100%);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line-2);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(0,0,0,0.126);
+  padding: 8px 24px 10px;
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: none;
+  box-shadow: none;
 }
 
 .garage-nav__item {
