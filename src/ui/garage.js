@@ -21,6 +21,7 @@ import { mountAiOrb } from './aiOrb.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
 import { createForum, createNews } from './community.js';
 import './garage.css';
+import { complianceBadge } from './compliance.js';
 import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
 
 /**
@@ -463,6 +464,7 @@ function createCard(plan, onClick, onDelete, index = 0) {
       'div',
       { class: 'plan-card__meta' },
       el('span', { class: 'plan-card__meta-src' }, plan.carModelUrl ? 'AI 生成车模' : '预设车模'),
+      complianceBadge(plan),
       plan.updatedAt || plan.createdAt
         ? el('span', { class: 'plan-card__meta-time' }, fmtTime(plan.updatedAt || plan.createdAt))
         : null

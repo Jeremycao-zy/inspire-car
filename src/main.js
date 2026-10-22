@@ -41,6 +41,7 @@ import { mountGarage } from './ui/garage.js';
 import { mountPhotoGuide } from './ui/photoGuide.js';
 import { recordGeneratedWheel, renderMyWheels } from './ui/myWheels.js';
 import { addWheel } from './api/wheels.js';
+import { showComplianceCard } from './ui/compliance.js';
 import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
 import { installGlobalSfx } from './ui/sfx.js';
@@ -2743,6 +2744,7 @@ async function enterTuner(plan, opts = {}) {
 
   currentPlan = plan;
   studioActive = true;
+  try { showComplianceCard(plan); } catch {}
 
   // 用 hide() 真正停掉车库预览渲染循环（原 classList 只藏 DOM，WebGL 后台空转）
   garage?.hide?.();

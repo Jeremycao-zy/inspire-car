@@ -1,0 +1,171 @@
+/* compliance.css — 改装合规提示卡与方案卡片角标 */
+
+.compliance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.compliance-badge--ok {
+  color: #1f9d55;
+  background: rgba(31, 157, 85, 0.12);
+}
+.compliance-badge--caution {
+  color: #c47d00;
+  background: rgba(196, 125, 0, 0.14);
+}
+.compliance-badge--illegal {
+  color: #d23b3b;
+  background: rgba(210, 59, 59, 0.14);
+}
+
+/* 工作台合规提示卡（底部浮层，可关闭） */
+.compliance-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+.compliance-overlay.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.compliance-card {
+  width: min(680px, 100%);
+  background: #14161c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  color: #e8ebf2;
+}
+.compliance-card--illegal {
+  border-color: rgba(210, 59, 59, 0.55);
+}
+.compliance-card--caution {
+  border-color: rgba(196, 125, 0, 0.5);
+}
+
+.compliance-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.compliance-card__badge {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.compliance-card--ok .compliance-card__badge { color: #34d27e; }
+.compliance-card--caution .compliance-card__badge { color: #ffce6b; }
+.compliance-card--illegal .compliance-card__badge { color: #ff7a7a; }
+.compliance-card__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.compliance-card__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #9aa3b2;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.compliance-card__close:hover { color: #fff; }
+
+.compliance-card__body { padding: 12px 14px; }
+
+.compliance-card__points {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.compliance-point {
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: 18px;
+  position: relative;
+}
+.compliance-point::before {
+  position: absolute;
+  left: 0;
+}
+.compliance-point--ok { color: #b9e8cd; }
+.compliance-point--ok::before { content: '✅'; }
+.compliance-point--warn { color: #ffe2a8; }
+.compliance-point--warn::before { content: '⚠️'; }
+.compliance-point--bad { color: #ffb3b3; }
+.compliance-point--bad::before { content: '⛔'; }
+
+.compliance-card__ref {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #c4cad6;
+}
+.compliance-ref__h {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.compliance-ref__h--bad { color: #ff8a8a; }
+.compliance-ref__h--ok { color: #5fe0a0; }
+
+.compliance-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.compliance-card__link {
+  color: #7fb6ff;
+  font-size: 12px;
+  text-decoration: none;
+}
+.compliance-card__link:hover { text-decoration: underline; }
+.compliance-card__ok {
+  background: #2b6cff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.compliance-card__ok:hover { background: #3d79ff; }
+
+@media (max-width: 560px) {
+  .compliance-card__ref { grid-template-columns: 1fr; }
+  .compliance-card__foot { flex-direction: column; align-items: stretch; }
+  .compliance-card__ok { width: 100%; }
+}
