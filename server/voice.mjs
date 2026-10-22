@@ -14,14 +14,18 @@ import { getVisionKey } from './vision.mjs';
 const TTS_URL =
   'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 
-/** qwen-tts 官方音色（DashScope 实测仅支持这 4 个，其余会 400 InvalidParameter） */
+/** qwen3-tts-flash 音色（百炼官方音色列表，其余会 400 InvalidParameter） */
 export const VOICES = [
-  'Cherry', // 女声 · 甜美自然（默认）
+  'Nini', // 女声 · 邻家妹妹，软糯甜美（默认）
+  'Momo', // 女声 · 撒娇可爱
+  'Cherry', // 女声 · 阳光亲切
   'Serena', // 女声 · 温柔知性
-  'Ethan', // 男声 · 沉稳
-  'Chelsie', // 女声 · 明亮亲切
+  'Chelsie', // 女声 · 二次元灵动
+  'Maia', // 女声 · 知性温柔
+  'Mia', // 女声 · 温顺乖巧
+  'Ethan', // 男声 · 阳光沉稳
 ];
-const DEFAULT_VOICE = process.env.TTS_VOICE || 'Cherry';
+const DEFAULT_VOICE = process.env.TTS_VOICE || 'Nini';
 // 模型名：旧 qwen-tts 已被百炼下线（404 Model not exist），现役为 qwen3-tts-flash
 // （2026-10-22 实测：同端点同音色，200 + output.audio.url）。可用 TTS_MODEL 覆盖。
 const TTS_MODEL = process.env.TTS_MODEL || 'qwen3-tts-flash';

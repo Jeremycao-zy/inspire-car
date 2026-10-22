@@ -62,8 +62,17 @@ function mountAiOrb() {
   document.body.appendChild(wrap);
 
   /* ---------- 对话面板 ---------- */
-  // 朗读音色：默认 Cherry（百炼 qwen-tts 真人音色），可在面板里切换并持久化
-  let currentVoice = 'Cherry';
+  // 朗读音色：默认 Nini「邻家妹妹」甜美自然（qwen3-tts-flash），可在面板里切换并持久化。
+  // 迁移：老默认 Cherry → Nini（用户明确要求换掉原音色）
+  let currentVoice = localStorage.getItem('aiOrbVoice');
+  if (!currentVoice || currentVoice === 'Cherry') {
+    currentVoice = 'Nini';
+    try {
+      localStorage.setItem('aiOrbVoice', 'Nini');
+    } catch {
+      /* ignore */
+    }
+  }
   const panel = document.createElement('div');
   panel.className = 'ai-chat';
   panel.innerHTML = `
@@ -72,10 +81,12 @@ function mountAiOrb() {
       <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
         <span>音色</span>
         <select class="ai-chat__voice-sel">
-          <option value="Cherry">Cherry · 甜美</option>
+          <option value="Nini">Nini · 甜美自然</option>
+          <option value="Momo">Momo · 撒娇可爱</option>
+          <option value="Cherry">Cherry · 阳光亲切</option>
           <option value="Serena">Serena · 温柔知性</option>
+          <option value="Chelsie">Chelsie · 二次元灵动</option>
           <option value="Ethan">Ethan · 沉稳男声</option>
-          <option value="Chelsie">Chelsie · 明亮亲切</option>
         </select>
       </label>
       <button class="ai-chat__close" aria-label="关闭">×</button>
@@ -108,13 +119,37 @@ function mountAiOrb() {
     return b;
   }
 
-  /** 调用 /api/chat；支持 SSE 流式与 JSON 兜底 */
+  /** 调用 /api/chat；支持 SSE 流式与 JSON 兜底。句子一旦生成立即送 TTS 排队，首句抢先发声 */
   async function send(text) {
     addBubble('user', text);
     history.push({ role: 'user', content: text });
     ta.value = '';
     const aiBubble = addBubble('ai', '', true);
     sendBtn.disabled = true;
+
+    let acc = '';
+    let pending = ''; // 未成句缓冲
+    let spoken = false;
+    const emitSentences = (force) => {
+      for (;;) {
+        const m = pending.match(/^([\s\S]*?[。！？；!?;\n])([\s\S]*)$/);
+        if (m) {
+          const s = m[1].trim();
+          if (s) {
+            speakPush(s);
+            spoken = true;
+          }
+          pending = m[2];
+          continue;
+        }
+        if (force && pending.trim()) {
+          speakPush(pending.trim());
+          spoken = true;
+          pending = '';
+        }
+        break;
+      }
+    };
 
     try {
       const resp = await fetch('/api/chat', {
@@ -123,7 +158,6 @@ function mountAiOrb() {
         body: JSON.stringify({ messages: history.slice(-12), stream: true }),
       });
       const ct = resp.headers.get('content-type') || '';
-      let acc = '';
       if (ct.includes('text/event-stream') && resp.body) {
         const reader = resp.body.getReader();
         const dec = new TextDecoder();
@@ -141,22 +175,32 @@ function mountAiOrb() {
             if (data === '[DONE]') continue;
             try {
               const j = JSON.parse(data);
-              if (j.error) { acc += `\n[错误] ${j.error}`; }
+              if (j.error) {
+                acc += `\n[错误] ${j.error}`;
+              }
               const delta = j.choices?.[0]?.delta?.content || j.choices?.[0]?.message?.content || '';
-              if (delta) { acc += delta; aiBubble.textContent = acc; list.scrollTop = list.scrollHeight; }
-            } catch { /* 忽略不完整 chunk */ }
+              if (delta) {
+                acc += delta;
+                pending += delta;
+                aiBubble.textContent = acc;
+                list.scrollTop = list.scrollHeight;
+                emitSentences(false); // 完整句子立刻送 TTS
+              }
+            } catch {
+              /* 忽略不完整 chunk */
+            }
           }
         }
       } else {
         const j = await resp.json().catch(() => ({}));
         acc = j.reply || '（没有收到回复）';
+        pending = acc;
       }
       aiBubble.classList.remove('thinking');
       aiBubble.textContent = acc || '（没有收到回复）';
-      if (acc && !acc.startsWith('[错误]')) {
-        history.push({ role: 'assistant', content: acc });
-        speak(acc); // 面板回复也朗读（与语音链路一致）
-      }
+      emitSentences(true); // 尾巴整句送出
+      if (!spoken && acc && !acc.startsWith('[错误]')) speak(acc); // 没切出句子就整段播
+      if (acc && !acc.startsWith('[错误]')) history.push({ role: 'assistant', content: acc });
     } catch (e) {
       aiBubble.classList.remove('thinking');
       aiBubble.textContent = `对话失败：${e.message}`;
@@ -190,18 +234,73 @@ function mountAiOrb() {
     }
   }
 
-  /** 向 /api/chat 取一次回复（语音链路用，不依赖面板） */
-  async function ask(text) {
+  /** 向 /api/chat 流式取回复（语音链路用，不依赖面板）。
+   *  每出现一个完整句子立即回调 onSentence（送 TTS 排队，首句抢先发声）；
+   *  onDelta(全文累积) 用于实时字幕。 */
+  async function askStream(text, onDelta, onSentence) {
     history.push({ role: 'user', content: text });
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history.slice(-12), stream: false }),
+      body: JSON.stringify({ messages: history.slice(-12), stream: true }),
     });
-    const data = await resp.json().catch(() => ({}));
-    const reply = (data && data.reply) || '抱歉，我这边没接上，能再说一次吗？';
-    history.push({ role: 'assistant', content: reply });
-    return reply;
+    const ct = resp.headers.get('content-type') || '';
+    let acc = '';
+    let pending = ''; // 未成句缓冲
+    const pump = (force) => {
+      for (;;) {
+        const m = pending.match(/^([\s\S]*?[。！？；!?;\n])([\s\S]*)$/);
+        if (m) {
+          const s = m[1].trim();
+          if (s) onSentence(s);
+          pending = m[2];
+          continue;
+        }
+        if (force && pending.trim()) {
+          onSentence(pending.trim());
+          pending = '';
+        }
+        break;
+      }
+    };
+    if (ct.includes('text/event-stream') && resp.body) {
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const s = line.trim();
+          if (!s || !s.startsWith('data:')) continue;
+          const data = s.slice(5).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const j = JSON.parse(data);
+            const delta = j.choices?.[0]?.delta?.content || j.choices?.[0]?.message?.content || '';
+            if (delta) {
+              acc += delta;
+              pending += delta;
+              if (onDelta) onDelta(acc);
+              pump(false); // 完整句子立刻送 TTS
+            }
+          } catch {
+            /* 忽略不完整 chunk */
+          }
+        }
+      }
+    } else {
+      const j = await resp.json().catch(() => ({}));
+      acc = j.reply || '';
+      pending = acc;
+      if (onDelta) onDelta(acc);
+    }
+    pump(true); // 尾巴整句送出
+    if (acc && !acc.startsWith('[错误]')) history.push({ role: 'assistant', content: acc });
+    return acc;
   }
 
   /* 服务端音色（百炼 qwen-tts）：系统默认中文音色机械感重、各平台还不一致，
@@ -239,11 +338,12 @@ function mountAiOrb() {
   }
   // 解码并播放 TTS 音频；成功返回 true，失败（解码异常 / 无上下文）返回 false。
   // onEnd 在音频自然播放结束时触发（连续对话模式靠它接续聆听）。
-  async function playTts(ab, onEnd) {
+  async function playTts(ab, onEnd, epoch) {
     const ctx = getCtx();
     if (!ctx || !ab || ab.byteLength < 1000) return false;
     try {
       const buf = await ctx.decodeAudioData(ab);
+      if (epoch !== undefined && epoch !== audioEpoch) return false; // 已被用户打断，丢弃
       stopAudio();
       const src = ctx.createBufferSource();
       src.buffer = buf;
@@ -292,18 +392,53 @@ function mountAiOrb() {
       .trim();
   }
 
-  /** 朗读回复：优先服务端真人音色。onEnd = 播放自然结束后的回调（连续对话用） */
-  let speakSeq = 0; // 连续发言时只播最新一条，避免新旧语音交叠
-  async function speak(text, onEnd) {
+  /* ---------- TTS 句子队列 ----------
+   * 流式回复每产生一个完整句子就立刻送 TTS 排队播放：首句抢先发声，
+   * 不用等整段回复生成完，大幅缩短「回应间隔」。队列顺序播放、互不取消。 */
+  const speechQ = { items: [], playing: false, drain: null };
+  function speakPush(text) {
+    if (!text) return;
+    speechQ.items.push(text);
+    if (!speechQ.playing) speakNext();
+  }
+  function speakNext() {
+    const item = speechQ.items.shift();
+    if (!item) {
+      speechQ.playing = false;
+      const cb = speechQ.drain;
+      speechQ.drain = null;
+      if (cb) cb();
+      return;
+    }
+    speechQ.playing = true;
+    speak(item, speakNext, true); // queued：顺序播放，不互相顶号
+  }
+  function speakClear() {
+    speechQ.items = [];
+  }
+  /** 队列排空后执行回调（连续对话靠它接续聆听） */
+  function onSpeechDrain(cb) {
+    if (!speechQ.playing && !speechQ.items.length) cb();
+    else speechQ.drain = cb;
+  }
+
+  /** 朗读一段文本：优先服务端真人音色。
+   *  onEnd = 播放自然结束回调；queued = 队列模式（顺序播放，不顶号）。 */
+  let speakSeq = 0; // 连续整段发言时只播最新一条，避免新旧语音交叠
+  let audioEpoch = 0; // 用户手动打断时 +1，作废所有在途音频
+  async function speak(text, onEnd, queued = false) {
     const clean = sanitizeForSpeech(text);
     if (!clean) {
       if (onEnd) onEnd();
       return;
     }
+    if (!queued) speakClear(); // 整段发言顶掉排队中的句子
     const seq = ++speakSeq;
+    const epoch = audioEpoch;
+    const stale = () => !queued && seq !== speakSeq;
     wrap.classList.add('is-speaking');
     const endOnce = () => {
-      if (seq === speakSeq && onEnd) onEnd();
+      if (!stale() && onEnd) onEnd();
     };
     try {
       const r = await fetch('/api/tts', {
@@ -314,17 +449,17 @@ function mountAiOrb() {
       if (r.ok) {
         const ab = await r.arrayBuffer();
         if (ab && ab.byteLength > 1000) {
-          if (seq !== speakSeq) {
+          if (stale() || epoch !== audioEpoch) {
             endOnce();
             return;
           }
-          const played = await playTts(ab, endOnce);
+          const played = await playTts(ab, endOnce, epoch);
           if (played) return; // 真人语音已成功播放，结束
         }
       }
       throw new Error('tts unavailable');
     } catch (err) {
-      if (seq !== speakSeq) {
+      if (stale() || epoch !== audioEpoch) {
         endOnce();
         return;
       }
@@ -450,12 +585,20 @@ function mountAiOrb() {
         if (converseMode) autoListen();
         return;
       }
-      showCaption(`你说：${text} 思考中…`, 0);
+      showCaption('思考中…', 0);
       try {
-        const reply = await ask(text);
-        showCaption(reply, 0); // 持续显示，朗读期间不消失
-        speak(reply, () => {
-          if (converseMode) autoListen(); // 播完自动接续聆听
+        let spoken = false;
+        const reply = await askStream(
+          text,
+          (full) => showCaption(full, 0), // 实时字幕：边生成边显示
+          (sentence) => {
+            spoken = true;
+            speakPush(sentence); // 出一句、播一句，首句抢先发声
+          }
+        );
+        if (!spoken && reply) speakPush(reply);
+        onSpeechDrain(() => {
+          if (converseMode) autoListen(); // 全部播完再接续聆听
         });
       } catch {
         showCaption('网络好像不太稳，稍后再试一次。', 4000);
@@ -470,10 +613,14 @@ function mountAiOrb() {
     if (wanting || listening) {
       stopListening();
       converseMode = false;
+      speakClear(); // 丢掉排队中还没播的句子
+      audioEpoch++; // 作废在途音频（打断当前朗读）
       caption.classList.remove('show');
       return;
     }
     stopAudio();
+    speakClear();
+    audioEpoch++;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     wrap.classList.remove('is-speaking');
     if (!recog) {
@@ -502,6 +649,8 @@ function mountAiOrb() {
   function pause() {
     wrap.classList.add('is-paused', 'is-hidden');
     converseMode = false; // 离开首页：退出连续对话、停止聆听
+    speakClear();
+    audioEpoch++;
     stopListening();
   }
   function resume() {

@@ -39,7 +39,9 @@ const DEFAULT_BAILIAN_REGION = 'cn-beijing';
 
 const PROVIDERS = {
   qwen: {
-    model: 'qwen-plus',
+    // qwen-flash 比 qwen-plus 响应快一倍多（实测整轮 ~2s vs ~4.7s），语音助手场景够用；
+    // 需要更高智力可用 CHAT_MODEL=qwen-plus 覆盖。
+    model: process.env.CHAT_MODEL || 'qwen-flash',
     keyFiles: ['qwen-vision', 'bailian-vision'],
     envKeys: ['BAILIAN_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_API_KEY', 'QWEN_VL_API_KEY'],
     legacyEndpoint: QWEN_LEGACY_ENDPOINT,
