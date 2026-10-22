@@ -18,6 +18,7 @@ import { currentUser, logout, authFetch } from '../auth.js';
 import { openPricingModal } from './subscribe.js';
 import { openLegalModal } from './legalModal.js';
 import { mountAiOrb } from './aiOrb.js';
+import { mountThemeToggle } from './theme.js';
 import { mountWheelWarehouse } from './wheelWarehouse.js';
 import { createForum, createNews } from './community.js';
 import './garage.css';
@@ -643,7 +644,8 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
     '订阅方案'
   );
 
-  // 头部：左侧只保留字标（中文名与标语已按用户要求移除），右侧 订阅方案 + 登录位
+  // 头部：左侧只保留字标（中文名与标语已按用户要求移除），右侧 主题切换 + 订阅方案 + 登录位
+  const themeSlot = el('span', { class: 'garage-theme-slot' });
   const header = el(
     'header',
     { class: 'garage-header' },
@@ -652,8 +654,9 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
       { class: 'garage-brand' },
       el('img', { class: 'garage-logo', src: logoWordmarkUrl, alt: 'INSPIRE CAR' })
     ),
-    el('div', { class: 'garage-header__right' }, subscribeBtn, authSlot)
+    el('div', { class: 'garage-header__right' }, themeSlot, subscribeBtn, authSlot)
   );
+  mountThemeToggle(themeSlot); // 浅色 / 深色 / 跟随系统
 
   /* Hero：文案 + 实时 3D 预览 */
   const heroCanvas = el('div', { class: 'garage-hero__canvas' });

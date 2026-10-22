@@ -65,6 +65,27 @@
     <link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <!-- 主题预置：首绘前定好深浅 + favicon，避免闪白/闪黑（默认跟随系统） -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('ic-theme') || 'auto';
+          var t =
+            p === 'auto'
+              ? matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark'
+              : p;
+          document.documentElement.dataset.theme = t;
+          document.querySelectorAll('link[rel="icon"]').forEach(function (l) {
+            var m = /favicon-(light-)?(\d+)\.png/.exec(l.getAttribute('href') || '');
+            if (m) l.href = t === 'light' ? '/icons/favicon-light-' + m[2] + '.png' : '/icons/favicon-' + m[2] + '.png';
+          });
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#000000" />
     <meta name="mobile-web-app-capable" content="yes" />

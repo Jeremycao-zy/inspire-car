@@ -44,6 +44,7 @@ import { addWheel } from './api/wheels.js';
 import { showComplianceCard } from './ui/compliance.js';
 import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
+import { initTheme } from './ui/theme.js';
 import { loading3D } from './ui/loading3d.js';
 import { initErrorReporter } from './ui/errorReporter.js';
 import './ui/styles.css';
@@ -789,6 +790,11 @@ document.addEventListener('glb:progress', (e) => {
 // 两处：3D 视口右下角水印 / 加载遮罩居中。
 // 侧栏顶部品牌板块按需求已移除，不再挂载。
 mountBrandAll({ stage, overlay });
+
+/* --------------------- 主题（浅色 / 深色 / 跟随系统） --------------------- */
+// index.head 内联脚本已在首绘前定好 data-theme；这里补运行时监听（系统偏好变化）
+// 与 favicon 联动。切换按钮挂在车库 header 与工作室 panel-head。
+initTheme();
 
 /* ---------------------------- App ---------------------------- */
 

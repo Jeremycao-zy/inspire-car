@@ -17,6 +17,7 @@ import { getBasis, canJudge } from '../tuning/tireBasis.js';
 import { createClearanceReport } from './clearanceReport.js';
 import { renderMyWheels } from './myWheels.js';
 import { buildWheelStudio } from './wheelStudio.js';
+import { mountThemeToggle } from './theme.js';
 import {
   fenderStatus,
   groundClearanceStatus,
@@ -1322,16 +1323,19 @@ export function createPanel(app, mount) {
   tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
   tabBodies.scene.appendChild(section('视角', views));
 
+  const panelHead = el(
+    'header',
+    { class: 'panel-head' },
+    el('h1', {}, 'TUNING STUDIO'),
+    el('p', { class: 'sub' }, '照片 → Hyper3D Rodin → GLB → 四轮实时装配')
+  );
+  mountThemeToggle(panelHead); // 浅色 / 深色 / 跟随系统
+
   mount.appendChild(
     el(
       'div',
       { class: 'panel' },
-      el(
-        'header',
-        { class: 'panel-head' },
-        el('h1', {}, 'TUNING STUDIO'),
-        el('p', { class: 'sub' }, '照片 → Hyper3D Rodin → GLB → 四轮实时装配')
-      ),
+      panelHead,
       modeBadge,
       tabsBar,
       // 由 TABS 派生而不是逐个手写：新增 Tab 时不会漏挂对应的 body
