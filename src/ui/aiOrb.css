@@ -43,12 +43,11 @@
   animation: ai-mascot-halo 4.2s ease-in-out infinite;
 }
 
-/* 人偶立绘（外层 picture 控尺寸，内层 img 跑动画；真实 3D 模型则挂 canvas） */
+/* 人偶立绘（外层 picture 控尺寸，内层 img 跑动画） */
 .ai-orb__mascot {
   position: relative;
   display: block;
   width: 118px;
-  height: 142px;
 }
 .ai-orb__mascot img {
   display: block;
@@ -57,14 +56,6 @@
   filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
   animation: ai-mascot-float 4.2s ease-in-out infinite;
   transform-origin: 50% 92%;
-}
-/* 真实 3D 模型挂载点：canvas 同样浮动 + 投影，尺寸铺满容器 */
-.ai-orb__mascot canvas {
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
-  animation: ai-mascot-float 4.2s ease-in-out infinite;
 }
 .ai-orb__mascot--active {
   display: none;
@@ -88,9 +79,8 @@
   50%      { transform: translateY(-7px) rotate(0.6deg); }
 }
 @keyframes ai-mascot-talk {
-  /* 说话/聆听：轻弹 + 小幅左右摆（以脚为轴），抬起的手臂会随之轻轻挥动 */
-  0%, 100% { transform: translateY(0) scale(1) rotate(-2.4deg); }
-  50%      { transform: translateY(-5px) scale(1.03) rotate(2.4deg); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-5px) scale(1.03); }
 }
 @keyframes ai-mascot-halo {
   0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.9); }
