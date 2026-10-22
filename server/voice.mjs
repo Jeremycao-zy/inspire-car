@@ -16,7 +16,8 @@ const TTS_URL =
 
 /** qwen3-tts-flash 音色（百炼官方音色列表，其余会 400 InvalidParameter） */
 export const VOICES = [
-  'Kai', // 男声 · 凯：清爽好听，耳朵的 SPA（默认）
+  'Neil', // 男声 · 阿闻：中性专业、字正腔圆，科技企业声（默认）
+  'Kai', // 男声 · 清爽温和
   'Ethan', // 男声 · 阳光温暖（微北方口音）
   'Andre', // 男声 · 磁性（偏薄）
   'Vincent', // 男声 · 沙哑烟嗓（厚重）
@@ -26,7 +27,7 @@ export const VOICES = [
   'Serena', // 女声 · 温柔知性
   'Chelsie', // 女声 · 二次元灵动
 ];
-const DEFAULT_VOICE = process.env.TTS_VOICE || 'Kai';
+const DEFAULT_VOICE = process.env.TTS_VOICE || 'Neil';
 // 模型名：旧 qwen-tts 已被百炼下线（404 Model not exist），现役为 qwen3-tts-flash
 // （2026-10-22 实测：同端点同音色，200 + output.audio.url）。可用 TTS_MODEL 覆盖。
 const TTS_MODEL = process.env.TTS_MODEL || 'qwen3-tts-flash';
