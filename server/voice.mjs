@@ -22,6 +22,9 @@ export const VOICES = [
   'Chelsie', // 女声 · 明亮亲切
 ];
 const DEFAULT_VOICE = process.env.TTS_VOICE || 'Cherry';
+// 模型名：旧 qwen-tts 已被百炼下线（404 Model not exist），现役为 qwen3-tts-flash
+// （2026-10-22 实测：同端点同音色，200 + output.audio.url）。可用 TTS_MODEL 覆盖。
+const TTS_MODEL = process.env.TTS_MODEL || 'qwen3-tts-flash';
 
 /** 取 DashScope（百炼）key；只有 qwen 通道的 key 才适用于 TTS */
 function dashKey() {
@@ -50,8 +53,8 @@ export async function synthesize(text, voice) {
   const v = VOICES.includes(voice) ? voice : DEFAULT_VOICE;
   // qwen-tts 对单次文本长度有限制，超长截断，避免整句失败
   const body = {
-    model: 'qwen-tts',
-    input: { text: clean.slice(0, 500), voice: v },
+    model: TTS_MODEL,
+    input: { text: clean.slice(0, 500), voice: v, language_type: 'Chinese' },
   };
 
   try {
