@@ -62,25 +62,25 @@ function mountAiOrb() {
   document.body.appendChild(wrap);
 
   /* ---------- 对话面板 ---------- */
-  // 朗读音色：默认 Andre「安德雷」男声·磁性沉稳自然舒服（qwen3-tts-flash），可在面板切换并持久化。
-  // 一次性迁移：老默认（无 / Cherry / Nini）→ Andre；用户显式选过的其他音色保留。
+  // 朗读音色：默认 Vincent「田叔」男声·沙哑烟嗓低沉厚实（qwen3-tts-flash），面板可切换并持久化。
+  // 一次性迁移（版本标记）：老默认（无 / Cherry / Nini / Andre）→ Vincent；用户显式选过的其他音色保留。
   let currentVoice = localStorage.getItem('aiOrbVoice');
-  if (!localStorage.getItem('aiOrbVoiceMigrated')) {
-    if (!currentVoice || currentVoice === 'Cherry' || currentVoice === 'Nini') {
-      currentVoice = 'Andre';
+  if (localStorage.getItem('aiOrbVoiceMigrated') !== '2') {
+    if (!currentVoice || ['Cherry', 'Nini', 'Andre'].includes(currentVoice)) {
+      currentVoice = 'Vincent';
       try {
-        localStorage.setItem('aiOrbVoice', 'Andre');
+        localStorage.setItem('aiOrbVoice', 'Vincent');
       } catch {
         /* ignore */
       }
     }
     try {
-      localStorage.setItem('aiOrbVoiceMigrated', '1');
+      localStorage.setItem('aiOrbVoiceMigrated', '2');
     } catch {
       /* ignore */
     }
   }
-  if (!currentVoice) currentVoice = 'Andre';
+  if (!currentVoice) currentVoice = 'Vincent';
   const panel = document.createElement('div');
   panel.className = 'ai-chat';
   panel.innerHTML = `
@@ -89,9 +89,10 @@ function mountAiOrb() {
       <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
         <span>音色</span>
         <select class="ai-chat__voice-sel">
-          <option value="Andre">Andre · 磁性沉稳</option>
+          <option value="Vincent">Vincent · 低沉烟嗓</option>
           <option value="Kai">Kai · 温和悦耳</option>
           <option value="Ethan">Ethan · 阳光温暖</option>
+          <option value="Andre">Andre · 磁性沉稳</option>
           <option value="Nini">Nini · 甜美自然</option>
           <option value="Momo">Momo · 撒娇可爱</option>
           <option value="Cherry">Cherry · 阳光亲切</option>
@@ -692,11 +693,28 @@ function mountAiOrb() {
 
   /* ---------- 进门引导语：进主页主动打招呼，引导登录注册 / 开始改装 ---------- */
   let greetingCleanup = null;
+  let greetingAudio = null; // 预取的引导语音频：手势一来立刻播，不用等合成
 
   function greetingText() {
     return isLoggedIn()
       ? '你好，我是小灵！告诉我你的车型和想法，咱们开始改装吧。想换轮毂、调姿态还是改车漆，直接跟我说。'
       : '你好，我是小灵，你的改装助手！第一次来的话，先点右上角登录或注册一下，之后告诉我你的车型和想法，我帮你定制轮毂、姿态或者车漆方案。';
+  }
+
+  // 进页面就并行预取引导语音频（fetch 不受自动播放策略限制，只有播放需要手势）
+  function prefetchGreeting() {
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: greetingText().slice(0, 500), voice: currentVoice }),
+    })
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((ab) => {
+        if (ab && ab.byteLength > 1000) greetingAudio = ab;
+      })
+      .catch(() => {
+        /* 预取失败无所谓：手势后走常规合成 */
+      });
   }
 
   function playGreeting() {
@@ -705,11 +723,20 @@ function mountAiOrb() {
     if (greetingCleanup) greetingCleanup();
     const text = greetingText();
     showCaption(text, 0); // 先上字幕，音频就绪前也有反馈
-    speak(text, () => showCaption(isLoggedIn() ? '点我，随时跟我聊改装' : '点我随时说话，或先点右上角登录', 6000));
+    const onEnd = () => showCaption(isLoggedIn() ? '点我，随时跟我聊改装' : '点我随时说话，或先点右上角登录', 6000);
+    if (greetingAudio) {
+      wrap.classList.add('is-speaking');
+      Promise.resolve(playTts(greetingAudio, onEnd, audioEpoch)).then((ok) => {
+        if (!ok) speak(text, onEnd); // 预取音频解码失败 → 退回常规合成
+      });
+      return;
+    }
+    speak(text, onEnd);
   }
 
   function scheduleGreeting() {
     if (greeted) return;
+    prefetchGreeting(); // 立刻并行预取，覆盖 900ms 等待 + 合成耗时
     setTimeout(() => {
       if (greeted) return;
       const ctx = getCtx();

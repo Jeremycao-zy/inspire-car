@@ -108,6 +108,11 @@ function cacheControlOf(relPath) {
   if (p.startsWith('assets/')) {
     return 'public, max-age=31536000, immutable';
   }
+  // 预置车模（/models/*.glb）单文件 11~18MB，内容随版本发布才变：
+  // 长缓存 1 天，变更仍靠 ETag 304 校验，避免弱网重复下载
+  if (p.endsWith('.glb')) {
+    return 'public, max-age=86400';
+  }
   return 'public, max-age=3600';
 }
 

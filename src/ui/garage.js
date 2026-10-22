@@ -264,33 +264,41 @@ function startPreview(container) {
   });
   ro.observe(container);
 
-  loadGLB(HERO_CAR_URL, { progress: false })
-    .then(({ group }) => {
-      if (disposed) return;
-      pivot = new THREE.Group();
-      const box = boxOf(group);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      group.position.sub(center); // 以轮心/几何中心为原点
-      const maxDim = Math.max(size.x, size.y, size.z) || 1;
-      const scale = 3.0 / maxDim;
-      pivot.scale.setScalar(scale);
-      pivot.add(group);
-      scene.add(pivot);
-      // 用缩放后的真实车体范围重新取景（自转/俯仰到最大投影时也能完整装下）
-      const sx = size.x * scale;
-      const sy = size.y * scale;
-      const sz = size.z * scale;
-      const hh = 0.5 * Math.max(sx, sz); // 水平：自转时取长/宽里更大的
-      const vv = 0.5 * Math.max(sy, sz); // 竖直：俯仰/侧摆时取高/宽里更大的
-      if (Number.isFinite(hh) && Number.isFinite(vv) && hh > 0.2) {
-        carExtent = { h: hh, v: vv };
-        fitCamera();
-      }
-    })
-    .catch((e) => {
-      console.warn('[garage-preview] 车模载入失败', e);
-    });
+  // 11.4MB 车模不挡首屏：等首帧画完、浏览器空闲再拉（进门立即可交互，车稍后登场）
+  const loadHeroModel = () => {
+    if (disposed) return;
+    loadGLB(HERO_CAR_URL, { progress: false })
+      .then(({ group }) => {
+        if (disposed) return;
+        pivot = new THREE.Group();
+        const box = boxOf(group);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        group.position.sub(center); // 以轮心/几何中心为原点
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const scale = 3.0 / maxDim;
+        pivot.scale.setScalar(scale);
+        pivot.add(group);
+        scene.add(pivot);
+        // 用缩放后的真实车体范围重新取景（自转/俯仰到最大投影时也能完整装下）
+        const sx = size.x * scale;
+        const sy = size.y * scale;
+        const sz = size.z * scale;
+        const hh = 0.5 * Math.max(sx, sz); // 水平：自转时取长/宽里更大的
+        const vv = 0.5 * Math.max(sy, sz); // 竖直：俯仰/侧摆时取高/宽里更大的
+        if (Number.isFinite(hh) && Number.isFinite(vv) && hh > 0.2) {
+          carExtent = { h: hh, v: vv };
+          fitCamera();
+        }
+      })
+      .catch((e) => {
+        console.warn('[garage-preview] 车模载入失败', e);
+      });
+  };
+  requestAnimationFrame(() => {
+    if (window.requestIdleCallback) requestIdleCallback(loadHeroModel, { timeout: 2500 });
+    else setTimeout(loadHeroModel, 500);
+  });
 
   /* 复合转动：Y 轴匀速自转 + X 轴俯仰摆动 + Z 轴轻微侧摆。
      三轴用互不相同的频率，形成不重复的李萨如式姿态变化。
