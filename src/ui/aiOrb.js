@@ -149,7 +149,10 @@ function mountAiOrb() {
       }
       aiBubble.classList.remove('thinking');
       aiBubble.textContent = acc || '（没有收到回复）';
-      if (acc && !acc.startsWith('[错误]')) history.push({ role: 'assistant', content: acc });
+      if (acc && !acc.startsWith('[错误]')) {
+        history.push({ role: 'assistant', content: acc });
+        speak(acc); // 面板回复也朗读（与语音链路一致）
+      }
     } catch (e) {
       aiBubble.classList.remove('thinking');
       aiBubble.textContent = `对话失败：${e.message}`;
@@ -268,30 +271,44 @@ function mountAiOrb() {
     }
   }
 
+  // 朗读前清洗：TTS 会把 Markdown 符号 / 表情 / 装饰字符读出来，很难听
+  function sanitizeForSpeech(t) {
+    return String(t || '')
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, '')
+      .replace(/[*#`>_~～]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   /** 朗读回复：优先服务端真人音色 */
+  let speakSeq = 0; // 连续发言时只播最新一条，避免新旧语音交叠
   async function speak(text) {
-    if (!text) return;
+    const clean = sanitizeForSpeech(text);
+    if (!clean) return;
+    const seq = ++speakSeq;
     wrap.classList.add('is-speaking');
     try {
       const r = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: currentVoice }),
+        body: JSON.stringify({ text: clean.slice(0, 500), voice: currentVoice }),
       });
       if (r.ok) {
         const ab = await r.arrayBuffer();
         if (ab && ab.byteLength > 1000) {
+          if (seq !== speakSeq) return; // 已有更新的发言，放弃这条
           const played = await playTts(ab);
           if (played) return; // 真人语音已成功播放，结束
         }
       }
       throw new Error('tts unavailable');
     } catch (err) {
+      if (seq !== speakSeq) return;
       // 服务端音色不可用 → 退回系统语音，保证一定有声音（不再静默切换，给出提示便于排查）
       console.warn('[aiOrb] TTS 真人语音失败，退回系统语音：', err);
       showCaption('真人语音暂不可用，已切换系统语音', 2600);
       wrap.classList.remove('is-speaking');
-      speakFallback(text);
+      speakFallback(clean);
     }
   }
 
