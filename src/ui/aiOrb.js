@@ -62,25 +62,25 @@ function mountAiOrb() {
   document.body.appendChild(wrap);
 
   /* ---------- 对话面板 ---------- */
-  // 朗读音色：默认 Vincent「田叔」男声·沙哑烟嗓低沉厚实（qwen3-tts-flash），面板可切换并持久化。
-  // 一次性迁移（版本标记）：老默认（无 / Cherry / Nini / Andre）→ Vincent；用户显式选过的其他音色保留。
+  // 朗读音色：默认 Kai「凯」男声·沉稳清爽（qwen3-tts-flash），面板可切换并持久化。
+  // 一次性迁移（版本标记）：老默认（无 / Cherry / Nini / Andre / Vincent）→ Kai；用户显式选过的其他音色保留。
   let currentVoice = localStorage.getItem('aiOrbVoice');
-  if (localStorage.getItem('aiOrbVoiceMigrated') !== '2') {
-    if (!currentVoice || ['Cherry', 'Nini', 'Andre'].includes(currentVoice)) {
-      currentVoice = 'Vincent';
+  if (localStorage.getItem('aiOrbVoiceMigrated') !== '3') {
+    if (!currentVoice || ['Cherry', 'Nini', 'Andre', 'Vincent'].includes(currentVoice)) {
+      currentVoice = 'Kai';
       try {
-        localStorage.setItem('aiOrbVoice', 'Vincent');
+        localStorage.setItem('aiOrbVoice', 'Kai');
       } catch {
         /* ignore */
       }
     }
     try {
-      localStorage.setItem('aiOrbVoiceMigrated', '2');
+      localStorage.setItem('aiOrbVoiceMigrated', '3');
     } catch {
       /* ignore */
     }
   }
-  if (!currentVoice) currentVoice = 'Vincent';
+  if (!currentVoice) currentVoice = 'Kai';
   const panel = document.createElement('div');
   panel.className = 'ai-chat';
   panel.innerHTML = `
@@ -89,10 +89,10 @@ function mountAiOrb() {
       <label class="ai-chat__voice" title="选择 AI 朗读音色（百炼真人语音）">
         <span>音色</span>
         <select class="ai-chat__voice-sel">
-          <option value="Vincent">Vincent · 低沉烟嗓</option>
-          <option value="Kai">Kai · 温和悦耳</option>
+          <option value="Kai">Kai · 沉稳清爽</option>
           <option value="Ethan">Ethan · 阳光温暖</option>
           <option value="Andre">Andre · 磁性沉稳</option>
+          <option value="Vincent">Vincent · 低沉烟嗓</option>
           <option value="Nini">Nini · 甜美自然</option>
           <option value="Momo">Momo · 撒娇可爱</option>
           <option value="Cherry">Cherry · 阳光亲切</option>
