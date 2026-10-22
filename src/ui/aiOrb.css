@@ -161,12 +161,15 @@
   transform: translateY(10px);
 }
 
-/* 语音字幕：贴在球上方，不弹面板 */
+/* 语音字幕：放在人偶左侧（原音效开关位），与人物并排——不压头盔/头部。
+ * 人偶占右侧 right:20~138，字幕从 right:152 起向左展开；窄屏收窄避让人偶。 */
 .ai-orb__caption {
   position: fixed;
-  right: 22px;
-  bottom: 168px;
-  width: min(300px, calc(100vw - 44px));
+  right: 152px;
+  bottom: 28px;
+  width: min(280px, calc(100vw - 190px));
+  max-height: 200px;
+  overflow-y: auto;
   z-index: 165;
   padding: 10px 13px;
   border-radius: 12px;
@@ -187,6 +190,16 @@
 .ai-orb__caption.show {
   opacity: 1;
   transform: translateY(0);
+}
+/* 窄屏：字幕更窄，仍保持在人偶左侧（人偶占 right:20~138） */
+@media (max-width: 640px) {
+  .ai-orb__caption {
+    right: 140px;
+    bottom: 24px;
+    width: min(180px, 46vw);
+    max-height: 150px;
+    font-size: 12px;
+  }
 }
 
 /* 对话面板 */

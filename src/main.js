@@ -44,7 +44,6 @@ import { addWheel } from './api/wheels.js';
 import { showComplianceCard } from './ui/compliance.js';
 import { fetchMe, consumeOAuthCallback } from './auth.js';
 import { showAuthOverlay } from './ui/auth.js';
-import { installGlobalSfx } from './ui/sfx.js';
 import { loading3D } from './ui/loading3d.js';
 import { initErrorReporter } from './ui/errorReporter.js';
 import './ui/styles.css';
@@ -2949,7 +2948,7 @@ async function bootGarage() {
 }
 
 function mountGarageEntry(user) {
-  installGlobalSfx(); // 全站操作音效（滑块/卡片/车身旋转/按钮）；首个用户手势解锁音频上下文
+  // 全站操作音效已按用户要求移除（2026-10-22）：不再 installGlobalSfx，也不挂「音效 开」开关
   garage = mountGarage({
     user,
     // 右上角「登录」→ 打开原版登录浮层（浮在主页之上，不遮挡主页内容）
