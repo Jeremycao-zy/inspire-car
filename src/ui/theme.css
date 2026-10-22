@@ -29,7 +29,7 @@
   /* ---- 文字 ---- */
   --text: #17181c;
   --text-dim: #565862;
-  --text-faint: #8c8e98;
+  --text-faint: #6d7079;
 
   /* ---- 强调：近黑（primary 按钮黑底白字，与深色版反转）---- */
   --accent: #1a1b20;
@@ -343,4 +343,132 @@
   box-shadow:
     0 14px 34px rgba(20, 24, 40, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* =====================================================================
+ * v3 补充：反制 professional-theme.css 的深色硬编码
+ * （main.js 里该文件最后导入，#appbar/.garage-header/#stage/.hud/.panel
+ *  被它二次刷成深紫玻璃，v1/v2 的浅色覆盖被压住）
+ * ===================================================================== */
+
+/* ---- 顶栏：工作室 appbar + 车库品牌行 ---- */
+:root[data-theme='light'] #appbar {
+  background: var(--panel);
+  border-bottom-color: var(--line);
+  backdrop-filter: none;
+}
+:root[data-theme='light'] .garage-header {
+  background: transparent;
+  border-bottom: none;
+}
+/* 白色字标 PNG 在浅底上不可见 → 反相成黑（形状不变，不碰品牌资产本身） */
+:root[data-theme='light'] .garage-logo,
+:root[data-theme='light'] .appbar-logo {
+  filter: invert(1);
+}
+:root[data-theme='light'] .garage-brand__title {
+  color: var(--text);
+  text-shadow: none;
+}
+:root[data-theme='light'] .garage-brand__sub {
+  color: var(--text-dim);
+  text-shadow: none;
+}
+
+/* ---- 用户条 / 胶囊：深紫玻璃 → 白玻璃 ---- */
+:root[data-theme='light'] .garage-userchip,
+:root[data-theme='light'] .auth-userbar {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+:root[data-theme='light'] .gb-btn.ghost {
+  color: var(--text-dim);
+  background: rgba(23, 24, 28, 0.03);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+:root[data-theme='light'] .gb-btn.ghost:hover {
+  color: var(--text);
+  background: rgba(23, 24, 28, 0.07);
+  box-shadow: inset 0 0 0 1px #b9bdc9;
+}
+
+/* ---- 工作室：3D 舞台 / HUD / 侧栏面板浅色化 ---- */
+:root[data-theme='light'] #stage {
+  background: radial-gradient(ellipse at 50% 46%, #ffffff 0%, #eef0f4 42%, var(--bg) 78%);
+}
+:root[data-theme='light'] #stage::before {
+  background: linear-gradient(90deg, rgba(20, 22, 30, 0.07), transparent 22%, transparent 78%, rgba(20, 22, 30, 0.07));
+}
+:root[data-theme='light'] .hud {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: var(--line);
+}
+:root[data-theme='light'] .panel,
+:root[data-theme='light'] .control-panel,
+:root[data-theme='light'] .side-panel {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: -18px 0 48px rgba(20, 24, 40, 0.08);
+}
+
+/* ---- AI 助手面板：关闭键原硬编码 rgba(255,255,255,.72)，浅底隐形 ---- */
+:root[data-theme='light'] .ai-chat__close {
+  color: var(--text-dim);
+  border-color: var(--line-2);
+}
+:root[data-theme='light'] .ai-chat__close:hover {
+  background: rgba(23, 24, 28, 0.06);
+}
+:root[data-theme='light'] .ai-chat__head {
+  border-bottom-color: var(--line);
+}
+
+/* =====================================================================
+ * v3.1：拍照引导层（photo-guide）浅色修复
+ * header/footer 是深色玻璃 + 硬编码近白字，浅色主题下全部隐形
+ * ===================================================================== */
+:root[data-theme='light'] .photo-guide__header {
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom-color: var(--line);
+  box-shadow: 0 6px 24px rgba(20, 24, 40, 0.06);
+}
+:root[data-theme='light'] .photo-guide__brand {
+  color: var(--text);
+}
+/* 白色字标/IC 标记在浅色 header 上反相成黑 */
+:root[data-theme='light'] .photo-guide__logo,
+:root[data-theme='light'] .photo-guide__bar-marker {
+  filter: invert(1);
+}
+:root[data-theme='light'] .photo-guide__back {
+  background: rgba(23, 24, 28, 0.05);
+  border-color: var(--line-2);
+  color: var(--text-dim);
+}
+:root[data-theme='light'] .photo-guide__back:hover {
+  background: rgba(23, 24, 28, 0.1);
+  border-color: #b9bdc9;
+}
+:root[data-theme='light'] .photo-guide__footer {
+  background: rgba(255, 255, 255, 0.92);
+  border-top-color: var(--line);
+  box-shadow: 0 -6px 24px rgba(20, 24, 40, 0.07);
+}
+:root[data-theme='light'] .photo-guide__counter strong {
+  color: var(--text);
+}
+/* 右侧角度队列：卡片浅底，硬编码近白标题 → 深字 */
+:root[data-theme='light'] .photo-guide__strip-label {
+  color: var(--text);
+}
+:root[data-theme='light'] .photo-guide__strip-item {
+  box-shadow: 0 10px 28px rgba(20, 24, 40, 0.1), inset 0 6px 24px rgba(20, 24, 40, 0.03);
+}
+:root[data-theme='light'] .photo-guide__strip-item--active {
+  box-shadow: 0 14px 32px rgba(20, 24, 40, 0.12), 0 5px 22px rgba(26, 27, 32, 0.18);
+}
+:root[data-theme='light'] .photo-guide__strip-index {
+  background: rgba(23, 24, 28, 0.06);
+  border-color: var(--line-2);
+  color: var(--text-dim);
 }
