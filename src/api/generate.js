@@ -281,13 +281,13 @@ export async function health() {
  */
 /**
  * 识别用最佳图选择：按角度优先级挑信息量最大的那张。
- * 角度优先级（来自 photoGuide.js 的 ANGLES id）：
- *   side(正侧方) > frontRight/rearRight(45°) > front/rear(正前/正后) > 兜底 list[0]。
+ * 角度优先级（来自 photoGuide.js 的 CAR_ANGLES id）：
+ *   side(正侧方) > frontLeft/rearRight(45°) > front/rear(正前/正后) > 兜底 list[0]。
  * 无 angleId 标签的普通 File（非引导上传）回退 list[0]，保持原行为。
  * @param {FileList|File[]|null} files
  * @returns {File|null}
  */
-const ANGLE_PRIORITY = { side: 5, frontRight: 4, rearLeft: 4, front: 2, rear: 2 };
+const ANGLE_PRIORITY = { side: 5, frontLeft: 4, rearRight: 4, front: 2, rear: 2 };
 export function pickRecognitionImage(files) {
   const list = Array.from(files || []);
   if (!list.length) return null;

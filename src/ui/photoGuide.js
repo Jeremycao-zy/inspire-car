@@ -13,6 +13,7 @@ import { generateModel, GenerateError } from '../api/generate.js';
 import logoWordmarkUrl from '../assets/logo-wordmark-white.png';
 import logoGlyphUrl from '../assets/logo-glyph-white.png';
 import { loading3D } from './loading3d.js';
+import { createGuideCar } from './guideCar.js';
 import './photoGuide.css';
 
 /** 建模等待时的改装知识小贴士（自动轮播 + 可手动点切下一条） */
@@ -62,37 +63,34 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-/** 车模 5 个拍摄角度定义：正面 → 侧前 → 正侧 → 正后 → 侧后 */
+/** 车模 5 个拍摄角度：正面 → 左前 45° → 正侧 → 正后 → 右后 45°。
+ *  顺序即拍摄顺序；每拍完一张，动态 3D 车模自动旋转到下一个朝向（见 guideCar.js）。
+ *  注意：车模模式不再使用静态示例图（img 字段留空，取景参照由 3D 车模承担）。 */
 const CAR_ANGLES = [
   {
     id: 'front',
     title: '正面',
     desc: '站在车头正前方，保持车身左右对称，完整拍摄前脸、大灯与进气格栅。',
-    img: '/guides/front.png',
   },
   {
-    id: 'frontRight',
-    title: '侧前',
-    desc: '从车头右前方 45° 拍摄，同时露出车头与右侧车身，展现立体感。',
-    img: '/guides/front-right.png',
+    id: 'frontLeft',
+    title: '左前 45°',
+    desc: '从车头左前方 45° 拍摄，同时露出车头与左侧车身，展现立体感。',
   },
   {
     id: 'side',
     title: '正侧',
-    desc: '在车身侧面水平拍摄，完整展示腰线、车门与侧裙。',
-    img: '/guides/side.png',
+    desc: '在车身左侧水平拍摄，完整展示腰线、车门与侧裙。',
   },
   {
     id: 'rear',
     title: '正后',
     desc: '站在车尾正后方，水平拍摄尾灯、后保险杠与整体车尾轮廓。',
-    img: '/guides/rear.png',
   },
   {
     id: 'rearRight',
-    title: '侧后',
+    title: '右后 45°',
     desc: '从车尾右后方 45° 拍摄，同时露出车尾与右侧车身。',
-    img: '/guides/rear-right.png',
   },
 ];
 
@@ -240,6 +238,7 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
   const M = MODES[mode] || MODES.car;
   // 本轮渲染生效的角度集（车模 5 角 / 轮毂 3 角），遮蔽模块级 CAR_ANGLES 命名
   const ANGLES = mode === 'wheel' ? WHEEL_ANGLES : CAR_ANGLES;
+  const isCar = mode === 'car';
 
   const root = $(mount || '#photo-guide');
   if (!root) {
@@ -258,6 +257,8 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
   // 取景框当前展示的角度（点击队列项切换）
   let currentAngleId = ANGLES[0].id;
   let generating = false;
+  // 车模模式下的动态 3D 车模句柄（轮毂模式为 null）
+  let guideCar = null;
 
   const draft = loadDraft();
 
@@ -315,8 +316,10 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     )
   );
 
-  // ---------- 取景框（主视觉：示例图 + 简洁取景框 + 用户照片） ----------
-  // 底层：当前角度示例图，作为取景参照；受 .photo-guide__ghost 约束，完整居中于取景框内、不越出安全框。
+  // ---------- 取景框（主视觉：动态 3D 车模 / 静态示例图 + 取景框 + 用户照片） ----------
+  // 车模模式底层：一台动态 3D 车模（绝对铺满、不拦截点击），拍完后淡出由用户照片覆盖
+  const vfCar = el('div', { class: 'photo-guide__car3d is-off' });
+  // 底层（轮毂模式 / 兼容）：当前角度示例图，作为取景参照
   const vfGhost = el('img', { class: 'photo-guide__ghost hidden', alt: '' });
   // 中层：纯 CSS 简洁取景框（单框 + 轮毂转盘环），不拦截点击
   const vfGuides = el(
@@ -331,7 +334,7 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     class: 'photo-guide__thumb photo-guide__viewfinder-thumb hidden',
     alt: '已拍摄照片',
   });
-  const vf = el('div', { class: 'photo-guide__viewfinder' }, vfGhost, vfGuides, vfThumb);
+  const vf = el('div', { class: 'photo-guide__viewfinder' }, vfCar, vfGhost, vfGuides, vfThumb);
 
   // 取景框下方（框外）：当前角度标题 + 说明 + 操作按钮（拍照 / 重新选择）
   const vfIndex = el('span', { class: 'photo-guide__angle-index' }, `1/${ANGLES.length}`);
@@ -441,6 +444,12 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
   root.appendChild(footer);
   root.appendChild(overlay);
 
+  // 车模模式：在取景框里挂一台动态 3D 车模（HERO_CAR_URL 那台灰车），
+  // 替代原来会被裁掉的静态示例图；取景参照由它承担。
+  if (isCar) {
+    guideCar = createGuideCar(vfCar);
+  }
+
   updateCounter();
 
   // 尝试从草稿恢复：只有元数据，无法恢复 File 对象；让用户重新选更快。
@@ -475,8 +484,10 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     });
     inputsById[angle.id] = input;
 
-    // 示例图（未拍摄时显示）；用户照片就绪后由 thumb 覆盖
-    const guide = el('img', { class: 'photo-guide__strip-img', src: angle.img, alt: '' });
+    // 示例图（轮毂模式用示意图；车模模式无静态图，用渐变占位块）
+    const guide = angle.img
+      ? el('img', { class: 'photo-guide__strip-img', src: angle.img, alt: '' })
+      : el('div', { class: 'photo-guide__strip-img photo-guide__strip-img--ph' });
     const thumb = el('img', {
       class: 'photo-guide__thumb photo-guide__strip-thumb hidden',
       alt: angle.title,
@@ -533,14 +544,48 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     const angle = ANGLES[index] || ANGLES[0];
     const shot = !!filesById[angle.id];
 
-    vfGhost.src = angle.img;
-    // 已拍摄 → ghost 隐藏、辅助线淡出，用户照片铺满取景框
-    vfGhost.classList.toggle('hidden', shot);
-    vfGuides.classList.toggle('is-faded', shot);
     vfIndex.textContent = `${index + 1}/${ANGLES.length}`;
     vfTitle.textContent = angle.title;
     vfDesc.textContent = angle.desc;
 
+    for (const a of ANGLES) {
+      cardsById[a.id].classList.toggle('photo-guide__strip-item--active', a.id === angle.id);
+    }
+
+    if (isCar && guideCar) {
+      // —— 车模模式：动态 3D 车模作取景参照，拍完即展示用户照片 ——
+      const stripThumb = thumbsById[angle.id];
+      if (shot) {
+        // 已拍摄：淡出 3D 车模（省电），把用户照片铺满取景框
+        vfCar.classList.add('is-off');
+        guideCar.deactivate();
+        if (stripThumb && stripThumb.src) {
+          if (vfThumb.src !== stripThumb.src) vfThumb.src = stripThumb.src;
+          vfThumb.classList.remove('hidden');
+        } else {
+          vfThumb.src = '';
+          vfThumb.classList.add('hidden');
+        }
+        vfUpload.classList.add('hidden');
+        vfRetake.classList.remove('hidden');
+      } else {
+        // 未拍摄：显示 3D 车模并旋转到当前角度朝向（自动旋转到下个角度在此触发）
+        vfCar.classList.remove('is-off');
+        guideCar.activate();
+        guideCar.rotateTo(angle.id);
+        vfThumb.src = '';
+        vfThumb.classList.add('hidden');
+        vfUpload.classList.remove('hidden');
+        vfRetake.classList.add('hidden');
+      }
+      return;
+    }
+
+    // —— 轮毂 / 兼容模式：沿用原静态示例图逻辑 ——
+    vfGhost.src = angle.img;
+    // 已拍摄 → ghost 隐藏、辅助线淡出，用户照片铺满取景框
+    vfGhost.classList.toggle('hidden', shot);
+    vfGuides.classList.toggle('is-faded', shot);
     const stripThumb = thumbsById[angle.id];
     if (shot && stripThumb && stripThumb.src) {
       // 与队列缩略图共享同一 blob URL（压缩图仅几十 KB，不额外占内存）
@@ -553,10 +598,6 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
       vfThumb.classList.add('hidden');
       vfUpload.classList.remove('hidden');
       vfRetake.classList.add('hidden');
-    }
-
-    for (const a of ANGLES) {
-      cardsById[a.id].classList.toggle('photo-guide__strip-item--active', a.id === angle.id);
     }
   }
 
@@ -830,6 +871,11 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     destroy() {
       stopTips();
       loading3D.dispose(overlayAnimationHost);
+      // 释放动态 3D 车模的 WebGL 上下文与几何（车模模式）
+      if (guideCar) {
+        guideCar.dispose();
+        guideCar = null;
+      }
       // 清理 blob URL
       for (const thumb of Object.values(thumbsById)) {
         if (thumb.src && thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);

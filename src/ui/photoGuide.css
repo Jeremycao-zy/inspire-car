@@ -235,6 +235,30 @@
   transition: opacity 0.25s ease;
 }
 
+/* 车模模式底层：动态 3D 车模（绝对铺满、不拦截点击）。
+   拍完当前角度后加 .is-off 淡出，由用户照片覆盖。 */
+.photo-guide__car3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 18px;
+  overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 18%, #1a1b24 0%, #0c0d12 70%);
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.photo-guide__car3d canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.photo-guide__car3d.is-off {
+  opacity: 0;
+}
+
 /* 中层：取景辅助线（纯 CSS，不拦截点击） */
 .photo-guide__guides {
   position: absolute;
@@ -459,6 +483,16 @@
   object-fit: cover;
   opacity: 0.72;
   filter: grayscale(0.45) brightness(0.85);
+}
+
+/* 车模模式无静态示例图：用渐变占位块，避免队列项空白 */
+.photo-guide__strip-img--ph {
+  object-fit: cover;
+  opacity: 1;
+  filter: none;
+  background:
+    radial-gradient(120% 90% at 50% 28%, rgba(255, 255, 255, 0.06), transparent 60%),
+    linear-gradient(160deg, #1a1b24 0%, #0c0d12 100%);
 }
 
 /* 用户照片：拍完后覆盖示例图 */
