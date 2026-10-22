@@ -211,7 +211,6 @@ body::before {
   .brand-loading__tag { margin-top: 26px; }
   .brand-loading__horizon { margin-top: 40px; }
 }
-}
 
 /* 顶部登录用户条（注销入口） */
 .auth-userbar {
