@@ -1,40 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480" role="img" aria-label="轮毂侧面示意">
   <defs>
-    <linearGradient id="sil" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f4f6fa"/>
-      <stop offset="0.42" stop-color="#b9c1cd"/>
-      <stop offset="0.68" stop-color="#7d8794"/>
-      <stop offset="1" stop-color="#d7dde5"/>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef2f8"/>
+      <stop offset="0.5" stop-color="#aab4c4"/>
+      <stop offset="1" stop-color="#dfe6ef"/>
     </linearGradient>
-    <linearGradient id="silV" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#eef1f6"/>
-      <stop offset="0.5" stop-color="#9aa4b1"/>
-      <stop offset="1" stop-color="#dde2e9"/>
-    </linearGradient>
-    <linearGradient id="dark" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2b303a"/>
-      <stop offset="0.55" stop-color="#1b1f27"/>
-      <stop offset="1" stop-color="#39404c"/>
-    </linearGradient>
-    <radialGradient id="hub" cx="0.4" cy="0.35" r="0.8">
-      <stop offset="0" stop-color="#eef1f6"/>
-      <stop offset="1" stop-color="#8b95a3"/>
+    <radialGradient id="hub" cx="0.4" cy="0.35" r="0.85">
+      <stop offset="0" stop-color="#f2f5fa"/>
+      <stop offset="1" stop-color="#8e98a8"/>
     </radialGradient>
   </defs>
-  <path d="M 300,74 C 300,52 332,40 372,40 L 420,40 C 464,40 494,60 494,92 L 494,548 C 494,580 464,600 420,600 L 372,600 C 332,600 300,588 300,566 Z"
-        fill="url(#silV)" stroke="#5b6470" stroke-width="3"/>
-  <path d="M 300,74 L 300,566 C 300,588 332,600 372,600 L 372,40 C 332,40 300,52 300,74 Z" fill="url(#dark)"/>
-  <path d="M 340,74 C 322,120 322,520 340,566" fill="none" stroke="#c7ced8" stroke-width="2" stroke-opacity="0.35"/>
-  <ellipse cx="412" cy="74" rx="82" ry="34" fill="none" stroke="#aeb7c2" stroke-width="3" stroke-opacity="0.8"/>
-  <ellipse cx="412" cy="566" rx="82" ry="34" fill="none" stroke="#aeb7c2" stroke-width="3" stroke-opacity="0.8"/>
-  <ellipse cx="412" cy="74" rx="58" ry="22" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.25"/>
-  <ellipse cx="412" cy="566" rx="58" ry="22" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.25"/>
-  <path d="M 440,100 C 462,180 462,460 440,540" fill="none" stroke="#c7ced8" stroke-width="3" stroke-opacity="0.45"/>
-  <path d="M 466,112 C 484,190 484,450 466,528" fill="none" stroke="#c7ced8" stroke-width="2" stroke-opacity="0.28"/>
-  <g stroke="#8b9bff" stroke-opacity="0.85" stroke-width="1.5">
-    <line x1="300" y1="616" x2="494" y2="616"/>
-    <line x1="300" y1="608" x2="300" y2="624"/>
-    <line x1="494" y1="608" x2="494" y2="624"/>
+
+  <!-- 四角定位刻度（靛蓝） -->
+  <g stroke="#8b9bff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M40 64 V40 H64"/>
+    <path d="M600 64 V40 H576"/>
+    <path d="M40 416 V440 H64"/>
+    <path d="M600 416 V440 H576"/>
   </g>
-  <text x="397" y="638" text-anchor="middle" font-family="monospace" font-size="19" fill="#8b9bff" fill-opacity="0.9">宽 W</text>
+
+  <!-- 轮胎侧剖轮廓（竖向胶囊） -->
+  <rect x="274" y="100" width="92" height="280" rx="46" fill="#0c0e14" fill-opacity="0.5" stroke="url(#rim)" stroke-width="22"/>
+  <!-- 轮辋桶身（内 concentric 胶囊） -->
+  <rect x="292" y="124" width="56" height="232" rx="28" fill="none" stroke="#7e8896" stroke-width="3"/>
+  <!-- 轮辋前后分面线 -->
+  <line x1="320" y1="124" x2="320" y2="356" stroke="#5d6675" stroke-width="1.5" opacity="0.5"/>
+  <!-- 中心毂（侧视：竖向椭圆 + 螺栓轴） -->
+  <ellipse cx="320" cy="240" rx="20" ry="30" fill="url(#hub)" stroke="#5d6675" stroke-width="3"/>
+  <circle cx="320" cy="240" r="8" fill="#10141b" stroke="#7a8493" stroke-width="2"/>
+  <!-- 螺栓轴刻度 -->
+  <g stroke="#6d7682" stroke-width="2" opacity="0.8">
+    <line x1="320" y1="212" x2="320" y2="268"/>
+  </g>
+  <!-- 宽度标注（靛蓝） -->
+  <g stroke="#8b9bff" stroke-width="1.5" opacity="0.85" fill="none">
+    <line x1="274" y1="406" x2="366" y2="406"/>
+  </g>
+  <path d="M274 406 l9 -5 v10 z" fill="#8b9bff"/>
+  <path d="M366 406 l-9 -5 v10 z" fill="#8b9bff"/>
+  <text x="320" y="426" text-anchor="middle" font-family="'SF Mono',ui-monospace,monospace" font-size="14" letter-spacing="2" fill="#8b9bff">W</text>
+  <!-- 标注 -->
+  <text x="320" y="454" text-anchor="middle" font-family="'SF Mono',ui-monospace,monospace" font-size="18" letter-spacing="4" fill="#8b9bff">PROFILE</text>
 </svg>

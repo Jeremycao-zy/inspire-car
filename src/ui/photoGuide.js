@@ -315,19 +315,14 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     )
   );
 
-  // ---------- 取景框（主视觉：ghost 蓝图轮廓 + 取景辅助线 + 用户照片） ----------
-  // 底层：当前角度示例图，蓝图化处理后作为「车辆方位虚线轮廓」参照
+  // ---------- 取景框（主视觉：示例图 + 简洁取景框 + 用户照片） ----------
+  // 底层：当前角度示例图，作为取景参照；受 .photo-guide__ghost 约束，完整居中于取景框内、不越出安全框。
   const vfGhost = el('img', { class: 'photo-guide__ghost hidden', alt: '' });
-  // 中层：纯 CSS 取景辅助线（虚线安全框 + 四角相机括号 + 中心十字准线）
+  // 中层：纯 CSS 简洁取景框（单框 + 轮毂转盘环），不拦截点击
   const vfGuides = el(
     'div',
     { class: 'photo-guide__guides', 'aria-hidden': 'true' },
     el('div', { class: 'photo-guide__guide-frame' }),
-    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--tl' }),
-    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--tr' }),
-    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--bl' }),
-    el('div', { class: 'photo-guide__guide-corner photo-guide__guide-corner--br' }),
-    el('div', { class: 'photo-guide__guide-cross' }),
     // 轮毂工坊专属：转盘定位环（虚线圆 + 中心轴点），CSS 仅在 --wheel 模式显示
     el('div', { class: 'photo-guide__turntable' })
   );
@@ -336,12 +331,18 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     class: 'photo-guide__thumb photo-guide__viewfinder-thumb hidden',
     alt: '已拍摄照片',
   });
-  // 未拍摄时挂在取景框底部居中的大上传触发按钮（点击 → 打开当前角度的 file input）
+  const vf = el('div', { class: 'photo-guide__viewfinder' }, vfGhost, vfGuides, vfThumb);
+
+  // 取景框下方（框外）：当前角度标题 + 说明 + 操作按钮（拍照 / 重新选择）
+  const vfIndex = el('span', { class: 'photo-guide__angle-index' }, `1/${ANGLES.length}`);
+  const vfTitle = el('h3', { class: 'photo-guide__angle-title' }, ANGLES[0].title);
+  const vfDesc = el('p', { class: 'photo-guide__angle-desc' }, ANGLES[0].desc);
+  // 未拍摄：主操作「拍照或选相册」；已拍摄：切为「重新选择」（二者互斥，均置于框外，避免遮挡取景框）
   const vfUpload = el(
     'button',
     {
       type: 'button',
-      class: 'photo-guide__upload photo-guide__upload--hero',
+      class: 'photo-guide__upload photo-guide__upload--cta',
       onClick: () => inputsById[currentAngleId]?.click(),
     },
     el('span', {
@@ -353,23 +354,18 @@ export function mountPhotoGuide({ mode = 'car', onModeled, onCancel, mount } = {
     }),
     '拍照或选相册'
   );
-  const vf = el('div', { class: 'photo-guide__viewfinder' }, vfGhost, vfGuides, vfThumb, vfUpload);
-
-  // 取景框下方（框外）：当前角度标题 + 说明 + 重选按钮
-  const vfIndex = el('span', { class: 'photo-guide__angle-index' }, `1/${ANGLES.length}`);
-  const vfTitle = el('h3', { class: 'photo-guide__angle-title' }, ANGLES[0].title);
-  const vfDesc = el('p', { class: 'photo-guide__angle-desc' }, ANGLES[0].desc);
   const vfRetake = el(
     'button',
     { type: 'button', class: 'photo-guide__retake hidden', onClick: handleRetake },
     '重新选择'
   );
+  const vfActions = el('div', { class: 'photo-guide__viewfinder-actions' }, vfUpload, vfRetake);
   const vfMeta = el(
     'div',
     { class: 'photo-guide__viewfinder-meta' },
     el('div', { class: 'photo-guide__viewfinder-meta-head' }, vfIndex, vfTitle),
     vfDesc,
-    vfRetake
+    vfActions
   );
   const vfCol = el('div', { class: 'photo-guide__viewfinder-col' }, vf, vfMeta);
 

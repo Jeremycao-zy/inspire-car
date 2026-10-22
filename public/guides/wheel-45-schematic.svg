@@ -1,32 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480" role="img" aria-label="轮毂斜45度示意">
   <defs>
-    <linearGradient id="sil" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f4f6fa"/>
-      <stop offset="0.42" stop-color="#b9c1cd"/>
-      <stop offset="0.68" stop-color="#7d8794"/>
-      <stop offset="1" stop-color="#d7dde5"/>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef2f8"/>
+      <stop offset="0.5" stop-color="#aab4c4"/>
+      <stop offset="1" stop-color="#dfe6ef"/>
     </linearGradient>
-    <linearGradient id="silV" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#eef1f6"/>
-      <stop offset="0.5" stop-color="#9aa4b1"/>
-      <stop offset="1" stop-color="#dde2e9"/>
-    </linearGradient>
-    <linearGradient id="dark" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2b303a"/>
-      <stop offset="0.55" stop-color="#1b1f27"/>
-      <stop offset="1" stop-color="#39404c"/>
-    </linearGradient>
-    <radialGradient id="hub" cx="0.4" cy="0.35" r="0.8">
-      <stop offset="0" stop-color="#eef1f6"/>
-      <stop offset="1" stop-color="#8b95a3"/>
+    <radialGradient id="hub" cx="0.4" cy="0.35" r="0.85">
+      <stop offset="0" stop-color="#f2f5fa"/>
+      <stop offset="1" stop-color="#8e98a8"/>
     </radialGradient>
   </defs>
-  <path d="M 300,80 C 424,66 536,168 536,320 C 536,472 424,574 300,560 Z" fill="url(#dark)" stroke="#5b6470" stroke-width="3"/>
-  <ellipse cx="252" cy="320" rx="206" ry="278" fill="#171b22" fill-opacity="0.6" stroke="url(#sil)" stroke-width="28"/>
-  <ellipse cx="252" cy="320" rx="190" ry="262" fill="none" stroke="#6b7480" stroke-width="3"/>
-  <g transform="translate(252,320)"><g transform="rotate(0)"><g transform="scale(0.7313432835820896,0.9)"><path d="M -30,54 L -52,-214 L -30,-288 L 30,-288 L 52,-214 L 30,54 Z" fill="url(#sil)" stroke="#5b6470" stroke-width="3" stroke-linejoin="round"/><path d="M -16,-268 L -30,-70 L -18,-40 L 18,-40 L 30,-70 L 16,-268 Z" fill="#ffffff" fill-opacity="0.14"/></g></g><g transform="rotate(72)"><g transform="scale(0.7313432835820896,0.9)"><path d="M -30,54 L -52,-214 L -30,-288 L 30,-288 L 52,-214 L 30,54 Z" fill="url(#sil)" stroke="#5b6470" stroke-width="3" stroke-linejoin="round"/><path d="M -16,-268 L -30,-70 L -18,-40 L 18,-40 L 30,-70 L 16,-268 Z" fill="#ffffff" fill-opacity="0.14"/></g></g><g transform="rotate(144)"><g transform="scale(0.7313432835820896,0.9)"><path d="M -30,54 L -52,-214 L -30,-288 L 30,-288 L 52,-214 L 30,54 Z" fill="url(#sil)" stroke="#5b6470" stroke-width="3" stroke-linejoin="round"/><path d="M -16,-268 L -30,-70 L -18,-40 L 18,-40 L 30,-70 L 16,-268 Z" fill="#ffffff" fill-opacity="0.14"/></g></g><g transform="rotate(216)"><g transform="scale(0.7313432835820896,0.9)"><path d="M -30,54 L -52,-214 L -30,-288 L 30,-288 L 52,-214 L 30,54 Z" fill="url(#sil)" stroke="#5b6470" stroke-width="3" stroke-linejoin="round"/><path d="M -16,-268 L -30,-70 L -18,-40 L 18,-40 L 30,-70 L 16,-268 Z" fill="#ffffff" fill-opacity="0.14"/></g></g><g transform="rotate(288)"><g transform="scale(0.7313432835820896,0.9)"><path d="M -30,54 L -52,-214 L -30,-288 L 30,-288 L 52,-214 L 30,54 Z" fill="url(#sil)" stroke="#5b6470" stroke-width="3" stroke-linejoin="round"/><path d="M -16,-268 L -30,-70 L -18,-40 L 18,-40 L 30,-70 L 16,-268 Z" fill="#ffffff" fill-opacity="0.14"/></g></g></g>
-  <circle cx="252" cy="320" r="80" fill="url(#hub)" stroke="#5b6470" stroke-width="3"/>
-  <circle cx="252" cy="320" r="32" fill="#12161c" stroke="#7a838f" stroke-width="3"/>
-  <circle cx="292.95522388059703" cy="316.0" r="10" fill="#151920" stroke="#6d7682" stroke-width="2"/><circle cx="264.65586018753515" cy="363.9332484212757" r="10" fill="#151920" stroke="#6d7682" stroke-width="2"/><circle cx="218.86652787216633" cy="345.6243767155407" r="10" fill="#151920" stroke="#6d7682" stroke-width="2"/><circle cx="218.86652787216633" cy="286.3756232844594" r="10" fill="#151920" stroke="#6d7682" stroke-width="2"/><circle cx="264.65586018753515" cy="268.0667515787243" r="10" fill="#151920" stroke="#6d7682" stroke-width="2"/>
-  <path d="M 320,104 C 404,150 424,480 320,540" fill="none" stroke="#c7ced8" stroke-width="3" stroke-opacity="0.4"/>
+
+  <!-- 四角定位刻度（靛蓝） -->
+  <g stroke="#8b9bff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M40 64 V40 H64"/>
+    <path d="M600 64 V40 H576"/>
+    <path d="M40 416 V440 H64"/>
+    <path d="M600 416 V440 H576"/>
+  </g>
+
+  <!-- 桶身侧厚（先画，置于面之后） -->
+  <path d="M 420 96 L 486 74 L 486 406 L 420 384 Z" fill="#0c0e14" fill-opacity="0.4" stroke="#7e8896" stroke-width="3"/>
+  <!-- 背面轮辋弧（淡） -->
+  <path d="M 486 74 A 150 128 0 0 1 486 406" fill="none" stroke="#8e98a8" stroke-width="2" opacity="0.4"/>
+  <!-- 正面轮辋面 -->
+  <ellipse cx="300" cy="240" rx="128" ry="150" fill="#0c0e14" fill-opacity="0.5" stroke="url(#rim)" stroke-width="22"/>
+  <!-- 辐条（5，截断在椭圆内） -->
+  <g stroke="#aab4c4" stroke-width="10" stroke-linecap="round" opacity="0.9">
+    <line x1="300" y1="240" x2="300" y2="100"/>
+    <line x1="300" y1="240" x2="411" y2="148"/>
+    <line x1="300" y1="240" x2="411" y2="332"/>
+    <line x1="300" y1="240" x2="189" y2="332"/>
+    <line x1="300" y1="240" x2="189" y2="148"/>
+  </g>
+  <!-- 中心毂 -->
+  <ellipse cx="300" cy="240" rx="26" ry="30" fill="url(#hub)" stroke="#5d6675" stroke-width="3"/>
+  <ellipse cx="300" cy="240" rx="9" ry="11" fill="#10141b" stroke="#7a8493" stroke-width="2"/>
+  <!-- 中轴准线（靛蓝） -->
+  <g stroke="#8b9bff" stroke-width="1.5" opacity="0.6">
+    <line x1="300" y1="206" x2="300" y2="274"/>
+    <line x1="266" y1="240" x2="334" y2="240"/>
+  </g>
+  <!-- 标注 -->
+  <text x="330" y="448" text-anchor="middle" font-family="'SF Mono',ui-monospace,monospace" font-size="18" letter-spacing="3" fill="#8b9bff">3/4 VIEW</text>
 </svg>

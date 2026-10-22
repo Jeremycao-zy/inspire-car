@@ -222,16 +222,16 @@
     0 6px 26px rgba(0,0,0,0.238);
 }
 
-/* 底层：当前角度示例图蓝图化——即「车辆方位的虚线轮廓」参照。
-   用户强调：示例车必须完整入镜、居中，不允许 cover 裁掉车头/车尾。 */
+/* 底层：当前角度示例图——取景参照。
+   约束在取景框「安全框」(inset:6%) 内、object-fit:contain 完整居中，绝不出框。 */
 .photo-guide__ghost {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 6%;
+  width: 88%;
+  height: 88%;
   object-fit: contain;
-  filter: grayscale(1) contrast(0.35) brightness(1.55);
-  opacity: 0.42;
+  filter: grayscale(0.9) contrast(0.6) brightness(1.5);
+  opacity: 0.55;
   transition: opacity 0.25s ease;
 }
 
@@ -249,87 +249,13 @@
   opacity: 0.14;
 }
 
-/* 四周内缩的虚线矩形（安全框） */
+/* 四周内缩的虚线矩形（安全框）——取景唯一参照线，简洁单框 */
 .photo-guide__guide-frame {
   position: absolute;
-  inset: 7%;
-  border: 2px dashed var(--line-2);
-  border-radius: 12px;
-}
-
-/* 四角相机括号 */
-.photo-guide__guide-corner {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  border: 3px solid var(--neon-cyan, var(--accent));
-  filter:;
-}
-
-.photo-guide__guide-corner--tl {
-  top: 14px;
-  left: 14px;
-  border-right: none;
-  border-bottom: none;
-  border-top-left-radius: 10px;
-}
-
-.photo-guide__guide-corner--tr {
-  top: 14px;
-  right: 14px;
-  border-left: none;
-  border-bottom: none;
-  border-top-right-radius: 10px;
-}
-
-.photo-guide__guide-corner--bl {
-  bottom: 14px;
-  left: 14px;
-  border-right: none;
-  border-top: none;
-  border-bottom-left-radius: 10px;
-}
-
-.photo-guide__guide-corner--br {
-  bottom: 14px;
-  right: 14px;
-  border-left: none;
-  border-top: none;
-  border-bottom-right-radius: 10px;
-}
-
-/* 中心十字准线（淡） */
-.photo-guide__guide-cross {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 36px;
-  height: 36px;
-  transform: translate(-50%, -50%);
-  opacity: 0.55;
-}
-
-.photo-guide__guide-cross::before,
-.photo-guide__guide-cross::after {
-  content: '';
-  position: absolute;
-  background: rgba(0,0,0,0.4);
-}
-
-.photo-guide__guide-cross::before {
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1.5px;
-  transform: translateX(-50%);
-}
-
-.photo-guide__guide-cross::after {
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1.5px;
-  transform: translateY(-50%);
+  inset: 6%;
+  border: 1.5px dashed rgba(0, 0, 0, 0.5);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 /* 顶层：用户照片铺满取景框（与队列缩略图共享 blob URL） */
@@ -347,26 +273,27 @@
   background: var(--bg);
 }
 
-/* 取景框底部居中的大上传触发按钮 */
-.photo-guide__upload--hero {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  z-index: 4;
-  transform: translateX(-50%);
-  padding: 13px 26px;
-  border-radius: 999px;
-  background: rgba(10, 10, 11, 0.72);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 5px 20px rgba(0,0,0,0.297);
+/* 取景框下方操作区：拍照 / 重新选择（框外，纵向紧凑，避免遮挡取景框） */
+.photo-guide__viewfinder-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* 主操作按钮（框外 CTA：青描边辉光 + 玻璃底，替代原取景框内浮层按钮） */
+.photo-guide__upload--cta {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 13px 18px;
   font-size: 15px;
   white-space: nowrap;
 }
 
-.photo-guide__upload--hero:hover {
+.photo-guide__upload--cta:hover {
   background: rgba(0,0,0,0.4);
   border-color: var(--neon-cyan, var(--accent));
-  box-shadow: 0 7px 28px rgba(0,0,0,0.425);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.34);
 }
 
 .photo-guide__upload-icon {
@@ -619,17 +546,15 @@
 }
 
 .photo-guide__retake {
-  margin-top: 2px;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
   border: 1px solid var(--line-2);
   background: rgba(0,0,0,0.4);
   color: var(--neon-cyan, var(--accent));
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  align-self: flex-start;
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -1006,9 +931,8 @@
     width: 138px;
   }
 
-  .photo-guide__upload--hero {
-    bottom: 14px;
-    padding: 12px 20px;
+  .photo-guide__upload--cta {
+    padding: 12px 16px;
     font-size: 14px;
   }
 
@@ -1090,11 +1014,6 @@
 .photo-guide--wheel .photo-guide__ghost {
   filter: none;
   opacity: 0.92;
-}
-
-/* 四角相机括号换靛蓝 */
-.photo-guide--wheel .photo-guide__guide-corner {
-  border-color: rgba(139, 155, 255, 0.75);
 }
 
 /* 转盘定位环：虚线圆 + 内圈 + 轴心点（仅轮毂模式显示） */
