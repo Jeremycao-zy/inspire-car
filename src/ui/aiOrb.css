@@ -43,11 +43,12 @@
   animation: ai-mascot-halo 4.2s ease-in-out infinite;
 }
 
-/* 人偶立绘（外层 picture 控尺寸，内层 img 跑动画） */
+/* 人偶立绘（外层 picture 控尺寸，内层 img 跑动画；真实 3D 模型则挂 canvas） */
 .ai-orb__mascot {
   position: relative;
   display: block;
   width: 118px;
+  height: 142px;
 }
 .ai-orb__mascot img {
   display: block;
@@ -56,6 +57,14 @@
   filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
   animation: ai-mascot-float 4.2s ease-in-out infinite;
   transform-origin: 50% 92%;
+}
+/* 真实 3D 模型挂载点：canvas 同样浮动 + 投影，尺寸铺满容器 */
+.ai-orb__mascot canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
+  animation: ai-mascot-float 4.2s ease-in-out infinite;
 }
 .ai-orb__mascot--active {
   display: none;

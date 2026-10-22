@@ -11,6 +11,7 @@
  */
 
 import './aiOrb.css';
+import { createMascot3D } from './mascot3d.js';
 import mascotIdleUrl from '../assets/mascot-idle.png';
 import mascotIdleWebpUrl from '../assets/mascot-idle.webp';
 import mascotActiveUrl from '../assets/mascot-active.png';
@@ -26,25 +27,39 @@ function mountAiOrb() {
   wrap.setAttribute('role', 'button');
   wrap.setAttribute('aria-label', `${ASSISTANT_NAME} · AI 改装助手（点击语音对话）`);
 
-  // 两张立绘：待机（闭眼月牙）/ 活跃（睁眼发光，说话·聆听时切换）
-  // 用 <picture> 走 webp（15KB）优先、png（90KB）兜底
-  const makeMascot = (cls, pngUrl, webpUrl, alt) => {
-    const pic = document.createElement('picture');
-    pic.className = `ai-orb__mascot ${cls}`;
-    const src = document.createElement('source');
-    src.srcset = webpUrl;
-    src.type = 'image/webp';
-    const img = document.createElement('img');
-    img.src = pngUrl;
-    img.alt = alt;
-    img.draggable = false;
-    img.decoding = 'async';
-    pic.append(src, img);
-    return pic;
-  };
-  const mascotIdle = makeMascot('ai-orb__mascot--idle', mascotIdleUrl, mascotIdleWebpUrl, ASSISTANT_NAME);
-  const mascotActive = makeMascot('ai-orb__mascot--active', mascotActiveUrl, mascotActiveWebpUrl, '');
-  mascotActive.setAttribute('aria-hidden', 'true');
+  // 真人偶：真实 Three.js 3D 模型（白盔 + 深蓝脸屏 + 青色发光眼 + 蓝身 IC 胸标）。
+  // 失败（无 WebGL）时回退到 2D 立绘。
+  const mascotBox = document.createElement('div');
+  mascotBox.className = 'ai-orb__mascot';
+  let mascot3d = null;
+  try {
+    mascot3d = createMascot3D(mascotBox);
+  } catch (e) {
+    mascot3d = null;
+    console.warn('[aiOrb] 3D 人偶初始化失败，回退 2D 立绘', e);
+  }
+  if (!mascot3d) {
+    // —— 2D 兜底：待机 / 唤醒立绘（<picture> 走 webp 优先、png 兜底）——
+    const makeMascot = (cls, pngUrl, webpUrl, alt) => {
+      const pic = document.createElement('picture');
+      pic.className = `ai-orb__mascot ${cls}`;
+      const src = document.createElement('source');
+      src.srcset = webpUrl;
+      src.type = 'image/webp';
+      const img = document.createElement('img');
+      img.src = pngUrl;
+      img.alt = alt;
+      img.draggable = false;
+      img.decoding = 'async';
+      pic.append(src, img);
+      return pic;
+    };
+    mascotBox.classList.add('ai-orb__mascot--2d');
+    const mIdle = makeMascot('ai-orb__mascot--idle', mascotIdleUrl, mascotIdleWebpUrl, ASSISTANT_NAME);
+    const mActive = makeMascot('ai-orb__mascot--active', mascotActiveUrl, mascotActiveWebpUrl, '');
+    mActive.setAttribute('aria-hidden', 'true');
+    mascotBox.append(mIdle, mActive);
+  }
 
   const label = document.createElement('div');
   label.className = 'ai-orb__label';
@@ -54,8 +69,25 @@ function mountAiOrb() {
   hint.className = 'ai-orb__hint';
   hint.textContent = '点我说话';
 
-  wrap.append(mascotIdle, mascotActive, label, hint);
+  wrap.append(mascotBox, label, hint);
   document.body.appendChild(wrap);
+
+  // 用 classList（is-speaking / is-listening / 面板 open）驱动 3D 人偶的
+  // 护目镜开合、睁眼、说话挥手。不改动分散的 classList 调用点。
+  if (mascot3d) {
+    const syncState = () => {
+      const speaking = wrap.classList.contains('is-speaking') || wrap.classList.contains('is-listening');
+      const awake = speaking || panel.classList.contains('open');
+      mascot3d.setActive(awake);
+      mascot3d.setSpeaking(speaking);
+    };
+    const mo = new MutationObserver(syncState);
+    mo.observe(wrap, { attributes: true, attributeFilter: ['class'] });
+    const panelMo = new MutationObserver(syncState);
+    panelMo.observe(panel, { attributes: true, attributeFilter: ['class'] });
+    syncState();
+    wrap._mascotCleanup = () => { mo.disconnect(); panelMo.disconnect(); mascot3d.dispose(); };
+  }
 
   /* ---------- 对话面板 ---------- */
   // 朗读音色：默认 Cherry（百炼 qwen-tts 真人音色），可在面板里切换并持久化
@@ -437,9 +469,11 @@ function mountAiOrb() {
   // 回到首页再淡入。旧实现是 WebGL 球"原地冻住"，看着像渲染卡死。
   function pause() {
     wrap.classList.add('is-paused', 'is-hidden');
+    mascot3d?.pause?.();
   }
   function resume() {
     wrap.classList.remove('is-paused', 'is-hidden');
+    mascot3d?.resume?.();
   }
   function dispose() {
     pause();
@@ -460,6 +494,7 @@ function mountAiOrb() {
     }
     clearTimeout(captionTimer);
     caption.remove();
+    wrap._mascotCleanup?.();
     wrap.remove();
     panel.remove();
   }
