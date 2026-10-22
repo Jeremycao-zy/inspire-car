@@ -11,6 +11,7 @@
  */
 
 import './aiOrb.css';
+import { isLoggedIn } from '../auth.js';
 import mascotIdleUrl from '../assets/mascot-idle.png';
 import mascotIdleWebpUrl from '../assets/mascot-idle.webp';
 import mascotActiveUrl from '../assets/mascot-active.png';
@@ -18,6 +19,9 @@ import mascotActiveWebpUrl from '../assets/mascot-active.webp';
 
 /** 助手名字 */
 export const ASSISTANT_NAME = '小灵';
+
+/* 本次页面会话是否已打过招呼（模块级：首页重复 mount 不重复播） */
+let greeted = false;
 
 function mountAiOrb() {
   /* ---------- DOM ---------- */
@@ -233,8 +237,9 @@ function mountAiOrb() {
     }
     currentSource = null;
   }
-  // 解码并播放 TTS 音频；成功返回 true，失败（解码异常 / 无上下文）返回 false
-  async function playTts(ab) {
+  // 解码并播放 TTS 音频；成功返回 true，失败（解码异常 / 无上下文）返回 false。
+  // onEnd 在音频自然播放结束时触发（连续对话模式靠它接续聆听）。
+  async function playTts(ab, onEnd) {
     const ctx = getCtx();
     if (!ctx || !ab || ab.byteLength < 1000) return false;
     try {
@@ -242,8 +247,12 @@ function mountAiOrb() {
       stopAudio();
       const src = ctx.createBufferSource();
       src.buffer = buf;
+      src.playbackRate.value = 1.2; // 播放加速约 20%，对话更利落
       src.connect(ctx.destination);
-      src.onended = () => wrap.classList.remove('is-speaking');
+      src.onended = () => {
+        wrap.classList.remove('is-speaking');
+        if (onEnd) onEnd();
+      };
       src.start(0);
       currentSource = src;
       return true;
@@ -254,14 +263,17 @@ function mountAiOrb() {
   }
 
   /** 浏览器内置语音（兜底） */
-  function speakFallback(text) {
+  function speakFallback(text, onEnd) {
     if (!('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'zh-CN';
-      u.rate = 1.02;
-      const clear = () => wrap.classList.remove('is-speaking');
+      u.rate = 1.15; // 稍快，与真人音色听感接近
+      const clear = () => {
+        wrap.classList.remove('is-speaking');
+        if (onEnd) onEnd();
+      };
       u.onend = clear;
       u.onerror = clear;
       wrap.classList.add('is-speaking');
@@ -280,13 +292,19 @@ function mountAiOrb() {
       .trim();
   }
 
-  /** 朗读回复：优先服务端真人音色 */
+  /** 朗读回复：优先服务端真人音色。onEnd = 播放自然结束后的回调（连续对话用） */
   let speakSeq = 0; // 连续发言时只播最新一条，避免新旧语音交叠
-  async function speak(text) {
+  async function speak(text, onEnd) {
     const clean = sanitizeForSpeech(text);
-    if (!clean) return;
+    if (!clean) {
+      if (onEnd) onEnd();
+      return;
+    }
     const seq = ++speakSeq;
     wrap.classList.add('is-speaking');
+    const endOnce = () => {
+      if (seq === speakSeq && onEnd) onEnd();
+    };
     try {
       const r = await fetch('/api/tts', {
         method: 'POST',
@@ -296,19 +314,25 @@ function mountAiOrb() {
       if (r.ok) {
         const ab = await r.arrayBuffer();
         if (ab && ab.byteLength > 1000) {
-          if (seq !== speakSeq) return; // 已有更新的发言，放弃这条
-          const played = await playTts(ab);
+          if (seq !== speakSeq) {
+            endOnce();
+            return;
+          }
+          const played = await playTts(ab, endOnce);
           if (played) return; // 真人语音已成功播放，结束
         }
       }
       throw new Error('tts unavailable');
     } catch (err) {
-      if (seq !== speakSeq) return;
+      if (seq !== speakSeq) {
+        endOnce();
+        return;
+      }
       // 服务端音色不可用 → 退回系统语音，保证一定有声音（不再静默切换，给出提示便于排查）
       console.warn('[aiOrb] TTS 真人语音失败，退回系统语音：', err);
       showCaption('真人语音暂不可用，已切换系统语音', 2600);
       wrap.classList.remove('is-speaking');
-      speakFallback(clean);
+      speakFallback(clean, endOnce);
     }
   }
 
@@ -317,10 +341,25 @@ function mountAiOrb() {
   let listening = false;
 
   /* wanting = 用户还处在"想说话"的状态。识别引擎常会因为静音/网络自行 end，
-     只要用户没主动结束就自动重启，避免"说了一半就断开"（对话时灵时不灵的主因）。 */
+     只要用户没主动结束就自动重启，避免"说了一半就断开"（对话时灵时不灵的主因）。
+     converseMode = 连续对话模式：进入后每轮回复播完自动接着听，不用反复点小球；
+     用户再点一次小球即退出。 */
   let wanting = false;
+  let converseMode = false;
   let restartTimer = 0;
   let netErrCount = 0; // 连续网络失败次数（超过阈值退回文字面板）
+
+  /** 回复播完后自动接续聆听（连续对话） */
+  function autoListen() {
+    if (!converseMode || !recog) return;
+    showCaption('我在听，继续说…', 0);
+    wanting = true;
+    try {
+      recog.start();
+    } catch {
+      restartListening(400); // 引擎正忙，稍后自动重试
+    }
+  }
 
   function stopListening() {
     wanting = false;
@@ -407,23 +446,30 @@ function mountAiOrb() {
       }
       stopListening();
       netErrCount = 0;
-      if (!text) return;
-      showCaption(`你说：${text}\n思考中…`, 0);
+      if (!text) {
+        if (converseMode) autoListen();
+        return;
+      }
+      showCaption(`你说：${text} 思考中…`, 0);
       try {
         const reply = await ask(text);
-        showCaption(reply, 7000);
-        speak(reply);
+        showCaption(reply, 0); // 持续显示，朗读期间不消失
+        speak(reply, () => {
+          if (converseMode) autoListen(); // 播完自动接续聆听
+        });
       } catch {
         showCaption('网络好像不太稳，稍后再试一次。', 4000);
+        if (converseMode) autoListen();
       }
     };
   }
 
   wrap.addEventListener('click', () => {
     unlockAudio(); // 首次点击预热音频播放权限
-    // 正在听 → 再点一次结束
+    // 正在听 → 再点一次结束（退出连续对话）
     if (wanting || listening) {
       stopListening();
+      converseMode = false;
       caption.classList.remove('show');
       return;
     }
@@ -435,6 +481,7 @@ function mountAiOrb() {
       return;
     }
     wanting = true;
+    converseMode = true; // 进入连续对话：回复播完自动继续听
     netErrCount = 0;
     showCaption('正在聆听…', 0);
     try {
@@ -454,6 +501,8 @@ function mountAiOrb() {
   // 回到首页再淡入。旧实现是 WebGL 球"原地冻住"，看着像渲染卡死。
   function pause() {
     wrap.classList.add('is-paused', 'is-hidden');
+    converseMode = false; // 离开首页：退出连续对话、停止聆听
+    stopListening();
   }
   function resume() {
     wrap.classList.remove('is-paused', 'is-hidden');
@@ -461,6 +510,7 @@ function mountAiOrb() {
   function dispose() {
     pause();
     wanting = false;
+    if (greetingCleanup) greetingCleanup(); // 拆掉进门引导的手势监听
     clearTimeout(restartTimer);
     stopAudio();
     try {
@@ -480,6 +530,58 @@ function mountAiOrb() {
     wrap.remove();
     panel.remove();
   }
+
+  /* ---------- 进门引导语：进主页主动打招呼，引导登录注册 / 开始改装 ---------- */
+  let greetingCleanup = null;
+
+  function greetingText() {
+    return isLoggedIn()
+      ? '你好，我是小灵！告诉我你的车型和想法，咱们开始改装吧。想换轮毂、调姿态还是改车漆，直接跟我说。'
+      : '你好，我是小灵，你的改装助手！第一次来的话，先点右上角登录或注册一下，之后告诉我你的车型和想法，我帮你定制轮毂、姿态或者车漆方案。';
+  }
+
+  function playGreeting() {
+    if (greeted) return;
+    greeted = true;
+    if (greetingCleanup) greetingCleanup();
+    const text = greetingText();
+    showCaption(text, 0); // 先上字幕，音频就绪前也有反馈
+    speak(text, () => showCaption(isLoggedIn() ? '点我，随时跟我聊改装' : '点我随时说话，或先点右上角登录', 6000));
+  }
+
+  function scheduleGreeting() {
+    if (greeted) return;
+    setTimeout(() => {
+      if (greeted) return;
+      const ctx = getCtx();
+      if (ctx && ctx.state === 'running') {
+        playGreeting(); // 之前已有点击手势、音频已解锁 → 直接说
+        return;
+      }
+      // 浏览器自动播放策略：必须等用户首次手势才能出声。
+      // 先用人偶弹跳 + 字幕吸引注意，任意点击/按键即解锁并播放引导语。
+      wrap.classList.add('is-greeting');
+      showCaption('你好呀，点一下页面，听我打招呼', 0);
+      const onGesture = (ev) => {
+        const t = ev && ev.target;
+        if (t && t.closest && t.closest('.ai-orb')) {
+          greeted = true; // 用户直接点了小球：跳过引导语，进入正常对话
+          greetingCleanup();
+          return;
+        }
+        unlockAudio();
+        playGreeting();
+      };
+      greetingCleanup = () => {
+        window.removeEventListener('pointerdown', onGesture);
+        window.removeEventListener('keydown', onGesture);
+        wrap.classList.remove('is-greeting');
+      };
+      window.addEventListener('pointerdown', onGesture);
+      window.addEventListener('keydown', onGesture);
+    }, 900);
+  }
+  scheduleGreeting();
 
   return { el: wrap, pause, resume, dispose };
 }
