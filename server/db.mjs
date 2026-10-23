@@ -1123,14 +1123,21 @@ function normalizeMedia(media) {
   }
   return out;
 }
-/** 规范化定位 {lat,lng,accuracy?}，越界丢弃 */
+/**
+ * 规范化定位：只保留「省级 / 国级」行政区标签，绝不存储或回传精确经纬度。
+ * 入参约定：{ region: '河北省'|'河北', country: '中国' } —— 由前端逆地理后给出。
+ * 若仅有经纬度（旧数据）则直接丢弃，不展示具体坐标，以保护隐私。
+ */
 function normalizeLocation(location) {
-  const lat = Number(location && location.lat);
-  const lng = Number(location && location.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  const acc = Number(location && location.accuracy);
-  return { lat, lng, accuracy: Number.isFinite(acc) ? acc : undefined };
+  if (!location || typeof location !== 'object') return null;
+  const region = typeof location.region === 'string' && location.region.trim()
+    ? location.region.trim().slice(0, 30)
+    : null;
+  const country = typeof location.country === 'string' && location.country.trim()
+    ? location.country.trim().slice(0, 40)
+    : null;
+  if (!region && !country) return null;
+  return { region, country };
 }
 
 /**
@@ -1325,6 +1332,69 @@ export async function createReply({ uid, topicId, body } = {}) {
   writeForumTopicsJson(topics);
   const user = await findUserById(uid);
   return { ...reply, username: user?.username || '匿名' };
+}
+
+/**
+ * 删除主题（仅作者本人或管理员）。
+ * @param {number|string} id
+ * @param {string} uid 操作者 id（须等于主题 uid 或在 adminUids 内）
+ * @param {string[]} adminUids 管理员 id 白名单
+ * @returns {Promise<{ok:boolean, id:number}>}
+ */
+export async function deleteTopic(id, uid, adminUids = []) {
+  id = Number(id);
+  uid = String(uid || '');
+  if (!id) throw new Error('主题不存在');
+  if (dbMode === 'sql') {
+    const tr = await pool.query('SELECT uid FROM forum_topics WHERE id=$1', [id]);
+    if (tr.rowCount === 0) throw new Error('主题不存在');
+    if (tr.rows[0].uid !== uid && !adminUids.includes(uid)) throw new Error('无权删除该主题');
+    await pool.query('DELETE FROM forum_replies WHERE topic_id=$1', [id]);
+    await pool.query('DELETE FROM forum_topics WHERE id=$1', [id]);
+    return { ok: true, id };
+  }
+  const topics = readForumTopicsJson();
+  const idx = topics.findIndex((t) => Number(t.id) === id);
+  if (idx < 0) throw new Error('主题不存在');
+  if (topics[idx].uid !== uid && !adminUids.includes(uid)) throw new Error('无权删除该主题');
+  topics.splice(idx, 1);
+  writeForumTopicsJson(topics);
+  const replies = readForumRepliesJson().filter((r) => Number(r.topicId) !== id);
+  writeForumRepliesJson(replies);
+  return { ok: true, id };
+}
+
+/**
+ * 删除回复（仅作者本人或管理员），并同步主题 reply_count -1。
+ * @returns {Promise<{ok:boolean, id:number}>}
+ */
+export async function deleteReply(id, uid, adminUids = []) {
+  id = Number(id);
+  uid = String(uid || '');
+  if (!id) throw new Error('回复不存在');
+  if (dbMode === 'sql') {
+    const rr = await pool.query('SELECT uid, topic_id FROM forum_replies WHERE id=$1', [id]);
+    if (rr.rowCount === 0) throw new Error('回复不存在');
+    if (rr.rows[0].uid !== uid && !adminUids.includes(uid)) throw new Error('无权删除该回复');
+    const topicId = Number(rr.rows[0].topic_id);
+    await pool.query('DELETE FROM forum_replies WHERE id=$1', [id]);
+    await pool.query('UPDATE forum_topics SET reply_count = reply_count - 1 WHERE id=$1', [topicId]);
+    return { ok: true, id };
+  }
+  const replies = readForumRepliesJson();
+  const idx = replies.findIndex((r) => Number(r.id) === id);
+  if (idx < 0) throw new Error('回复不存在');
+  if (replies[idx].uid !== uid && !adminUids.includes(uid)) throw new Error('无权删除该回复');
+  const topicId = replies[idx].topicId;
+  replies.splice(idx, 1);
+  writeForumRepliesJson(replies);
+  const topics = readForumTopicsJson();
+  const topic = topics.find((t) => Number(t.id) === topicId);
+  if (topic) {
+    topic.replyCount = Math.max(0, (topic.replyCount || 0) - 1);
+    writeForumTopicsJson(topics);
+  }
+  return { ok: true, id };
 }
 
 /**

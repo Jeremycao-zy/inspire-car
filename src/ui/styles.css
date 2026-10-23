@@ -2157,6 +2157,61 @@ input[type='range'] {
 }
 .cm-meta__loc { margin-left: 2px; }
 
+/* 删除按钮：列表/回复里的「删除」（小号、危险色调） */
+.cm-meta__del {
+  appearance: none;
+  margin-left: auto;
+  border: 1px solid rgba(255, 96, 112, 0.5);
+  background: transparent;
+  color: #ff7889;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.cm-meta__del:hover { background: rgba(255, 96, 112, 0.16); color: #ff9aa6; }
+
+/* 详情头部：删除帖子（与标题栏同行、稍大） */
+.cm-detail__del {
+  appearance: none;
+  margin-left: auto;
+  border: 1px solid rgba(255, 96, 112, 0.55);
+  background: rgba(255, 96, 112, 0.1);
+  color: #ff7889;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.cm-detail__del:hover {
+  background: rgba(255, 96, 112, 0.22);
+  color: #ff9aa6;
+  box-shadow: 0 3px 12px rgba(255, 96, 112, 0.22);
+}
+
+/* 危险主按钮（确认删除弹窗） */
+.cm-btn-danger {
+  appearance: none;
+  border: 1px solid rgba(255, 96, 112, 0.6);
+  background: linear-gradient(100deg, #ff5e72, #ff8aa0);
+  color: #1a0b0e;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.05s ease;
+}
+.cm-btn-danger:hover { box-shadow: 0 3px 14px rgba(255, 96, 112, 0.4); }
+.cm-btn-danger:active { transform: translateY(1px); }
+
+/* 确认弹窗里的提示文案 */
+.cm-modal__msg { font-size: 13px; color: var(--text); line-height: 1.6; margin: 0; }
+
 /* ---- 论坛：详情媒体九宫格 + 定位 ---- */
 .cm-detail__loc {
   font-size: 12px;

@@ -2446,6 +2446,40 @@ async function handleRequest(req, res) {
     }
     return;
   }
+
+  /* ---- 论坛：删除主题 / 回复（仅作者本人或管理员） ---- */
+  if (u.pathname.startsWith('/api/forum/topics/') && req.method === 'DELETE') {
+    try {
+      const uid = await authUid(req);
+      if (!uid) { sendJson(res, 401, { error: '请先登录' }); return; }
+      const id = decodeURIComponent(u.pathname.slice('/api/forum/topics/'.length));
+      const adminUids = (process.env.ADMIN_UIDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const r = await db.deleteTopic(id, uid, adminUids);
+      sendJson(res, 200, { ok: true, id: r.id });
+    } catch (e) {
+      sendJson(res, /不存在/.test(e.message) ? 404 : 403, { error: e.message });
+    }
+    return;
+  }
+  if (u.pathname.startsWith('/api/forum/replies/') && req.method === 'DELETE') {
+    try {
+      const uid = await authUid(req);
+      if (!uid) { sendJson(res, 401, { error: '请先登录' }); return; }
+      const id = decodeURIComponent(u.pathname.slice('/api/forum/replies/'.length));
+      const adminUids = (process.env.ADMIN_UIDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const r = await db.deleteReply(id, uid, adminUids);
+      sendJson(res, 200, { ok: true, id: r.id });
+    } catch (e) {
+      sendJson(res, /不存在/.test(e.message) ? 404 : 403, { error: e.message });
+    }
+    return;
+  }
   if (u.pathname === '/api/news' && req.method === 'GET') {
     try {
       const category = u.searchParams.get('category') || undefined;
