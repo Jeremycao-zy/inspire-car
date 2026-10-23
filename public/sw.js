@@ -7,16 +7,21 @@
  *  · 页面导航 = 网络优先（3.5s 超时兜底缓存），且成功后【回填缓存】——
  *    旧版「网络成功但不回填」会让缓存里的 index.html 永远停在安装那天，
  *    国内访问 fly.dev 网络一抖动就静默回退到数天前的旧版 UI（正是这次事故根因）；
- *  · 新 SW 安装即 skipWaiting + claim（配合 main.js 的 controllerchange 自动刷新一次）。 */
-const CACHE = 'inspire-car-v2';
+ *  · 新 SW 安装即 skipWaiting + claim（配合 main.js 的 controllerchange 自动刷新一次）。
+ *
+ * 2026-10-23 v3：品牌图标换新（IC 单色标志）后，图标文件名没变、SW 一直 cache-first
+ *  返回旧轮毂图标（Chrome 应用/主屏图标停留在旧版）。→ CACHE 升 v3 清空旧缓存，
+ *  并给外壳图标 URL 加 ?v= 版本号，强制所有客户端重新拉取新图标。 */
+const CACHE = 'inspire-car-v3';
+const ICON_V = '?v=20261023';
 const SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/maskable-512.png',
-  '/icons/apple-touch-icon.png'
+  '/icons/icon-192.png' + ICON_V,
+  '/icons/icon-512.png' + ICON_V,
+  '/icons/maskable-512.png' + ICON_V,
+  '/icons/apple-touch-icon.png' + ICON_V
 ];
 
 self.addEventListener('install', (event) => {
