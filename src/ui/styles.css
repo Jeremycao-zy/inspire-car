@@ -1668,28 +1668,20 @@ input[type='range']::-moz-range-thumb {
  * 复古电子 / 霓虹赛博 · 全局氛围层（不碰 Three.js，仅视觉叠加）
  * ===================================================================== */
 
-/* 全局 CRT 扫描线 + 暗角：固定满屏、不拦截鼠标事件。
- * 只在内容之上蒙一层极淡的横线 + 四角压暗，营造老式显像管质感。 */
+/* 全局暗角：固定满屏、不拦截鼠标事件。
+ * 2026-10-23：按用户要求删除了 CRT 横线扫描底纹，仅保留四角压暗氛围。 */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 9998;
   pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0) 0px,
-      rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.16) 3px,
-      rgba(0, 0, 0, 0) 4px
-    ),
-    radial-gradient(120% 120% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.42) 100%);
+  background: radial-gradient(120% 120% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.42) 100%);
   mix-blend-mode: multiply;
   opacity: 0.55;
 }
 
-/* 极小屏 / 低性能设备：扫描线关掉，避免糊字 */
+/* 极小屏 / 低性能设备：再淡一点，避免糊字 */
 @media (prefers-reduced-motion: reduce) {
   body::after {
     opacity: 0.32;
