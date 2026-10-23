@@ -728,31 +728,17 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
   pageGarage.appendChild(hero);
   pageGarage.appendChild(body);
 
-  // 分页头：轮毂 / 论坛 / 资讯三页自带模块内的重复标题由 garage.css 隐藏，
-  // 避免出现两个同名标题（论坛/资讯的工具栏里还有发帖按钮与更新时间戳，保留）。
+  // 分页头：轮毂 / 论坛 / 资讯三页统一改用与车库页同款的「英文 wordmark」小标题
+  // （.garage-section-title：大写 + 字距 + 浅灰），不再用单独的盒状版块条 / 副标题 / 边框。
+  // 模块内部标题（.gw-head / .cm-toolbar__title）已由 garage.css 隐藏，避免重复。
   pageWheels.appendChild(
-    el(
-      'div',
-      { class: 'garage-page__head' },
-      el('h2', { class: 'garage-page__title' }, '轮毂仓库'),
-      el('p', { class: 'garage-page__sub' }, '已拥有的轮毂，随时悬空选装到任意车')
-    )
+    el('h2', { class: 'garage-section-title' }, 'WHEEL WAREHOUSE')
   );
   pageForum.appendChild(
-    el(
-      'div',
-      { class: 'garage-page__head' },
-      el('h2', { class: 'garage-page__title' }, '论坛'),
-      el('p', { class: 'garage-page__sub' }, '改装交流 · 求助 · 作品展示')
-    )
+    el('h2', { class: 'garage-section-title' }, 'COMMUNITY')
   );
   pageNews.appendChild(
-    el(
-      'div',
-      { class: 'garage-page__head' },
-      el('h2', { class: 'garage-page__title' }, '资讯'),
-      el('p', { class: 'garage-page__sub' }, '改装资讯 · 赛事 · 活动，每 30 秒自动更新')
-    )
+    el('h2', { class: 'garage-section-title' }, 'NEWS FEED')
   );
   const forumMount = el('div', { class: 'garage-page__mount' });
   const newsMount = el('div', { class: 'garage-page__mount' });

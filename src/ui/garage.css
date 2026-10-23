@@ -367,33 +367,8 @@
   display: none;
 }
 
-.garage-page__head {
-  max-width: 1180px;
-  margin: 0 auto 20px;
-  padding: 18px 22px;
-  border: 1px solid var(--line-2);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.4));
-  box-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.garage-page__title {
-  margin: 0 0 6px;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  color: #eafcff;
-  
-}
-
-.garage-page__sub {
-  margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--text-faint, #6f8299);
-}
+/* 分页头已改为与车库页同款的 .garage-section-title 英文 wordmark，
+ * 原来的盒状 .garage-page__head / __title / __sub 面板不再使用（已从 garage.js 移除）。 */
 
 /* 模块正文挂载点：与 .garage-grid 同一条 1180px 内容对齐线 */
 .garage-page__mount {
@@ -1124,13 +1099,6 @@
   }
   .garage-page {
     padding: 16px 18px 40px;
-  }
-  .garage-page__head {
-    padding: 14px 16px;
-    margin-bottom: 14px;
-  }
-  .garage-page__title {
-    font-size: 18px;
   }
   .garage-card__backing {
     min-height: 440px;
