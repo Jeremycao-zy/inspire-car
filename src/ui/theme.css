@@ -472,3 +472,32 @@
   border-color: var(--line-2);
   color: var(--text-dim);
 }
+
+/* ================= 分页头 + 轮毂仓库空状态：浅色轻量化（2026-10-23） =================
+ * 原样式沿用深色主题的半透明黑底（rgba(0,0,0,0.4)），浅色页面下灰得突兀。
+ * 改为与页面背景只有微色差的浅白面板：白→浅灰微渐变 + 1px 发丝线 + 极轻投影。 */
+:root[data-theme='light'] .garage-page__head {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(15, 18, 30, 0.04);
+}
+:root[data-theme='light'] .garage-page__title {
+  color: var(--text);
+}
+:root[data-theme='light'] .garage-page__sub {
+  color: var(--text-faint);
+}
+:root[data-theme='light'] .gw-empty {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
+  border-color: var(--line-2);
+  box-shadow: 0 1px 2px rgba(15, 18, 30, 0.04);
+}
+:root[data-theme='light'] .gw-empty__icon {
+  color: rgba(23, 24, 28, 0.28);
+}
+/* 数量徽章：同样去掉半透明黑底，改浅色微底 */
+:root[data-theme='light'] .gw-count {
+  background: rgba(23, 24, 28, 0.05);
+  box-shadow: none;
+  color: var(--text-dim);
+}
