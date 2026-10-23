@@ -73,103 +73,13 @@ function newsCatLabel(c) {
   return NEWS_CAT_LABEL[c] || '改装资讯';
 }
 
-/* ----------------------------- 定位隐私：仅保留省级 / 国级 ----------------------------- */
+/* ----------------------------- IP 属地展示 ----------------------------- */
 
 /**
- * 去掉行政区划后缀，得到简称：河北省→河北、北京市→北京、广西壮族自治区→广西、香港特别行政区→香港。
+ * IP 属地由服务端在发帖/回复时按请求 IP 自动归属（省级/国级），前端不再采集
+ * 浏览器定位（2026-10-23 用户明确：发帖必展示、不可自选；国内到省级，国外到国家）。
+ * 这里只负责把服务端返回的 {region,country} 渲染成文案。
  */
-function stripAdmin(s) {
-  if (!s) return '';
-  return String(s)
-    .replace(/特别行政区$/, '')
-    .replace(/(壮族|回族|维吾尔|哈萨克)?自治区$/, '')
-    .replace(/省$/, '')
-    .replace(/市$/, '')
-    .trim();
-}
-
-/** 中国省级行政区粗粒度包围盒（离线、零外泄、零依赖），用于逆地理的兜底。 */
-const CN_DIVISIONS = [
-  // 直辖市 / 特别行政区（小盒，先判，避免被周边省份误吞）
-  { n: '北京', a: 39.4, b: 41.1, c: 115.4, d: 117.5 },
-  { n: '天津', a: 38.5, b: 40.3, c: 116.6, d: 118.4 },
-  { n: '上海', a: 30.4, b: 32.2, c: 120.5, d: 122.5 },
-  { n: '重庆', a: 28.5, b: 32.2, c: 105.0, d: 110.5 },
-  { n: '香港', a: 22.1, b: 22.6, c: 113.8, d: 114.5 },
-  { n: '澳门', a: 21.9, b: 22.3, c: 113.3, d: 113.7 },
-  // 省份 / 自治区 / 台湾（顺序无所谓，盒子互不重叠）
-  { n: '河北', a: 36.0, b: 42.6, c: 113.1, d: 120.0 },
-  { n: '山西', a: 34.3, b: 40.7, c: 110.1, d: 114.6 },
-  { n: '辽宁', a: 38.7, b: 43.3, c: 118.8, d: 125.2 },
-  { n: '吉林', a: 40.8, b: 46.3, c: 121.5, d: 131.3 },
-  { n: '黑龙江', a: 43.2, b: 53.3, c: 121.1, d: 135.1 },
-  { n: '江苏', a: 30.5, b: 35.2, c: 116.5, d: 121.9 },
-  { n: '浙江', a: 27.0, b: 31.2, c: 118.0, d: 123.1 },
-  { n: '安徽', a: 29.5, b: 34.5, c: 114.8, d: 120.0 },
-  { n: '福建', a: 23.3, b: 28.4, c: 116.3, d: 120.9 },
-  { n: '江西', a: 24.3, b: 30.1, c: 113.3, d: 118.5 },
-  { n: '山东', a: 34.4, b: 38.4, c: 114.2, d: 122.7 },
-  { n: '河南', a: 31.4, b: 36.4, c: 110.2, d: 116.6 },
-  { n: '湖北', a: 29.0, b: 33.3, c: 108.3, d: 116.2 },
-  { n: '湖南', a: 24.6, b: 30.1, c: 108.6, d: 114.3 },
-  { n: '广东', a: 20.1, b: 25.5, c: 109.6, d: 117.3 },
-  { n: '广西', a: 20.8, b: 26.4, c: 104.4, d: 112.1 },
-  { n: '海南', a: 3.5, b: 20.1, c: 108.5, d: 111.9 },
-  { n: '四川', a: 26.0, b: 34.3, c: 97.3, d: 108.6 },
-  { n: '贵州', a: 24.4, b: 29.2, c: 103.5, d: 109.7 },
-  { n: '云南', a: 21.1, b: 29.3, c: 97.3, d: 106.3 },
-  { n: '陕西', a: 31.7, b: 39.6, c: 105.3, d: 111.3 },
-  { n: '甘肃', a: 32.4, b: 42.8, c: 92.2, d: 108.8 },
-  { n: '青海', a: 31.2, b: 39.3, c: 89.3, d: 103.2 },
-  { n: '台湾', a: 21.9, b: 25.3, c: 119.5, d: 122.1 },
-  { n: '内蒙古', a: 37.2, b: 53.4, c: 97.0, d: 126.1 },
-  { n: '宁夏', a: 34.5, b: 39.4, c: 104.1, d: 107.7 },
-  { n: '新疆', a: 34.2, b: 49.2, c: 73.3, d: 96.4 },
-  { n: '西藏', a: 26.8, b: 36.5, c: 78.1, d: 99.2 },
-];
-
-/** 离线粗粒度定位：经纬度 → 省级简称；不在任何盒内（海外）→ null。 */
-function coarseRegion(lat, lng) {
-  for (const dv of CN_DIVISIONS) {
-    if (lat >= dv.a && lat <= dv.b && lng >= dv.c && lng <= dv.d) return dv.n;
-  }
-  return null;
-}
-
-/**
- * 逆地理编码：经纬度 → { region, country }。
- * 优先用在线服务精确拿到省/国；失败（断网 / 被墙）回退到本地包围盒（仍为省级，零外泄）。
- * 关键隐私原则：服务器只收到「河北」「中国」这类行政区标签，绝不收到精确坐标。
- */
-async function reverseGeocode(lat, lng) {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
-    const r = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=zh`,
-      { signal: ctrl.signal }
-    );
-    clearTimeout(timer);
-    if (r.ok) {
-      const d = await r.json().catch(() => null);
-      if (d) {
-        const country = d.countryName || '';
-        const sub = d.principalSubdivision || '';
-        if (/中国|china/i.test(country)) {
-          return { region: stripAdmin(sub) || '中国', country: '中国' };
-        }
-        if (country) return { region: null, country: stripAdmin(country) };
-      }
-    }
-  } catch {
-    /* 落到本地回退 */
-  }
-  const region = coarseRegion(lat, lng);
-  if (region) return { region, country: '中国' };
-  return { region: null, country: '海外' };
-}
-
-/** 把存储的定位（{region,country}）渲染成展示文案；旧数据只有经纬度则不展示（保护隐私）。 */
 function locationLabel(loc) {
   if (!loc || typeof loc !== 'object') return '';
   if (loc.region) return '📍 ' + loc.region;
@@ -623,6 +533,8 @@ function createCommunityView({ mount, view } = {}) {
           el('span', { class: 'cm-meta__author' }, `@${r.username || '匿名'}`),
           el('span', { class: 'cm-meta__time' }, relativeTime(r.createdAt)),
         ];
+        const rLoc = locationLabel(r.location);
+        if (rLoc) metaChildren.push(el('span', { class: 'cm-meta__loc' }, rLoc));
         if (me && String(me.id) === String(r.uid)) {
           metaChildren.push(
             el(
@@ -745,50 +657,13 @@ function createCommunityView({ mount, view } = {}) {
       renderPreviews();
     });
 
-    /* 定位：触发位置权限 */
-    let loc = null;
-    const locBtn = el('button', { class: 'cm-loc-btn', type: 'button' }, '📍 添加位置');
-    const locText = el('span', { class: 'cm-loc-text' }, '');
-    function renderLoc() {
-      locText.textContent = '';
-      if (loc) {
-        const label = loc.region ? `📍 ${loc.region}` : (loc.country ? `🌐 ${loc.country}` : '已定位');
-        locText.textContent = `已定位：${label}`;
-        locBtn.textContent = '移除位置';
-      } else {
-        locBtn.textContent = '📍 添加位置';
-      }
-    }
-    locBtn.addEventListener('click', () => {
-      if (loc) {
-        loc = null;
-        renderLoc();
-        return;
-      }
-      if (!navigator.geolocation) {
-        locText.textContent = '当前设备不支持定位';
-        return;
-      }
-      locBtn.textContent = '定位中…';
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          // 隐私原则：仅把经纬度本地逆地理成「省 / 国」标签，绝不上传精确坐标
-          locBtn.textContent = '解析位置…';
-          try {
-            loc = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
-          } catch {
-            loc = { region: null, country: '海外' };
-          }
-          renderLoc();
-        },
-        (err) => {
-          locText.textContent = '定位失败：' + (err && err.message ? err.message : '已拒绝或不可用');
-          locBtn.textContent = '📍 重试定位';
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-      );
-    });
-    const locBox = el('div', { class: 'cm-loc' }, locBtn, locText);
+    /* IP 属地（2026-10-23）：服务端按发帖请求 IP 自动归属（省级/国级），
+     * 用户不可自选、不可关闭；这里仅展示规则说明，不再采集浏览器定位。 */
+    const locBox = el(
+      'div',
+      { class: 'cm-loc cm-loc--hint' },
+      el('span', { class: 'cm-loc-text' }, '📍 发布后将按 IP 展示属地（国内到省级，海外到国家）')
+    );
 
     const errEl = el('div', { class: 'cm-modal__err' });
     const submit = el('button', { class: 'cm-btn-primary' }, '发布');
@@ -821,7 +696,7 @@ function createCommunityView({ mount, view } = {}) {
         body: bodyText,
         category: catSelect.value,
         media,
-        location: loc || undefined,
+        // location 不再由前端上传：服务端按请求 IP 自动归属（IP 属地）
       });
       if (status === 401) {
         overlay.remove();

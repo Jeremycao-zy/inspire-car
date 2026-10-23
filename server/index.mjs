@@ -28,6 +28,7 @@ import * as hy3d from './hunyuan3d.mjs';
 import * as hyper3d from './hyper3d.mjs';
 import * as fal from './fal3d.mjs';
 import * as vision from './vision.mjs';
+import { clientIpOf, regionFromIp } from './ipRegion.mjs';
 import * as copilot from './copilot.mjs';
 import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
@@ -2398,7 +2399,9 @@ async function handleRequest(req, res) {
         body: body?.body,
         category: body?.category,
         media: body?.media,
-        location: body?.location,
+        // IP 属地（2026-10-23）：位置一律由服务端按请求 IP 自动归属，
+        // 不信任客户端上传的 location（用户不可自选、不可关闭）
+        location: regionFromIp(clientIpOf(req)),
       });
       sendJson(res, 201, { ok: true, topic });
     } catch (e) {
@@ -2438,6 +2441,8 @@ async function handleRequest(req, res) {
         uid,
         topicId: body?.topicId,
         body: body?.body,
+        // IP 属地：与发帖一致，由服务端按请求 IP 自动归属
+        location: regionFromIp(clientIpOf(req)),
       });
       sendJson(res, 201, { ok: true, reply });
     } catch (e) {

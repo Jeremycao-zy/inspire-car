@@ -210,9 +210,12 @@ async function migrate() {
       topic_id    INT NOT NULL,
       uid         TEXT NOT NULL,
       body        TEXT NOT NULL,
+      location    JSONB,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  /* 2026-10-23 增量迁移：老库的回复表补 IP 属地列（新库由上面 CREATE 直接带上） */
+  await pool.query('ALTER TABLE forum_replies ADD COLUMN IF NOT EXISTS location JSONB');
   await pool.query(
     'CREATE INDEX IF NOT EXISTS forum_replies_topic ON forum_replies (topic_id)'
   );
@@ -1217,7 +1220,7 @@ export async function getTopic(id) {
     const trow = tr.rows[0];
     if (!trow) return null;
     const rr = await pool.query(
-      `SELECT r.id, r.topic_id, r.uid, r.body, r.created_at, u.username
+      `SELECT r.id, r.topic_id, r.uid, r.body, r.location, r.created_at, u.username
        FROM forum_replies r LEFT JOIN users u ON u.id = r.uid
        WHERE r.topic_id=$1 ORDER BY r.created_at ASC`,
       [id]
@@ -1228,6 +1231,7 @@ export async function getTopic(id) {
       uid: r.uid,
       username: r.username || '匿名',
       body: r.body,
+      location: parseJsonField(r.location),
       createdAt: iso(r.created_at),
     }));
     return {
@@ -1260,6 +1264,7 @@ export async function getTopic(id) {
         uid: r.uid,
         username: ru?.username || '匿名',
         body: r.body,
+        location: r.location || null,
         createdAt: r.createdAt,
       };
     })
@@ -1284,10 +1289,11 @@ export async function getTopic(id) {
  * @param {{uid:string, topicId:number|string, body:string}} record
  * @returns {Promise<object>} 新建的回复
  */
-export async function createReply({ uid, topicId, body } = {}) {
+export async function createReply({ uid, topicId, body, location } = {}) {
   uid = String(uid || '');
   topicId = Number(topicId);
   body = String(body || '').trim();
+  const loc = normalizeLocation(location); // IP 属地标签 {region,country}，由路由层按请求 IP 计算
   if (!uid) throw new Error('未登录');
   if (!topicId) throw new Error('主题不存在');
   if (!body) throw new Error('评论内容不能为空');
@@ -1295,10 +1301,10 @@ export async function createReply({ uid, topicId, body } = {}) {
     const chk = await pool.query('SELECT 1 FROM forum_topics WHERE id=$1', [topicId]);
     if (chk.rowCount === 0) throw new Error('主题不存在');
     const r = await pool.query(
-      `INSERT INTO forum_replies (topic_id, uid, body)
-       VALUES ($1, $2, $3)
-       RETURNING id, topic_id, uid, body, created_at`,
-      [topicId, uid, body]
+      `INSERT INTO forum_replies (topic_id, uid, body, location)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, topic_id, uid, body, location, created_at`,
+      [topicId, uid, body, loc ? JSON.stringify(loc) : null]
     );
     await pool.query('UPDATE forum_topics SET reply_count = reply_count + 1 WHERE id=$1', [
       topicId,
@@ -1311,6 +1317,7 @@ export async function createReply({ uid, topicId, body } = {}) {
       uid: row.uid,
       username: user?.username || '匿名',
       body: row.body,
+      location: parseJsonField(row.location),
       createdAt: iso(row.created_at),
     };
   }
@@ -1324,6 +1331,7 @@ export async function createReply({ uid, topicId, body } = {}) {
     topicId,
     uid,
     body,
+    location: loc || undefined,
     createdAt: new Date().toISOString(),
   };
   replies.unshift(reply);
