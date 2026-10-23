@@ -133,7 +133,96 @@ function cleanTitle(title, source) {
   return t;
 }
 
-/** 解析 RSS XML -> [{title, link, pubDate, source, desc}] */
+/* ------------------------- 富媒体提取（图片 / 视频） ------------------------- */
+
+/** 从一段标签属性串里取某个属性值 */
+function attr(attrs, name) {
+  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, 'i'));
+  return m ? decodeEnt(m[1]) : '';
+}
+
+/** 解析 <enclosure url type> 与 <media:content url medium type> */
+function parseEnclosures(block) {
+  const out = [];
+  for (const re of [/<\w*:?enclosure\b([^>]*)>/gi, /<media:content\b([^>]*)>/gi]) {
+    let m;
+    while ((m = re.exec(block))) {
+      const a = m[1];
+      const url = attr(a, 'url');
+      const type = (attr(a, 'type') || '').toLowerCase();
+      const medium = (attr(a, 'medium') || '').toLowerCase();
+      if (url) out.push({ url, type, medium });
+    }
+  }
+  return out;
+}
+
+/** 抽取 HTML 里所有 <img src> */
+function extractImgSrcs(html) {
+  const out = [];
+  const re = /<img\b[^>]*\bsrc=["']([^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(html || ''))) {
+    const u = decodeEnt(m[1]);
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return out;
+}
+
+/** 从 URL 抽 YouTube 视频 ID */
+function youtubeIdFrom(url) {
+  const m = String(url || '').match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
+  );
+  return m ? m[1] : null;
+}
+
+/** 抽取视频：HTML 里的 <iframe>/<a> 指向 YouTube，或 enclosure/media 的 video 类型 */
+function extractVideos(block, html) {
+  const out = [];
+  const pushYt = (url) => {
+    const id = youtubeIdFrom(url);
+    if (id && !out.find((v) => v.youtubeId === id)) {
+      out.push({ type: 'video', youtubeId: id, url: `https://www.youtube.com/embed/${id}` });
+    }
+  };
+  const ifRe = /<iframe\b[^>]*\bsrc=["']([^"']+)["']/gi;
+  let m;
+  while ((m = ifRe.exec(html || ''))) pushYt(decodeEnt(m[1]));
+  const aRe = /<a\b[^>]*\bhref=["']([^"']+)["']/gi;
+  while ((m = aRe.exec(html || ''))) pushYt(decodeEnt(m[1]));
+  for (const e of parseEnclosures(block)) {
+    if (e.type.startsWith('video') || e.medium === 'video') {
+      out.push({ type: 'video', url: e.url });
+    }
+  }
+  return out;
+}
+
+/** 给一条 RSS item 的原文块抽取封面图 + 富媒体数组 */
+function extractMedia(block) {
+  const content = stripCdata(tag(block, 'content:encoded'));
+  const rawDesc = stripCdata(tag(block, 'description'));
+  const enclosures = parseEnclosures(block);
+
+  const imageUrls = [];
+  const addImg = (u) => {
+    if (u && !imageUrls.includes(u)) imageUrls.push(u);
+  };
+  for (const e of enclosures)
+    if (e.type.startsWith('image') || e.medium === 'image') addImg(e.url);
+  for (const u of extractImgSrcs(content)) addImg(u);
+  for (const u of extractImgSrcs(rawDesc)) addImg(u);
+
+  const videos = extractVideos(block, content);
+
+  const cover = imageUrls[0] || '';
+  const mediaImages = imageUrls.slice(1).map((u) => ({ type: 'image', url: u }));
+  const media = [...mediaImages, ...videos];
+  return { cover, media };
+}
+
+/** 解析 RSS XML -> [{title, link, pubDate, source, desc, cover, media}] */
 export function parseRss(xml) {
   const items = [];
   const blocks = String(xml || '').match(/<item[\s>][\s\S]*?<\/item>/g) || [];
@@ -145,7 +234,16 @@ export function parseRss(xml) {
     const desc = stripHtml(stripCdata(tag(b, 'description'))).slice(0, 300);
     const title = cleanTitle(rawTitle, source);
     if (!title || !link) continue;
-    items.push({ title, link, pubDate, source: source || 'Carscoops', desc });
+    const { cover, media } = extractMedia(b);
+    items.push({
+      title,
+      link,
+      pubDate,
+      source: source || 'Carscoops',
+      desc,
+      cover,
+      media,
+    });
   }
   return items;
 }
@@ -294,6 +392,8 @@ export async function runOnce() {
           body: art.body,
           category: art.category,
           source: it.source || feed.source,
+          cover: it.cover || '',
+          media: it.media || [],
           publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : new Date().toISOString(),
         });
         seen[key] = Date.now();

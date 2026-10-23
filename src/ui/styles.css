@@ -2254,6 +2254,72 @@ input[type='range'] {
   color: var(--text-dim);
   margin-bottom: 8px;
 }
+.cm-news__more {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+}
+.cm-news:hover .cm-news__more { text-decoration: underline; }
+
+/* 资讯详情（点击卡片打开的模态） */
+.cm-news-detail.cm-modal { width: min(720px, 100%); }
+.cm-news-detail__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.cm-news-detail__cover {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+.cm-news-detail__p {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+}
+.cm-news-detail__gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cm-news-detail__img {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+.cm-news-detail__video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: var(--radius);
+  background: #000;
+}
+.cm-news-detail__videolink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--neon-cyan);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.cm-news-detail__videolink:hover { text-decoration: underline; }
+.cm-news-detail__readmore {
+  color: var(--neon-cyan);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.cm-news-detail__readmore:hover { text-decoration: underline; }
 
 /* 空态 / 加载 */
 .cm-empty {

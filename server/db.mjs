@@ -231,6 +231,18 @@ async function migrate() {
   await pool.query(
     'CREATE INDEX IF NOT EXISTS news_published ON news (published_at DESC)'
   );
+  // 资讯富媒体：cover 单图（列表缩略）+ media（JSON 数组，详情页的图片/视频）
+  await pool.query('ALTER TABLE news ADD COLUMN IF NOT EXISTS media TEXT');
+}
+
+/** 把 news.media 的 JSON 文本安全解析为数组 */
+function parseNewsMedia(s) {
+  try {
+    const a = JSON.parse(String(s || '[]'));
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
 }
 
 /* ------------------------- JSON 回退存储 ------------------------- */
@@ -1325,7 +1337,7 @@ export async function listNews({ category } = {}) {
     const where = category ? 'WHERE category=$1' : '';
     const params = category ? [String(category)] : [];
     const r = await pool.query(
-      `SELECT id, title, summary, body, category, cover, source, published_at
+      `SELECT id, title, summary, body, category, cover, source, published_at, media
        FROM news ${where} ORDER BY published_at DESC`,
       params
     );
@@ -1336,6 +1348,7 @@ export async function listNews({ category } = {}) {
       body: row.body,
       category: row.category,
       cover: row.cover || '',
+      media: parseNewsMedia(row.media),
       source: row.source || '',
       publishedAt: iso(row.published_at),
     }));
@@ -1344,7 +1357,8 @@ export async function listNews({ category } = {}) {
   const filtered = category ? all.filter((n) => n.category === category) : all;
   return filtered
     .slice()
-    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)));
+    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))
+    .map((n) => ({ ...n, media: n.media || [] }));
 }
 
 /**
@@ -1358,6 +1372,7 @@ export async function createNews(record = {}) {
   const body = String(record.body || '').trim();
   const category = String(record.category || 'news');
   const cover = String(record.cover || '');
+  const media = Array.isArray(record.media) ? record.media : [];
   const source = String(record.source || '灵感改装编辑部');
   if (!title) throw new Error('标题不能为空');
   const publishedAt = record.publishedAt
@@ -1365,10 +1380,10 @@ export async function createNews(record = {}) {
     : new Date().toISOString();
   if (dbMode === 'sql') {
     const r = await pool.query(
-      `INSERT INTO news (title, summary, body, category, cover, source, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, title, summary, body, category, cover, source, published_at`,
-      [title, summary, body, category, cover, source, publishedAt]
+      `INSERT INTO news (title, summary, body, category, cover, source, media, published_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, title, summary, body, category, cover, source, media, published_at`,
+      [title, summary, body, category, cover, source, JSON.stringify(media), publishedAt]
     );
     const row = r.rows[0];
     return {
@@ -1378,13 +1393,14 @@ export async function createNews(record = {}) {
       body: row.body,
       category: row.category,
       cover: row.cover || '',
+      media: parseNewsMedia(row.media),
       source: row.source || '',
       publishedAt: iso(row.published_at),
     };
   }
   const news = readNewsJson();
   const id = news.reduce((m, n) => Math.max(m, Number(n.id) || 0), 0) + 1;
-  const item = { id, title, summary, body, category, cover, source, publishedAt };
+  const item = { id, title, summary, body, category, cover, source, media, publishedAt };
   news.unshift(item);
   writeNewsJson(news);
   return item;
@@ -1460,15 +1476,15 @@ export async function seedNewsIfEmpty() {
     if (r.rows[0].c > 0) return;
     for (const n of buildNewsSeed()) {
       await pool.query(
-        `INSERT INTO news (title, summary, body, category, cover, source, published_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [n.title, n.summary, n.body, n.category, n.cover || '', n.source, n.publishedAt]
+        `INSERT INTO news (title, summary, body, category, cover, source, media, published_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [n.title, n.summary, n.body, n.category, n.cover || '', n.source, JSON.stringify(n.media || []), n.publishedAt]
       );
     }
     return;
   }
   const news = readNewsJson();
   if (news.length > 0) return;
-  const seeded = buildNewsSeed().map((n, i) => ({ id: i + 1, ...n }));
+  const seeded = buildNewsSeed().map((n, i) => ({ id: i + 1, media: n.media || [], ...n }));
   writeNewsJson(seeded);
 }

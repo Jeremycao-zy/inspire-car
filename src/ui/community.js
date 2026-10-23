@@ -174,7 +174,7 @@ function requireLogin(then) {
 
 /* ----------------------------- 通用模态框 ----------------------------- */
 
-function buildModal({ title, bodyNodes, footerNodes }) {
+function buildModal({ title, bodyNodes, footerNodes, cls }) {
   const overlay = el('div', { class: 'cm-modal-overlay' });
   const children = [
     el(
@@ -188,7 +188,7 @@ function buildModal({ title, bodyNodes, footerNodes }) {
   if (footerNodes && footerNodes.length) {
     children.push(el('div', { class: 'cm-modal__foot' }, ...footerNodes));
   }
-  const box = el('div', { class: 'cm-modal' }, ...children);
+  const box = el('div', { class: 'cm-modal' + (cls ? ' ' + cls : '') }, ...children);
   overlay.appendChild(box);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.remove();
@@ -668,7 +668,7 @@ function createCommunityView({ mount, view } = {}) {
   }
 
   function renderNewsCard(n) {
-    const card = el('div', { class: 'cm-card cm-news' });
+    const card = el('div', { class: 'cm-card cm-news', tabindex: '0', role: 'button', title: '点击查看资讯详情' });
     if (n.cover) {
       card.appendChild(
         el('img', { class: 'cm-news__cover', src: n.cover, alt: n.title || '', loading: 'lazy' })
@@ -681,7 +681,100 @@ function createCommunityView({ mount, view } = {}) {
     meta.appendChild(el('span', {}, n.source || ''));
     meta.appendChild(el('span', {}, relativeTime(n.publishedAt)));
     card.appendChild(meta);
+    card.appendChild(el('div', { class: 'cm-news__more' }, '阅读全文 →'));
+    const open = () => openNewsDetail(n);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
     return card;
+  }
+
+  const NEWS_LINK_MARK = '—— 原文：';
+
+  /** 点开资讯详情：完整正文 + 封面图 + 图集 + 视频 + 阅读原文 */
+  function openNewsDetail(n) {
+    const rawBody = String(n.body || '');
+    let articleBody = rawBody;
+    let origLink = '';
+    const idx = rawBody.indexOf(NEWS_LINK_MARK);
+    if (idx >= 0) {
+      articleBody = rawBody.slice(0, idx).trim();
+      origLink = rawBody.slice(idx + NEWS_LINK_MARK.length).trim().split(/\s+/)[0] || '';
+    }
+    const paras = articleBody.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+
+    const media = Array.isArray(n.media) ? n.media : [];
+    const cover = n.cover || '';
+    const galleryImgs = media
+      .filter((m) => m && m.type === 'image' && m.url && m.url !== cover)
+      .map((m) => m.url);
+    const videos = media.filter((m) => m && m.type === 'video');
+
+    const bodyNodes = [];
+    const meta = el('div', { class: 'cm-news-detail__meta' });
+    meta.appendChild(el('span', { class: `cm-news__cat cm-news__cat--${n.category}` }, newsCatLabel(n.category)));
+    meta.appendChild(el('span', {}, n.source || ''));
+    meta.appendChild(el('span', {}, relativeTime(n.publishedAt)));
+    bodyNodes.push(meta);
+
+    if (cover) {
+      bodyNodes.push(el('img', { class: 'cm-news-detail__cover', src: cover, alt: n.title || '', loading: 'lazy' }));
+    }
+    for (const p of paras) bodyNodes.push(el('p', { class: 'cm-news-detail__p' }, p));
+    if (!paras.length) {
+      bodyNodes.push(el('p', { class: 'cm-news-detail__p' }, n.summary || '（暂无正文）'));
+    }
+    if (galleryImgs.length) {
+      const gal = el('div', { class: 'cm-news-detail__gallery' });
+      for (const u of galleryImgs) {
+        gal.appendChild(el('img', { class: 'cm-news-detail__img', src: u, alt: '', loading: 'lazy' }));
+      }
+      bodyNodes.push(gal);
+    }
+    for (const v of videos) {
+      if (v.youtubeId) {
+        bodyNodes.push(
+          el('iframe', {
+            class: 'cm-news-detail__video',
+            src: v.url,
+            title: '视频',
+            loading: 'lazy',
+            allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
+            allowfullscreen: true,
+            frameborder: '0',
+          })
+        );
+        bodyNodes.push(
+          el('a', { class: 'cm-news-detail__videolink', href: `https://www.youtube.com/watch?v=${v.youtubeId}`, target: '_blank', rel: 'noopener' }, '▶ 在 YouTube 观看')
+        );
+      } else if (v.url) {
+        bodyNodes.push(el('video', { class: 'cm-news-detail__video', src: v.url, controls: true, preload: 'none' }));
+      }
+    }
+
+    const footerNodes = [];
+    if (origLink) {
+      footerNodes.push(
+        el('a', { class: 'cm-news-detail__readmore', href: origLink, target: '_blank', rel: 'noopener' }, '阅读原文 ↗')
+      );
+    }
+    const overlay = buildModal({
+      title: n.title || '资讯详情',
+      bodyNodes,
+      footerNodes,
+      cls: 'cm-news-detail',
+    });
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', onKey);
+      }
+    };
+    document.addEventListener('keydown', onKey);
   }
 
   function startNewsPolling() {
