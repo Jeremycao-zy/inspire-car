@@ -29,6 +29,7 @@ import * as hyper3d from './hyper3d.mjs';
 import * as fal from './fal3d.mjs';
 import * as vision from './vision.mjs';
 import { clientIpOf, regionFromIp } from './ipRegion.mjs';
+import { moderate } from './moderation.mjs';
 import * as copilot from './copilot.mjs';
 import { buildRodinPrompt, describeTask } from './rodinPrompt.mjs';
 import * as specs from './specs.js';
@@ -2393,6 +2394,13 @@ async function handleRequest(req, res) {
         sendJson(res, 400, { error: e.message });
         return;
       }
+      // 违禁词审核（2026-10-23）：依《网络信息内容生态治理规定》第九/十条，
+      // 跟帖评论须前置审核，命中即拒绝发布。标题 + 正文一并校验。
+      const mod = moderate(`${body?.title || ''}\n${body?.body || ''}`);
+      if (!mod.ok) {
+        sendJson(res, 400, { error: '内容包含违禁词，请修改后再发布' });
+        return;
+      }
       const topic = await db.createTopic({
         uid,
         title: body?.title,
@@ -2435,6 +2443,12 @@ async function handleRequest(req, res) {
         body = await readJsonBody(req);
       } catch (e) {
         sendJson(res, 400, { error: e.message });
+        return;
+      }
+      // 违禁词审核（2026-10-23）：与发帖同规则，评论区回复一并拦截。
+      const mod = moderate(body?.body);
+      if (!mod.ok) {
+        sendJson(res, 400, { error: '内容包含违禁词，请修改后再发布' });
         return;
       }
       const reply = await db.createReply({
