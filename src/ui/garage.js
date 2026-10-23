@@ -666,6 +666,7 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
     el(
       'div',
       { class: 'garage-hero__text' },
+      el('div', { class: 'garage-hero__eyebrow' }, 'INSPIRE CAR'),
       el('h2', { class: 'garage-hero__title' }, '把灵感，变现实'),
       el('p', { class: 'garage-hero__sub' }, '看见每一套轮毂与姿态方案。'),
       el(

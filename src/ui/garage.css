@@ -204,13 +204,21 @@
   z-index: 1;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.1fr);
-  gap: 24px;
+  grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.15fr);
+  gap: 40px;
   align-items: center;
-  padding: 22px 32px 28px;
+  padding: 44px 32px 52px;
   max-width: 1180px;
   width: 100%;
   margin: 0 auto;
+}
+.garage-hero::before {
+  content: '';
+  position: absolute;
+  inset: -15% -10% 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(58% 70% at 74% 40%, rgba(120,150,200,0.12), rgba(0,0,0,0) 70%);
 }
 
 .garage-hero__text {
@@ -218,57 +226,93 @@
   flex-direction: column;
   gap: 14px;
 }
+.garage-hero__eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: rgba(150,170,210,0.85);
+}
 
 .garage-hero__title {
   margin: 0;
-  font-size: 34px;
-  font-weight: 900;
+  font-size: clamp(34px, 5vw, 52px);
+  font-weight: 700;
   letter-spacing: 0.01em;
-  line-height: 1.15;
-  color: #eafcff;
-  
+  line-height: 1.08;
+  color: #f3f6fb;
 }
 
 .garage-hero__sub {
-  margin: 0;
-  font-size: 14.5px;
+  margin: 4px 0 0;
+  font-size: 15px;
   color: var(--text-dim);
-  max-width: 460px;
-  line-height: 1.6;
+  max-width: 420px;
+  line-height: 1.7;
 }
 
 .garage-hero__actions {
   display: flex;
   gap: 12px;
-  margin-top: 6px;
+  margin-top: 10px;
   flex-wrap: wrap;
+}
+.garage-hero__actions .gb-btn.primary {
+  background: #f3f6fb;
+  color: #0c0e12;
+  border-color: transparent;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+}
+.garage-hero__actions .gb-btn.primary:hover {
+  background: #ffffff;
+}
+.garage-hero__actions .gb-btn.ghost {
+  background: rgba(255,255,255,0.04);
+  color: #e8edf5;
+  border-color: rgba(255,255,255,0.14);
 }
 
 .garage-hero__preview {
   position: relative;
-  /* 260 → 300：给车模更多竖向空间。原先 260px 时车容易被下边缘硬切；
-     现在相机已按容器比例自适应取景（见 garage.js fitCamera），这里再补一点余量让车更舒展。 */
-  height: 300px;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  /* 增高到 380：给车模更舒展的竖向空间，配合底部柔光阴影形成"悬浮"质感。 */
+  height: 380px;
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 95% at 50% 16%, rgba(255,255,255,0.05), rgba(0,0,0,0) 60%),
+    radial-gradient(85% 60% at 50% 102%, rgba(120,150,200,0.12), rgba(0,0,0,0) 70%);
   overflow: hidden;
+}
+.garage-hero__preview::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 13%;
+  width: 58%;
+  height: 26px;
+  transform: translateX(-50%);
+  background: radial-gradient(50% 100% at 50% 50%, rgba(0,0,0,0.55), rgba(0,0,0,0) 70%);
+  filter: blur(7px);
+  z-index: 0;
 }
 
 .garage-hero__badge {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 16px;
+  left: 16px;
   z-index: 2;
-  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--good);
-  background: rgba(57, 255, 20, 0.12);
-  box-shadow: inset 0 0 2px 1px rgba(0,0,0,0.383), 0 3px 14px rgba(0,0,0,0.255);
-  text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+  color: var(--text-dim, #9aa7c7);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(6px);
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .garage-hero__canvas {
@@ -276,6 +320,7 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  z-index: 1;
 }
 
 /* ---------------- 方案区 ---------------- */
@@ -318,15 +363,15 @@
 
 .garage-nav__item {
   appearance: none;
-  border: 1px solid var(--line-2);
-  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
   color: var(--text-dim, #9aa7c7);
   cursor: pointer;
   height: 36px;
   padding: 0 20px;
   border-radius: 999px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.14em;
   white-space: nowrap;
   transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease,
@@ -340,16 +385,12 @@
   transform: translateY(-1px);
 }
 
-/* 激活态：青→粉霓虹描边 + 底部发光下划线，明显但不刺眼 */
+/* 激活态：柔和上浮 + 极淡发丝描边 + 一道克制的强调色下划线，不发光 */
 .garage-nav__item.active {
-  color: #eafcff;
-  border-color: rgba(0,0,0,0.4);
-  background: linear-gradient(100deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.4) 100%);
-  box-shadow:
-    0 5px 20px rgba(0,0,0,0.297),
-    0 7px 30px rgba(0,0,0,0.187),
-    inset 0 -2px 0 var(--neon-cyan, var(--accent));
-  
+  color: #f3f6fb;
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.07);
+  box-shadow: inset 0 -2px 0 rgba(150,170,210,0.7);
 }
 
 /* ---------------- 分页容器 ---------------- */
@@ -1047,7 +1088,7 @@
     padding: 26px 18px 18px;
   }
   .garage-hero__preview {
-    height: 260px;
+    height: 300px;
     order: -1;
   }
   .garage-header {
