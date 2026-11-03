@@ -230,11 +230,49 @@ fly deploy --remote-only      # 远程构建，本地不需要 Docker
 
 ---
 
-## 十一、版本控制基线
+## 十一、版本控制基线与回滚
 
-本仓库于 2026-11-03 初始化 git，首次提交包含完整可运行状态。
+本仓库于 2026-11-03 初始化 git，交接锚点为 tag **`handoff-2026-11-03`**。
+
+```
+429bd82  chore: 加 .gitattributes 锁定换行符     ← 交接锚点（tag 指向这里）
+be0f7af  chore: 增加一键回滚脚本 handoff-restore.sh
+9a2982c  chore: 建立版本控制基线（218 文件 / 54,533 行）
+```
+
+### 回滚工具（`scripts/handoff-restore.sh`）
+
+四档模式，**默认档是只读的**，不会误伤：
 
 ```bash
-git log --oneline          # 查看历史
-git checkout .             # 丢弃所有未提交改动（改坏了用这个救）
+bash scripts/handoff-restore.sh check    # 只读：列出当前与锚点的全部差异（默认）
+bash scripts/handoff-restore.sh backup   # 把当前状态另存为 pre-restore-<时间戳> 分支
+bash scripts/handoff-restore.sh soft     # 只丢弃未提交改动，保留你的提交
+bash scripts/handoff-restore.sh hard     # 彻底回到锚点（提交也丢）
 ```
+
+**`soft` 和 `hard` 都会先自动创建 `pre-restore-<时间戳>` 分支**，所以即使回滚错了，也能 `git checkout pre-restore-xxx` 找回。
+
+### 手动回滚（不依赖脚本）
+
+```bash
+git checkout .                        # 丢弃未提交改动，最简单
+git reset --hard handoff-2026-11-03   # 连提交一起回到锚点
+git fetch --tags origin               # tag 丢了从远程补
+```
+
+### 三层恢复能力
+
+| 层级 | 位置 | 适用场景 |
+|---|---|---|
+| L1 | 本地 git（tag + 分支） | 日常改坏，秒级回滚 |
+| L2 | GitHub `backup/2026-11-03` 分支 | 本地 `.git` 被删，重新 clone |
+| L3 | 本地快照 zip / tar.gz（含 `.cache` 用户数据） | 一切都没了 |
+
+### 给接手方的硬边界
+
+- **不要删除 `.git` 目录**，那是唯一的一层即时回滚能力。
+- **不要 `git push --force`** 到 `backup/2026-11-03`，会抹掉锚点。
+- **不要改写 tag `handoff-2026-11-03`**，它是回滚目标点。
+- 如果确实要重构历史，先 `git tag redesign-<日期>` 另起一个点，保留原锚点。
+
