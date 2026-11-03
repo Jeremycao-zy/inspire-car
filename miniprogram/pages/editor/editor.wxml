@@ -1,0 +1,9 @@
+<!-- 编辑器：web-view 承载现有 Web 应用（TUNING STUDIO） -->
+<view wx:if="{{url}}" class="webwrap">
+  <web-view src="{{url}}"></web-view>
+</view>
+<view wx:else class="screen empty">
+  <view class="empty-emoji">⏳</view>
+  <view>正在准备 3D 编辑器…</view>
+  <view class="card-sub">若长时间无反应，请返回首页确认已登录</view>
+</view>

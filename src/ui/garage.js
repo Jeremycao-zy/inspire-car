@@ -1,0 +1,1113 @@
+/**
+ * garage.js — 「灵感车库」第一层入口页（白色科技车库风）
+ *
+ * · 顶部：Logo + 灵感车库 品牌
+ * · Hero：标签语 + 实时 3D 车模预览（预设车自动旋转）+ CTA
+ * · 我的改装方案：卡片网格，封面用保存时的 3D 快照
+ *
+ * 存储：localStorage key = `inspire-car-plans`
+ * 点击卡片 / 新建 → onEnter(plan) 进入第二层 TUNING STUDIO
+ * 第二层返回时调用 upsertPlan(rec) 保存并刷新卡片
+ */
+
+import * as THREE from 'three';
+import { loadGLB, boxOf } from '../core/glb.js';
+import { PRESET_CAR_URL, HERO_CAR_URL } from '../core/presetCar.js';
+import { previewEngine, previewParamsOf, clearCarSourceCache } from './planPreview.js';
+import { currentUser, logout, authFetch } from '../auth.js';
+import { openPricingModal } from './subscribe.js';
+import { openLegalModal } from './legalModal.js';
+import { mountAiOrb } from './aiOrb.js';
+import { mountWheelWarehouse } from './wheelWarehouse.js';
+import { createForum, createNews } from './community.js';
+import './garage.css';
+import logoMarkUrl from '../assets/logo-mark-neon.png';
+
+/**
+ * 方案按登录用户隔离：每个用户一套命名空间，互不串台。
+ * 未登录（理论上进不到这里）回落到 anon，避免 KeyError。
+ */
+function storageKey() {
+  const u = currentUser();
+  return `inspire-car-plans:${u?.id || 'anon'}`;
+}
+
+/** 车库卡位下限：自建方案不足此数时，用空白占位卡补足（初始全空白，随用户创作逐个填入） */
+const GARAGE_MIN_SLOTS = 3;
+
+function $(sel) {
+  return document.querySelector(sel);
+}
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k === 'value' && 'value' in node) node.value = v;
+    else if (k.startsWith('on') && typeof v === 'function')
+      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v !== undefined && v !== null && v !== false)
+      node.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+
+/** 灵感车库「风火轮风格」玩具卡背 logo SVG（替代原 Hot Wheels logo） */
+/** 卡片头部品牌字样：只保留文字（原火焰图形已按用户要求移除） */
+function inspireLogoSVG() {
+  return `<svg class="garage-card__logo" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg" aria-label="灵感改装 INSPIRE CAR">
+    <defs>
+      <linearGradient id="brandWord" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#ff3d3d"/>
+        <stop offset=".5" stop-color="#ff6a00"/>
+        <stop offset="1" stop-color="#ffd700"/>
+      </linearGradient>
+    </defs>
+    <text x="110" y="44" text-anchor="middle" font-size="32" font-weight="900"
+          fill="url(#brandWord)" stroke="#fff" stroke-width="5" paint-order="stroke"
+          style="font-style:italic;letter-spacing:2px;font-family:'PingFang SC','Microsoft YaHei',sans-serif">灵感改装</text>
+    <rect x="38" y="52" width="144" height="2.5" rx="1.25" fill="url(#brandWord)" opacity=".85"/>
+    <text x="110" y="66" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" letter-spacing="5"
+          style="font-family:'Share Tech Mono','Menlo',monospace">INSPIRE CAR</text>
+  </svg>`;
+}
+
+/** 卡片展示名：优先用户/系统设置过的方案名（「未命名方案」视为未定制），
+ *  其次 AI 识别出的车辆名称，最后兜底「未命名方案」 */
+function planDisplayName(plan) {
+  const t = plan?.title;
+  if (t && t !== '未命名方案') return t;
+  return plan?.params?.realSpecs?.fullName || t || '未命名方案';
+}
+
+function formatDate(ts) {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function readPlans() {
+  try {
+    const raw = localStorage.getItem(storageKey());
+    if (raw) return migrateLegacyRedPaint(JSON.parse(raw));
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * 一次性迁移：早期版本默认车漆是竞速红 #c8102e，改默认白色之前保存的
+ * 存量方案里都带着这个红值，进改装间恢复参数时整车会变红。
+ * 统一洗成 #ffffff（白色着色叠加 = 透出原车贴图，保持原有状态显示）。
+ * 用 flag 保证只跑一次，用户之后主动选的红色不会被误清。
+ */
+function migrateLegacyRedPaint(plans) {
+  if (!Array.isArray(plans)) return plans;
+  const flagKey = storageKey() + ':red-paint-migrated';
+  try {
+    if (localStorage.getItem(flagKey)) return plans;
+    localStorage.setItem(flagKey, '1');
+  } catch {
+    /* ignore */
+  }
+  let changed = false;
+  for (const p of plans) {
+    const c = p?.params?.bodyColor;
+    if (typeof c === 'string' && c.toLowerCase() === '#c8102e') {
+      p.params.bodyColor = '#ffffff';
+      p.params.bodySolid = false;
+      changed = true;
+    }
+  }
+  if (changed) writePlans(plans);
+  return plans;
+}
+
+function writePlans(plans) {
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(plans));
+  } catch (e) {
+    console.error('保存方案失败(不可序列化?):', e && e.message);
+    /* ignore */
+  }
+}
+
+function getPlans() {
+  const stored = readPlans();
+  // 只展示用户自建方案；历史灌入的演示方案(demo-*)一律过滤并清理，不再预置演示车
+  const real = (stored || []).filter((p) => !String(p?.id || '').startsWith('demo-'));
+  if (stored && stored.length !== real.length) writePlans(real);
+  return real;
+}
+
+function upsertPlan(plan) {
+  if (!plan || !plan.id) return readPlans() || [];
+  if (!plan.updatedAt) plan.updatedAt = Date.now();
+  const plans = readPlans() || [];
+  const idx = plans.findIndex((p) => p.id === plan.id);
+  if (idx >= 0) plans[idx] = plan;
+  else plans.unshift(plan);
+  writePlans(plans);
+  pushPlanToServer(plan); // 登录态下同步到服务端，跨设备可见
+  return plans;
+}
+
+/** 合并本地与服务端方案：按 id 去重，保留 updatedAt 较新的一份 */
+function mergePlans(local, remote) {
+  const map = new Map();
+  for (const p of [...(remote || []), ...(local || [])]) {
+    if (!p || !p.id) continue;
+    const prev = map.get(p.id);
+    if (!prev || (p.updatedAt || 0) >= (prev.updatedAt || 0)) map.set(p.id, p);
+  }
+  return [...map.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+/** 登录态下把单个方案推送到服务端（best-effort，失败不阻塞本地） */
+async function pushPlanToServer(plan) {
+  const u = currentUser();
+  if (!u?.id || !plan?.id) return;
+  try {
+    await authFetch('/api/plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(plan),
+    });
+  } catch (e) {
+    /* 离线/失败：本地已保存，下次进入会再次尝试同步 */
+  }
+}
+
+/** 登录态下从服务端删除方案（best-effort） */
+async function removePlanFromServer(id) {
+  const u = currentUser();
+  if (!u?.id || !id) return;
+  try {
+    await authFetch(`/api/plans/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+/* ---------------------------- 3D 预览（Hero） ---------------------------- */
+
+function startPreview(container) {
+  let disposed = false;
+  let renderer, scene, camera, ro, model, pivot, raf;
+
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  } catch {
+    return { resume() {}, pause() {} };
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  container.appendChild(renderer.domElement);
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.cursor = 'grab';
+  renderer.domElement.style.touchAction = 'none';
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
+
+  /* 车模归一后的车体半尺寸（载入后按实际模型算出，不写死）。
+     h = 水平扫掠半径（Y 轴自转时取"长/宽"里更大的那个的一半）
+     v = 竖直扫掠半径（俯仰/侧摆时取"高/宽"里更大的那个的一半）
+     用这两个而不是"外接球"，是为了既保证完整可见、又不会把车缩得太小。 */
+  let carExtent = { h: 1.6, v: 0.7 };
+
+  /**
+   * 按「外接球 + 当前容器宽高比」自适应求解相机距离。
+   *
+   * ⚠️ 原先相机位置是**写死**的 (2.2, 0.9, 2.7)，注释里按 572×260 的旧画布算过"占高 43% 有余量"，
+   * 但容器比例一变化（窗口变宽变矮、单列布局），实际可视范围就装不下车，
+   * 车会被 `.garage-hero__preview` 的 `overflow:hidden` 从下边缘硬切掉。
+   * 外接球求解能保证**任意容器比例 + 任意自转角度**下整车都在画面内。
+   */
+  function fitCamera() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!w || !h) return;
+    const tanV = Math.tan((camera.fov * Math.PI) / 360);
+    const tanH = tanV * (w / h);
+    // 竖直/水平两个方向各算一个所需距离，取较大者。
+    // carExtent.h/v 本身已是「约束运动」(360°偏航 + ±12°俯仰 + ±3°侧摆) 下的真实投影上界，
+    // 所以此处只留一点点安全边距即可放大车模而不被 overflow:hidden 硬切。1.05 ≈ 四周留 5% 余量。
+    const dist = Math.max(carExtent.v / tanV, carExtent.h / tanH) * 1.05;
+    const dir = new THREE.Vector3(2.2, 0.9, 2.7).normalize();
+    camera.position.copy(dir.multiplyScalar(dist));
+    // 视点略低于车心 → 车在画面中略微上移，底部不贴边（原来 lookAt 在车心上方 0.1，反而把车压低）
+    camera.lookAt(0, -carExtent.v * 0.1, 0);
+    camera.updateProjectionMatrix();
+  }
+  fitCamera();
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc2ccd6, 1.05));
+  const key = new THREE.DirectionalLight(0xffffff, 2.3);
+  key.position.set(5, 8, 6);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xcfe0ff, 0.9);
+  fill.position.set(-6, 3, -4);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 1.1);
+  rim.position.set(0, 4, -7);
+  scene.add(rim);
+
+  // 软接触阴影
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 20),
+    new THREE.ShadowMaterial({ opacity: 0.16 })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = -1.2;
+  scene.add(shadow);
+
+  ro = new ResizeObserver(() => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    // 容器比例变化后重新取景，避免车被切（原实现只更新 aspect，视距不变）
+    fitCamera();
+  });
+  ro.observe(container);
+
+  loadGLB(HERO_CAR_URL, { progress: false })
+    .then(({ group }) => {
+      if (disposed) return;
+      pivot = new THREE.Group();
+      const box = boxOf(group);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      group.position.sub(center); // 以轮心/几何中心为原点
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const scale = 3.0 / maxDim;
+      pivot.scale.setScalar(scale);
+      pivot.add(group);
+      scene.add(pivot);
+      // 用缩放后的真实车体范围重新取景（自转/俯仰到最大投影时也能完整装下）
+      const sx = size.x * scale;
+      const sy = size.y * scale;
+      const sz = size.z * scale;
+      const hh = 0.5 * Math.max(sx, sz); // 水平：自转时取长/宽里更大的
+      const vv = 0.5 * Math.max(sy, sz); // 竖直：俯仰/侧摆时取高/宽里更大的
+      if (Number.isFinite(hh) && Number.isFinite(vv) && hh > 0.2) {
+        carExtent = { h: hh, v: vv };
+        fitCamera();
+      }
+    })
+    .catch((e) => {
+      console.warn('[garage-preview] 车模载入失败', e);
+    });
+
+  /* 复合转动：Y 轴匀速自转 + X 轴俯仰摆动 + Z 轴轻微侧摆。
+     三轴用互不相同的频率，形成不重复的李萨如式姿态变化。
+
+     为什么 X 轴是"摆动"而不是连续翻滚：
+       车翻过来会露出底盘，展示效果很怪。小幅俯仰（±12°左右）既让动作
+       明显变复杂，又始终保持车顶朝上、姿态可读。
+
+     为什么用 dt 时间累积而不是每帧固定增量：
+       固定增量会让转速随帧率漂移（120Hz 屏快一倍）。按秒累积才是真匀速。 */
+  const SPIN = {
+    yawSpeed: 0.24, // Y 轴自转角速度（弧度/秒，约 14°/s）
+    pitchAmp: 0.21, // X 轴俯仰摆幅（弧度，约 ±12°）
+    pitchHz: 0.09,  // X 轴摆动频率（Hz，周期约 11s）
+    rollAmp: 0.05,  // Z 轴侧摆摆幅（弧度，约 ±3°）
+    // 与 pitchHz 的比值取黄金比例（0.09 / 1.618）：无理数比 → 两轴永不同步，
+    // 姿态不会周期性重复。若取 1.5、2 这类整数/有理比，每 20 来秒就会转回原样。
+    rollHz: 0.0556, // Z 轴摆动频率（Hz，周期约 18s）
+  };
+
+  let auto = true;
+  let dragging = false;
+  let dragPointerId = -1;
+  let startX = 0;
+  let startYaw = 0;
+  const YAW_DRAG_SENS = 0.008; // 水平拖动灵敏度：弧度/像素
+  let yaw = 0;
+  let phase = 0;
+  let lastT = 0;
+  let running = false;
+
+  function loop(now) {
+    // 每帧先续约：pause() 会把 running 置 false 并在下一帧退出循环，
+    // 隐藏期间不再消耗任何 GPU / CPU（iOS 上持续空渲染会触发 jetsam 杀进程）。
+    if (!running) return;
+    const dt = lastT ? Math.min((now - lastT) / 1000, 0.1) : 0;
+    lastT = now;
+
+    if (pivot) {
+      // 自动旋转：拖动时暂停 Yaw 自转，但 Pitch/Roll 摆动继续，保持姿态生动
+      if (auto && !dragging) {
+        yaw += SPIN.yawSpeed * dt;
+      }
+      phase += dt;
+      pivot.rotation.y = yaw;
+      pivot.rotation.x = Math.sin(phase * SPIN.pitchHz * Math.PI * 2) * SPIN.pitchAmp;
+      pivot.rotation.z = Math.sin(phase * SPIN.rollHz * Math.PI * 2) * SPIN.rollAmp;
+    }
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function startLoop() {
+    if (running || disposed) return;
+    running = true;
+    lastT = 0;
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stopLoop() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  /* ---- 交互：拖拽旋转 + 松开恢复自动 ---- */
+  const canvas = renderer.domElement;
+
+  function onPointerDown(e) {
+    // 只响应左键或触摸/笔；右键不触发
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragging = true;
+    dragPointerId = e.pointerId;
+    startX = e.clientX;
+    startYaw = yaw;
+    auto = false; // 拖动期间暂停 Yaw 自动增量
+    canvas.style.cursor = 'grabbing';
+  }
+
+  function onPointerMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    const dx = e.clientX - startX;
+    yaw = startYaw + dx * YAW_DRAG_SENS;
+  }
+
+  function onPointerUp(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    dragging = false;
+    dragPointerId = -1;
+    auto = true; // 松开后恢复自动旋转，从当前 yaw 继续
+    canvas.style.cursor = 'grab';
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+
+  startLoop();
+
+  return {
+    resume() {
+      auto = true;
+      startLoop();
+    },
+    pause() {
+      auto = false;
+      stopLoop();
+    },
+    dispose() {
+      disposed = true;
+      stopLoop();
+      ro?.disconnect();
+      // 释放车模 GPU 资源：renderer.dispose() 只释放渲染器内部对象，
+      // 几何 / 材质 / 贴图的显存要靠逐个 dispose，否则 12MB Draco 车模
+      // 解码后的显存会一直驻留（反复挂载几次就把 iOS 内存吃爆）。
+      scene?.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          for (const key of Object.keys(m || {})) {
+            const v = m[key];
+            if (v && v.isTexture) v.dispose();
+          }
+          m?.dispose?.();
+        }
+      });
+      scene?.clear?.();
+      canvas?.removeEventListener('pointerdown', onPointerDown);
+      window?.removeEventListener('pointermove', onPointerMove);
+      window?.removeEventListener('pointerup', onPointerUp);
+      renderer?.dispose();
+      renderer?.forceContextLoss?.();
+      renderer?.domElement?.remove();
+    },
+  };
+}
+
+/* ---------------------------- 卡片 ---------------------------- */
+
+/** 由方案 id 确定性生成条形码 SVG（真实条码：静区 + 宽窄相间条 + 首尾守卫条，纯装饰） */
+function barcodeSVG(seed, w = 220, h = 30) {
+  let s = 0;
+  const str = String(seed || 'inspire');
+  for (let i = 0; i < str.length; i++) s = (s * 31 + str.charCodeAt(i)) >>> 0;
+  let rnd = s || 1;
+  const next = () => {
+    rnd = (rnd * 1103515245 + 12345) >>> 0;
+    return rnd / 4294967296;
+  };
+  const bars = [];
+  let x = 4; // 左静区
+  // 粉 → 紫 → 青 三段渐变（按条的位置横向取色），对齐设计稿的霓虹条码
+  const colorAt = (t) => {
+    const lerp = (a, b, k) => a + (b - a) * k;
+    let r, g, b;
+    if (t < 0.5) {
+      const k = t / 0.5;
+      r = lerp(255, 168, k); g = lerp(48, 92, k); b = lerp(214, 255, k);
+    } else {
+      const k = (t - 0.5) / 0.5;
+      r = lerp(168, 62, k); g = lerp(92, 228, k); b = lerp(255, 255, k);
+    }
+    return `rgb(${r | 0},${g | 0},${b | 0})`;
+  };
+  const bar = (bw) => {
+    bars.push(`<rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="${colorAt(x / w)}"/>`);
+  };
+  // 首守卫条：细-粗-细（通高）
+  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5); x += 4.5;
+  // 数据区：窄条(1.5~3)与宽条(3.5~7.5)随机交错，间隙同样宽窄可变
+  while (x < w - 28) {
+    const bw = next() < 0.55 ? 1.5 + next() * 1.5 : 3.5 + next() * 4;
+    bar(bw);
+    x += bw + 1.5 + next() * 3.5;
+  }
+  // 尾守卫条：细-粗-细
+  bar(1.5); x += 4; bar(4.5); x += 7.5; bar(1.5);
+  return `<svg class="garage-card__barcode" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${bars.join('')}</svg>`;
+}
+
+function createCard(plan, onClick, onDelete, index = 0) {
+  const no = String((index ?? 0) + 1).padStart(3, '0');
+
+  // 缩略图容器：实时 3D 预览（动态旋转）画布由 PreviewEngine 挂载，最终嵌在塑料泡壳里
+  const thumb = el('div', { class: 'garage-card__thumb' });
+
+  if (!previewEngine.ok) {
+    // WebGL 不可用时退化成占位提示
+    thumb.appendChild(el('div', { class: 'garage-card__placeholder' }, '3D 预览不可用'));
+  }
+
+  // 删除按钮（收藏卡左上角，随卡片 3D 浮动）
+  const del = el(
+    'button',
+    {
+      class: 'garage-card__delete',
+      title: '删除此方案',
+      'aria-label': '删除此方案',
+      onClick: (e) => {
+        e.stopPropagation();
+        onDelete?.(plan);
+      },
+    },
+    '×'
+  );
+
+  // 欧标挂孔不再用独立挂耳：卡面经 CSS mask 真挖空（见 garage.css 的 .garage-card__backing）
+
+  // 背卡水印字样（黑色收藏卡上的银色装饰字）
+  const watermark = el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR');
+
+  // 透明塑料泡壳：绝对定位在 blister-zone 内，不再压住下方文字
+  const shell = el(
+    'div',
+    { class: 'garage-card__shell' },
+    thumb,
+    el('div', { class: 'garage-card__blister-highlight' }),
+    el('div', { class: 'garage-card__blister-glare' }),
+    el('div', { class: 'garage-card__blister-rim' }),
+    el('div', { class: 'garage-card__blister-refraction' })
+  );
+  const blister = el('div', { class: 'garage-card__blister' }, shell);
+
+  // 泡壳占位区：在背卡流式布局中占据固定高度，避免与文字重叠
+  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
+
+  // 背卡（哑光黑收藏卡）：品牌字标 + 泡壳 + 车型信息 + 收藏编号/条形码 + 底部信息
+  const backing = el(
+    'div',
+    { class: 'garage-card__backing' },
+    el(
+      'div',
+      { class: 'garage-card__brand' },
+      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
+      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
+      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
+      el(
+        'div',
+        { class: 'garage-card__brand-cn-row' },
+        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
+        el('div', { class: 'garage-card__no' }, no)
+      )
+    ),
+    blisterZone,
+    el(
+      'div',
+      { class: 'garage-card__model' },
+      el('h3', { class: 'garage-card__title' }, planDisplayName(plan)),
+      plan.desc ? el('p', { class: 'garage-card__desc' }, plan.desc) : null,
+      watermark
+    ),
+    el(
+      'div',
+      { class: 'garage-card__meta' },
+      el('span', { class: 'garage-card__meta-no' }, '1/64')
+    ),
+    el('div', {
+      class: 'garage-card__barcode-wrap',
+      html: barcodeSVG(plan.id || plan.title || 'inspire'),
+    }),
+    el(
+      'div',
+      { class: 'garage-card__footer' },
+      el('span', { class: 'garage-card__footer-live' }, '● 实时 3D'),
+      el('span', { class: 'garage-card__footer-action' }, '进入改装 →')
+    )
+  );
+
+  // 整包 = 背卡（卡面 mask 自带欧标挂孔挖空）+ 删除按钮
+  const pack = el('div', { class: 'garage-card__pack' }, backing, del);
+
+  const card = el('article', { class: 'garage-card', onClick: () => onClick(plan) }, pack);
+
+  // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）；透传方案车型地址
+  if (previewEngine.ok) {
+    requestAnimationFrame(() => previewEngine.mount(thumb, previewParamsOf(plan), plan.carModelUrl));
+  }
+  return card;
+}
+
+/** 空白占位卡：车库卡位里还没有用户自建方案时展示，点击进入创作（拍照引导）。
+ *  复用真实卡片的卡框/泡壳/品牌/条形码/底部结构，仅泡壳与文字为空槽提示，无 3D 预览。 */
+function createBlankCard(index, onClick) {
+  const thumb = el(
+    'div',
+    { class: 'garage-card__thumb' },
+    el(
+      'div',
+      { class: 'garage-card__blank' },
+      el('div', {
+        class: 'garage-card__blank-plus',
+        html:
+          '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      }),
+      el('div', { class: 'garage-card__blank-text' }, '空卡槽')
+    )
+  );
+  const shell = el(
+    'div',
+    { class: 'garage-card__shell' },
+    thumb,
+    el('div', { class: 'garage-card__blister-highlight' }),
+    el('div', { class: 'garage-card__blister-glare' }),
+    el('div', { class: 'garage-card__blister-rim' }),
+    el('div', { class: 'garage-card__blister-refraction' })
+  );
+  const blister = el('div', { class: 'garage-card__blister' }, shell);
+  const blisterZone = el('div', { class: 'garage-card__blister-zone' }, blister);
+  const backing = el(
+    'div',
+    { class: 'garage-card__backing' },
+    el(
+      'div',
+      { class: 'garage-card__brand' },
+      el('div', { class: 'garage-card__brand-en1' }, 'INSPIRE'),
+      el('div', { class: 'garage-card__brand-en2' }, 'CAR'),
+      el('div', { class: 'garage-card__brand-bars' }, el('i'), el('i')),
+      el(
+        'div',
+        { class: 'garage-card__brand-cn-row' },
+        el('div', { class: 'garage-card__brand-cn' }, '灵感改装'),
+        el('div', { class: 'garage-card__no' }, String(index + 1).padStart(3, '0'))
+      )
+    ),
+    blisterZone,
+    el(
+      'div',
+      { class: 'garage-card__model' },
+      el('h3', { class: 'garage-card__title garage-card__title--blank' }, '空卡槽'),
+      el('p', { class: 'garage-card__desc' }, '上传一张爱车照片，AI 识别车型并生成 3D'),
+      el('div', { class: 'garage-card__watermark' }, 'INSPIRE CAR')
+    ),
+    el('div', { class: 'garage-card__meta' }, el('span', { class: 'garage-card__meta-no' }, '1/64')),
+    el('div', { class: 'garage-card__barcode-wrap', html: barcodeSVG('blank-' + index) }),
+    el(
+      'div',
+      { class: 'garage-card__footer' },
+      el('span', { class: 'garage-card__footer-live garage-card__footer-live--blank' }, '● 待创作'),
+      el('span', { class: 'garage-card__footer-action' }, '开始创作 →')
+    )
+  );
+  const pack = el('div', { class: 'garage-card__pack' }, backing);
+  return el('article', { class: 'garage-card garage-card--blank', onClick }, pack);
+}
+
+function createEmptyState(onNew) {
+  return el(
+    'div',
+    { class: 'garage-empty' },
+    el('div', { class: 'garage-empty__icon' }, '🏎️'),
+    el('h3', { class: 'garage-empty__title' }, '还没有改装方案'),
+    el('p', { class: 'garage-empty__hint' }, '上传一张照片，开始你的第一个 3D 改装方案'),
+    el('button', { class: 'gb-btn primary', onClick: onNew }, '+ 新建方案')
+  );
+}
+
+/* ---------------------------- 挂载 ---------------------------- */
+
+/* 当前挂载实例的清理函数：重复 mountGarage 前先销毁旧实例，
+ * 否则旧 hero 的 WebGLRenderer（含 12MB 车模显存）会永久泄漏——
+ * iOS Safari 的 WebGL 上下文数量和内存都有硬上限，泄漏几次就是
+ * "此网页重复出现问题" 崩溃。 */
+let _activeCleanup = null;
+
+export function mountGarage({ onEnter, mount } = {}) {
+  const root = mount || $('#garage');
+  if (!root) return null;
+  if (_activeCleanup) {
+    try {
+      _activeCleanup();
+    } catch (e) {
+      console.warn('[garage] 旧实例清理失败', e);
+    }
+    _activeCleanup = null;
+  }
+  root.innerHTML = '';
+  root.classList.remove('hidden');
+
+  let preview = null;
+  let aiOrb = null;
+  // 轮毂仓库 / 论坛 / 资讯均为「首次切到该页才创建」的惰性实例（见 ensure* 函数）
+  let warehouse = null;
+  let forumApi = null;
+  let newsApi = null;
+  // 当前所在的顶层分页：garage | wheels | forum | news（null = 尚未 setPage）
+  let currentPage = null;
+
+  /* 顶部品牌栏 */
+  const u = currentUser();
+  const userChip = el(
+    'div',
+    { class: 'garage-userchip' },
+    el('span', { class: 'garage-userchip__name' }, u?.username || '用户'),
+    el(
+      'button',
+      {
+        class: 'garage-userchip__btn',
+        type: 'button',
+        title: '注销登录',
+        onClick: () => logout(),
+      },
+      '注销'
+    )
+  );
+  const subscribeBtn = el(
+    'button',
+    {
+      class: 'garage-subscribe-btn',
+      type: 'button',
+      title: '查看订阅方案',
+      onClick: () => openPricingModal(),
+    },
+    el('img', {
+      class: 'garage-subscribe-icon',
+      src: '/icons/subscribe-car.png',
+      alt: '',
+      'aria-hidden': 'true',
+    }),
+    '订阅方案'
+  );
+
+  const header = el(
+    'header',
+    { class: 'garage-header' },
+    el(
+      'div',
+      { class: 'garage-brand' },
+      el('img', { class: 'garage-logo', src: logoMarkUrl, alt: 'INSPIRE CAR' }),
+      el(
+        'div',
+        { class: 'garage-brand__text' },
+        el('h1', { class: 'garage-brand__title' }, '灵感改装'),
+        el('p', { class: 'garage-brand__sub' }, 'INSPIRE CAR')
+      ),
+      subscribeBtn
+    ),
+    userChip
+  );
+
+  /* Hero：文案 + 实时 3D 预览 */
+  const heroCanvas = el('div', { class: 'garage-hero__canvas' });
+  const hero = el(
+    'section',
+    { class: 'garage-hero' },
+    el(
+      'div',
+      { class: 'garage-hero__text' },
+      el('h2', { class: 'garage-hero__title' }, '把灵感，变现实'),
+      el('p', { class: 'garage-hero__sub' }, '看见每一套轮毂与姿态方案。'),
+      el(
+        'div',
+        { class: 'garage-hero__actions' },
+        el('button', { class: 'gb-btn primary', onClick: () => onEnter?.(null) }, '+ 新建改装方案'),
+        el('button', { class: 'gb-btn ghost', onClick: () => $('#garage-grid')?.scrollIntoView({ behavior: 'smooth' }) }, '查看我的方案')
+      )
+    ),
+    el(
+      'div',
+      { class: 'garage-hero__preview' },
+      el('span', { class: 'garage-hero__badge' }, '● 实时 3D 预览'),
+      heroCanvas
+    )
+  );
+
+  /* 方案网格 */
+  const grid = el('div', { class: 'garage-grid', id: 'garage-grid' });
+  const body = el(
+    'main',
+    { class: 'garage-body' },
+    el('h2', { class: 'garage-section-title' }, 'INSPIRATION GARAGE'),
+    grid
+  );
+
+  /* ---- 顶层导航：车库 / 轮毂 / 论坛 / 资讯 四个平级分页 ----
+   * 用户要的是「并行的二级页面」，不是把功能全堆在一个长首页里往下滑，
+   * 所以这里做 sticky 吸顶导航 + 4 个互斥显示的页面容器。 */
+  const PAGES = [
+    { id: 'garage', label: '车库' },
+    { id: 'wheels', label: '轮毂' },
+    { id: 'forum', label: '论坛' },
+    { id: 'news', label: '资讯' },
+  ];
+  const navItems = new Map();
+  const nav = el('nav', { class: 'garage-nav', 'aria-label': '车库分页导航' });
+  for (const p of PAGES) {
+    const btn = el(
+      'button',
+      {
+        class: 'garage-nav__item',
+        type: 'button',
+        'data-page': p.id,
+        'aria-selected': 'false',
+        onClick: () => setPage(p.id),
+      },
+      p.label
+    );
+    navItems.set(p.id, btn);
+    nav.appendChild(btn);
+  }
+
+  /* 4 个页面容器：车库页装 hero + 方案网格，其余三页的正文惰性挂载 */
+  const pageGarage = el('section', { class: 'garage-page garage-page--garage', 'data-page': 'garage' });
+  const pageWheels = el('section', { class: 'garage-page garage-page--wheels hidden', 'data-page': 'wheels' });
+  const pageForum = el('section', { class: 'garage-page garage-page--forum hidden', 'data-page': 'forum' });
+  const pageNews = el('section', { class: 'garage-page garage-page--news hidden', 'data-page': 'news' });
+  const pages = { garage: pageGarage, wheels: pageWheels, forum: pageForum, news: pageNews };
+  pageGarage.appendChild(hero);
+  pageGarage.appendChild(body);
+
+  // 分页头：轮毂 / 论坛 / 资讯三页自带模块内的重复标题由 garage.css 隐藏，
+  // 避免出现两个同名标题（论坛/资讯的工具栏里还有发帖按钮与更新时间戳，保留）。
+  pageWheels.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '轮毂仓库'),
+      el('p', { class: 'garage-page__sub' }, '已拥有的轮毂，随时悬空选装到任意车')
+    )
+  );
+  pageForum.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '论坛'),
+      el('p', { class: 'garage-page__sub' }, '改装交流 · 求助 · 作品展示')
+    )
+  );
+  pageNews.appendChild(
+    el(
+      'div',
+      { class: 'garage-page__head' },
+      el('h2', { class: 'garage-page__title' }, '资讯'),
+      el('p', { class: 'garage-page__sub' }, '改装资讯 · 赛事 · 活动，每 30 秒自动更新')
+    )
+  );
+  const forumMount = el('div', { class: 'garage-page__mount' });
+  const newsMount = el('div', { class: 'garage-page__mount' });
+  pageForum.appendChild(forumMount);
+  pageNews.appendChild(newsMount);
+
+  /**
+   * 切到指定分页：互斥显隐 + 驱动各页的 WebGL / 轮询生命周期。
+   * @param {'garage'|'wheels'|'forum'|'news'} id
+   */
+  function setPage(id) {
+    const target = pages[id] ? id : 'garage';
+    if (currentPage === target) return;
+    leavePage(currentPage);
+    currentPage = target;
+    for (const [pid, node] of Object.entries(pages)) {
+      node.classList.toggle('hidden', pid !== target);
+    }
+    for (const [pid, btn] of navItems) {
+      const on = pid === target;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    enterPage(target);
+  }
+
+  /** 离开某页：停掉该页专属的渲染循环 / 轮询 */
+  function leavePage(id) {
+    if (id === 'garage') preview?.pause();
+    else if (id === 'wheels') warehouse?.pause();
+    else if (id === 'forum') forumApi?.deactivate();
+    else if (id === 'news') newsApi?.deactivate(); // 必须停掉 30s 资讯轮询
+  }
+
+  /** 进入某页：惰性创建（首次）+ 恢复该页的渲染循环 / 数据加载 */
+  function enterPage(id) {
+    if (id === 'garage') {
+      renderGrid();
+      preview?.resume();
+      return;
+    }
+    if (id === 'wheels') {
+      ensureWarehouse();
+      warehouse?.resume();
+      warehouse?.refresh?.();
+      return;
+    }
+    if (id === 'forum') {
+      ensureForum().activate();
+      return;
+    }
+    if (id === 'news') {
+      ensureNews().activate();
+    }
+  }
+
+  root.appendChild(header);
+  root.appendChild(nav);
+  root.appendChild(pageGarage);
+  root.appendChild(pageWheels);
+  root.appendChild(pageForum);
+  root.appendChild(pageNews);
+
+  /* 轮毂仓库：账户持久拥有的轮毂，以全息 3D 轮毂呈现，可悬空选装到任意车。
+   * 首页点「装到当前车」时还没进工作台，先把目标轮毂暂存到 sessionStorage，
+   * 进入工作台载车后由 main.js 的 loadPlanCar 落地到当前方案。
+   *
+   * ⚠️ 惰性挂载：mountWheelWarehouse 内部 requestAnimationFrame(startHolo)
+   * 立刻建 WebGL 全息，若此时容器还是 display:none，canvas 的 clientWidth/Height
+   * 为 0，WebGL 会以 0×0 初始化导致黑屏。所以必须等首次切到「轮毂」页（容器可见）
+   * 再 mount，顺带也避免同时存在多个 WebGL 上下文（iOS Safari 有硬上限）。 */
+  function ensureWarehouse() {
+    if (warehouse) return warehouse;
+    warehouse = mountWheelWarehouse({
+      onEquip(url) {
+        try {
+          sessionStorage.setItem('pending-wheel-url', url);
+        } catch (e) {
+          /* ignore */
+        }
+        onEnter?.(null);
+      },
+      onNewWheel() {
+        try {
+          sessionStorage.removeItem('pending-wheel-url');
+        } catch (e) {
+          /* ignore */
+        }
+        onEnter?.(null);
+      },
+    });
+    pageWheels.appendChild(warehouse.el);
+    return warehouse;
+  }
+
+  /* 论坛 / 资讯：同样惰性创建——首次切到该页时才建 DOM 与拉数据，
+   * 避免进入车库就同时在后台跑两个模块（资讯轮询会一直打 /api/news）。 */
+  function ensureForum() {
+    if (forumApi) return forumApi;
+    forumApi = createForum({ mount: forumMount });
+    return forumApi;
+  }
+  function ensureNews() {
+    if (newsApi) return newsApi;
+    newsApi = createNews({ mount: newsMount });
+    return newsApi;
+  }
+
+  // 页脚：协议常驻入口。用户注册时勾选过，但仍需随时可回查——
+  // 只放在注册弹窗里、之后无法查看，发生争议时难以证明用户有合理机会阅读。
+  const legalFoot = el('div', { class: 'garage-legal' });
+  for (const [key, label] of [
+    ['agreement', '用户协议'],
+    ['guidelines', '社区内容守则'],
+  ]) {
+    legalFoot.appendChild(
+      el('button', { class: 'garage-legal__link', type: 'button', onClick: () => openLegalModal(key) }, label)
+    );
+  }
+  root.appendChild(legalFoot);
+
+  // 首页发光点阵球（AI 对话入口）：独立轻量 WebGL，挂在 body 上
+  try {
+    aiOrb = mountAiOrb();
+  } catch (e) {
+    console.warn('[garage] AI 点阵球初始化失败（不影响其余功能）:', e.message);
+  }
+
+  function renderGrid() {
+    // 重绘前先卸载所有预览，释放本实例专属资源（几何 / 场景）
+    previewEngine.clear();
+    grid.innerHTML = '';
+    const plans = getPlans();
+    plans.forEach((p, i) => grid.appendChild(createCard(p, (pl) => onEnter?.(pl), deletePlan, i)));
+    // 自建方案不足 GARAGE_MIN_SLOTS 个时，用空白占位卡补足卡位（初始全空白，随用户创作逐个填入）
+    for (let i = plans.length; i < GARAGE_MIN_SLOTS; i++) {
+      grid.appendChild(createBlankCard(i, () => onEnter?.(null)));
+    }
+  }
+
+  /** 删除某个方案（带二次确认），并刷新卡片网格 */
+  function deletePlan(plan) {
+    if (!plan) return;
+    const name = planDisplayName(plan);
+    if (!window.confirm(`确定删除「${name}」？此操作不可撤销。`)) return;
+    const plans = (readPlans() || []).filter((p) => p.id !== plan.id);
+    writePlans(plans);
+    removePlanFromServer(plan.id);
+    renderGrid();
+  }
+
+  /** 进入车库时若已登录，从服务端拉取并合并方案（跨设备同步）。
+   *  同时把「本地有、服务端没有」的方案回传服务端——覆盖「未登录时在本机建了方案、
+   *  之后才登录」的情况，让换设备也能看到（服务端 upsert 按 id 幂等，不会重复）。 */
+  async function syncPlansFromServer() {
+    const u = currentUser();
+    if (!u?.id) return;
+    try {
+      const r = await authFetch('/api/plans');
+      if (!r.ok) return;
+      const data = await r.json();
+      const remote = data?.plans || [];
+      const local = readPlans() || [];
+      const remoteIds = new Set(remote.map((p) => p?.id));
+      // 回传本地独有方案（best-effort，失败忽略）
+      for (const p of local) {
+        if (p?.id && !remoteIds.has(p.id)) pushPlanToServer(p);
+      }
+      const merged = mergePlans(local, remote).filter((p) => !String(p?.id || '').startsWith('demo-'));
+      writePlans(merged);
+      renderGrid();
+    } catch (e) {
+      /* 离线/失败：保留本地 */
+    }
+  }
+
+  // 默认落在「车库」页：setPage 会走一遍 enterPage（首次渲染网格 + 同步导航态）
+  setPage('garage');
+  syncPlansFromServer();
+
+  // DOM 就绪后启动预览（需要拿到 clientWidth/Height）
+  let disposed = false;
+  requestAnimationFrame(() => {
+    if (disposed) return;
+    preview = startPreview(heroCanvas);
+  });
+
+  function dispose() {
+    disposed = true;
+    preview?.dispose();
+    preview = null;
+    aiOrb?.dispose();
+    aiOrb = null;
+    warehouse?.dispose();
+    warehouse = null;
+    // 停掉论坛/资讯的生命周期（资讯的 30s 轮询必须清掉，否则离开页面仍在请求）
+    forumApi?.deactivate();
+    newsApi?.deactivate();
+    forumApi = null;
+    newsApi = null;
+    previewEngine.clear();
+    previewEngine.disposeRenderer();
+    // 车模源解析缓存也要一起释放：单份 GLB 解析后 30~48MB，留着会让内存只增不减
+    clearCarSourceCache();
+    root.innerHTML = '';
+    if (_activeCleanup === dispose) _activeCleanup = null;
+  }
+  _activeCleanup = dispose;
+
+  /* 停掉所有分页相关的渲染循环与轮询（离开车库 / 页面进后台） */
+  function stopPageLoops() {
+    preview?.pause();
+    aiOrb?.pause();
+    warehouse?.pause();
+    forumApi?.deactivate();
+    newsApi?.deactivate();
+  }
+
+  /* 只恢复「当前所在页」——避免离开车库后资讯还在每 30s 打 /api/news */
+  function startPageLoops() {
+    aiOrb?.resume();
+    if (currentPage === 'garage') {
+      renderGrid();
+      preview?.resume();
+      return;
+    }
+    if (currentPage === 'wheels') {
+      warehouse?.resume();
+      warehouse?.refresh?.();
+      return;
+    }
+    if (currentPage === 'forum') forumApi?.activate();
+    else if (currentPage === 'news') newsApi?.activate();
+  }
+
+  return {
+    root,
+    hide() {
+      root.classList.add('hidden');
+      stopPageLoops();
+    },
+    show() {
+      root.classList.remove('hidden');
+      startPageLoops();
+    },
+    // 仅暂停/恢复渲染循环，不改变视图可见性——供「页面进后台」（拍照/切 App）兜底使用
+    pause() {
+      stopPageLoops();
+    },
+    resume() {
+      startPageLoops();
+    },
+    refresh() {
+      if (currentPage === 'garage') renderGrid();
+    },
+    upsertPlan(plan) {
+      upsertPlan(plan);
+      renderGrid();
+    },
+    getPlanById(id) {
+      const plans = readPlans() || [];
+      return plans.find((p) => p.id === id) || null;
+    },
+    dispose,
+  };
+}

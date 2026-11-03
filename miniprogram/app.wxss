@@ -1,0 +1,105 @@
+/* app.wxss — 全局样式：深色底 + 赛博朋克霓虹（青 #3ee4ff / 品红 #ff30d6 / 紫 #a85cff） */
+page {
+  background: #0b0e13;
+  color: #e8edf3;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", Helvetica, sans-serif;
+  --neon-cyan: #3ee4ff;
+  --neon-magenta: #ff30d6;
+  --neon-violet: #a85cff;
+}
+
+/* 通用容器 */
+.screen {
+  min-height: 100vh;
+  padding: 32rpx 32rpx 64rpx;
+  box-sizing: border-box;
+}
+
+/* 标题 */
+.brand-title {
+  font-size: 56rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+  background: linear-gradient(90deg, #3ee4ff, #a85cff, #ff30d6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand-sub {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #7b8794;
+  letter-spacing: 4rpx;
+}
+
+/* 主 CTA 按钮 */
+.cta {
+  margin-top: 48rpx;
+  height: 96rpx;
+  line-height: 96rpx;
+  text-align: center;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #04121a;
+  background: linear-gradient(90deg, #3ee4ff, #a85cff);
+  box-shadow: 0 0 24rpx rgba(62, 228, 255, 0.45);
+}
+.cta:active {
+  opacity: 0.85;
+}
+
+/* 次按钮 */
+.btn-ghost {
+  margin-top: 24rpx;
+  height: 84rpx;
+  line-height: 84rpx;
+  text-align: center;
+  border-radius: 42rpx;
+  font-size: 28rpx;
+  color: #3ee4ff;
+  border: 2rpx solid rgba(62, 228, 255, 0.5);
+  background: rgba(62, 228, 255, 0.06);
+}
+.btn-ghost:active {
+  background: rgba(62, 228, 255, 0.14);
+}
+
+/* 卡片 */
+.card {
+  margin-top: 24rpx;
+  padding: 32rpx;
+  border-radius: 24rpx;
+  background: #121722;
+  border: 2rpx solid rgba(168, 92, 255, 0.25);
+  box-shadow: 0 0 16rpx rgba(168, 92, 255, 0.12) inset;
+}
+.card-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #e8edf3;
+}
+.card-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #7b8794;
+}
+
+/* 空态 / 提示 */
+.empty {
+  margin-top: 120rpx;
+  text-align: center;
+  color: #7b8794;
+  font-size: 28rpx;
+}
+.empty-emoji {
+  font-size: 72rpx;
+  margin-bottom: 16rpx;
+}
+
+/* 霓虹分隔线 */
+.neon-line {
+  height: 2rpx;
+  margin: 32rpx 0;
+  background: linear-gradient(90deg, transparent, rgba(62, 228, 255, 0.6), transparent);
+}

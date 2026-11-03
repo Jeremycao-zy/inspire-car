@@ -1,0 +1,81 @@
+# 灵感改装 / INSPIRE CAR —— 国内服务器 Docker Compose 部署
+#
+# 用法（在服务器上的项目根目录）：
+#   docker compose up -d --build
+#
+# 设计要点：
+#   - 单端口：后端 node 同时托管 dist/ 静态产物 + /api/*，只暴露 8080。
+#   - 持久卷挂载到 /app/.cache：生成的 GLB 模型、论坛上传、账号/方案（JSON 模式）都在这里。
+#     容器重建/重启不会丢数据（前提是用了这个卷）。
+#   - 非密钥配置写死在 environment；密钥（API Key、DATABASE_URL、AUTH_SECRET 等）
+#     不进本文件，统一放 .env（已在 .gitignore 忽略），用 env_file 注入。
+#
+# 关于数据库：
+#   - 最简方案（推荐个人开发者）：不设 DATABASE_URL → 自动走本地 JSON 文件（在 /app/.cache），
+#     配合上面的持久卷即可持久化。无需额外装 Postgres。
+#   - 若想要 PostgreSQL：取消下方 db 服务注释，并把 environment 里的 DATABASE_URL 打开，
+#     用 db:5432 作为主机名（Docker 内部网络）。SQL 模式下务必设固定的 AUTH_SECRET，
+#     否则每次重建会让所有已登录用户被踢下线。
+
+services:
+  inspire-car:
+    build: .
+    image: inspire-car:latest
+    container_name: inspire-car
+    restart: unless-stopped
+    # 应用本身只监听容器内的 8080（HTTP）。HTTPS 由前置 Caddy/Nginx 负责（见文档第 6 节）。
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      SERVE_STATIC: "1"
+      SPA_FALLBACK: "1"
+      # ---- 以下为可选覆盖，按需打开 ----
+      # MAX_BODY_MB: "80"            # 上传图片+GLB 的请求体上限（默认 80MB）
+      # MAX_POLL_MS: "900000"        # 单次生成最长轮询（默认 ~15 分钟）
+      # POLL_INTERVAL_MS: "5000"     # 轮询间隔
+      # PUBLIC_BASE_URL: "https://www.inspirecar.cn"  # 前端/ OAuth 回跳基地址（同源一般不用改）
+      # ADMIN_UIDS: ""               # 资讯发布管理员白名单（逗号分隔 uid），留空=无后台发布权限
+      # ---- 用 PostgreSQL 时打开（需同时取消下方 db 服务）----
+      # DATABASE_URL: "postgres://inspirecar:inspirecar@db:5432/inspirecar"
+      # AUTH_SECRET: "<用 openssl rand -hex 48 生成一个固定随机值，务必固定>"
+    env_file:
+      - .env                       # 放密钥：HYPER3D_API_KEY / HUNYUAN3D_TOKEN / QWEN_API_KEY 等。不要进 git。
+    volumes:
+      - inspire_car_data:/app/.cache
+    healthcheck:
+      # Node 22 自带全局 fetch；健康检查命中 /api/health（返回 200 即存活）
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  inspire_car_data:
+    driver: local
+
+# 可选：PostgreSQL 容器（仅当你决定用 SQL 模式持久化账号/方案/论坛时使用）
+# 取消注释前，请先把上面 inspire-car 的 DATABASE_URL / AUTH_SECRET 注释打开。
+#  data 目录同样挂卷，避免容器重建丢库。
+#  db:
+#    image: postgres:16-alpine
+#    container_name: inspire-car-db
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_USER: inspirecar
+#      POSTGRES_PASSWORD: inspirecar
+#      POSTGRES_DB: inspirecar
+#    volumes:
+#      - inspire_car_db:/var/lib/postgresql/data
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U inspirecar"]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 5
+#
+#  volumes:
+#    inspire_car_db:
+#      driver: local

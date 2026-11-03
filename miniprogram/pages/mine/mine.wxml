@@ -1,0 +1,29 @@
+<view class="screen">
+  <view class="brand-title" style="font-size:40rpx;">我的</view>
+  <view class="brand-sub">INSPIRE CAR 账户</view>
+
+  <!-- 已登录 -->
+  <view wx:if="{{loggedIn}}" class="card">
+    <view class="card-title">已登录</view>
+    <view class="card-sub">账号：{{user.username || user.id || '微信用户'}}</view>
+    <view class="btn-ghost" bindtap="logout">退出登录</view>
+  </view>
+
+  <!-- 未登录 -->
+  <view wx:else class="card">
+    <view class="card-title">未登录</view>
+    <view class="card-sub">启动时会自动静默登录；若未成功可手动重试</view>
+    <view class="btn-ghost" bindtap="relogin">重新登录</view>
+  </view>
+
+  <view class="neon-line"></view>
+
+  <!-- 隐私协议 -->
+  <view class="card" bindtap="openPrivacy">
+    <view class="card-title">隐私协议</view>
+    <view class="card-sub">查看我们如何收集与使用你的数据</view>
+  </view>
+
+  <!-- 客服（微信内置客服会话，需在后台开启） -->
+  <button class="svc-btn" open-type="contact" bindtap="contactTip">联系客服</button>
+</view>

@@ -1,0 +1,23 @@
+# 灵感车库 / Inspire Car — Railway 部署配置（基础设施即代码）
+# 文档: https://docs.railway.app/deploy/config-as-code
+#
+# 说明：
+# - 应用是单端口全栈（server 同时服务 dist/ + /api/*），只需暴露一个端口。
+# - 服务端 HOST 默认 127.0.0.1，容器/云必须 0.0.0.0，已在下方 deploy.env 强制。
+# - 敏感 key（HYPER3D_API_KEY / HUNYUAN3D_TOKEN）只填到 Railway 控制台 Variables，
+#   绝不写进本文件或 git 仓库。
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+port = 8080
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+startCommand = "node server/index.mjs"
+
+[deploy.env]
+# 非敏感：容器必须监听所有网卡，否则 Railway 外部访问不到
+HOST = "0.0.0.0"

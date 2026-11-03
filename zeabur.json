@@ -1,0 +1,15 @@
+{
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "deploy": {
+    "port": 8080,
+    "env": {
+      "HOST": "0.0.0.0",
+      "NODE_ENV": "production",
+      "SERVE_STATIC": "1",
+      "SPA_FALLBACK": "1",
+      "PORT": "8080"
+    }
+  }
+}

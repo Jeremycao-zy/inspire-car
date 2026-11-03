@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>订阅 · 灵感改装</title>
+<style>
+  :root{
+    --bg:#07090c; --panel:#0e1318; --line:#1d2831;
+    --txt:#e8f4f8; --dim:#7d909c; --neon:#3ff0d8; --warn:#ffb454;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:radial-gradient(120% 80% at 50% 0%,#0d1a1d 0%,var(--bg) 60%);
+    color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    min-height:100vh;padding:20px 16px 48px;
+  }
+  .wrap{max-width:520px;margin:0 auto}
+  h1{font-size:19px;font-weight:600;letter-spacing:.06em;margin:6px 0 4px}
+  .sub{font-size:12.5px;color:var(--dim);margin-bottom:18px;line-height:1.6}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;
+  }
+  .card .info{flex:1;min-width:0}
+  .card .name{font-size:15px;font-weight:600;margin-bottom:4px}
+  .card .desc{font-size:12px;color:var(--dim)}
+  .price{font-size:19px;font-weight:600;color:var(--neon);white-space:nowrap}
+  .price small{font-size:11px;color:var(--dim);font-weight:400;margin-left:2px}
+  button.buy{
+    border:none;border-radius:999px;padding:10px 20px;font-size:13.5px;font-weight:600;
+    background:var(--neon);color:#04120f;cursor:pointer;white-space:nowrap;
+  }
+  button.buy:active{transform:scale(.97)}
+  button.buy[disabled]{opacity:.45;cursor:not-allowed}
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;margin-bottom:18px;font-size:13px;line-height:1.7;
+  }
+  .panel b{color:var(--neon);font-weight:600}
+  .tip{font-size:12px;color:var(--warn);line-height:1.7;margin-top:10px}
+  .hint{font-size:12px;color:var(--dim);margin-top:14px;line-height:1.7}
+  .ok{color:var(--neon);font-weight:600}
+  .err{color:#ff6b6b}
+  a{color:var(--neon)}
+  .back{
+    display:inline-flex;align-items:center;gap:6px;
+    color:var(--dim);text-decoration:none;font-size:13px;margin:2px 0 14px;
+  }
+  .back:hover{color:var(--neon)}
+  a.cta, .cta{
+    display:inline-block;margin-top:12px;padding:10px 18px;border-radius:999px;
+    background:var(--neon);color:#04120f;text-decoration:none;font-weight:600;font-size:13.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/" id="backHome">← 返回车库</a>
+  <h1>灵感改装 · 订阅</h1>
+  <div class="sub" id="subLine">加载中…</div>
+
+  <div class="panel" id="entPanel" style="display:none"></div>
+  <div id="plans"></div>
+
+  <div class="hint" id="hint"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var TOKEN_KEY = 'inspire-auth-token';
+  var OPENID_KEY = 'inspire-wx-openid';
+  var IS_WX = /MicroMessenger/i.test(navigator.userAgent);
+  var busy = false;
+
+  function token() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+  function openid() {
+    try { return localStorage.getItem(OPENID_KEY) || ''; } catch (e) { return ''; }
+  }
+  function setOpenid(v) {
+    try { if (v) localStorage.setItem(OPENID_KEY, v); } catch (e) {}
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    var t = token();
+    if (t) opts.headers['Authorization'] = 'Bearer ' + t;
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) {
+          var e = new Error(j.error || ('HTTP ' + r.status));
+          e.code = j.code;
+          throw e;
+        }
+        return j;
+      });
+    });
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ---------- 微信授权回调：?code= 换 openid ---------- */
+  function handleWxCode() {
+    var m = location.search.match(/[?&]code=([^&]+)/);
+    if (!m || !IS_WX) return Promise.resolve();
+    var code = decodeURIComponent(m[1]);
+    return api('/api/pay/wx/openid', {
+      method: 'POST',
+      body: JSON.stringify({ code: code }),
+    })
+      .then(function (r) {
+        setOpenid(r.openid);
+        // 清掉一次性 code，但保留 ?plan=，否则授权回来高亮方案会丢
+        var plan = (location.search.match(/[?&]plan=([^&]+)/) || [])[1];
+        var next = location.pathname + (plan ? ('?plan=' + encodeURIComponent(plan)) : '');
+        history.replaceState({}, '', next);
+      })
+      .catch(function (e) {
+        console.warn('换 openid 失败：', e.message);
+      });
+  }
+
+  /* ---------- 渲染 ---------- */
+  var plansData = null;
+
+  function renderEntitlements() {
+    if (!token()) return Promise.resolve();
+    return api('/api/pay/entitlements')
+      .then(function (e) {
+        var p = document.getElementById('entPanel');
+        p.style.display = 'block';
+        p.innerHTML = '';
+        var q = el('div', null, '剩余次数：');
+        q.appendChild(el('b', null, String(e.quota)));
+        p.appendChild(q);
+        if (e.subscription && e.subscription.active) {
+          var s = el('div', null, '会员有效期至：');
+          s.appendChild(el('b', null, String(e.subscription.expiresAt).slice(0, 10)));
+          p.appendChild(s);
+        } else {
+          p.appendChild(el('div', null, '会员：未开通'));
+        }
+      })
+      .catch(function () {});
+  }
+
+  function renderPlans(data) {
+    plansData = data;
+    var preset = (location.search.match(/[?&]plan=([^&]+)/) || [])[1] || '';
+    var box = document.getElementById('plans');
+    box.innerHTML = '';
+    var ch = data.channels || {};
+
+    data.plans.forEach(function (p) {
+      var card = el('div', 'card');
+      var info = el('div', 'info');
+      info.appendChild(el('div', 'name', p.name));
+      info.appendChild(el('div', 'desc', p.desc));
+
+      var price = el('div', 'price', '¥' + p.priceYuan);
+
+      var btn = el('button', 'buy', '购买');
+      btn.onclick = function () { buy(p, btn); };
+
+      card.appendChild(info);
+      card.appendChild(price);
+      card.appendChild(btn);
+      box.appendChild(card);
+
+      // 从价格弹窗跳进来时带 ?plan=<id>，高亮对应方案并滚到视野内
+      if (preset && p.id === preset) {
+        card.style.borderColor = '#3ff0d8';
+        card.style.boxShadow = '0 0 0 1px #3ff0d8 inset';
+        setTimeout(function () {
+          if (card.scrollIntoView) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 120);
+      }
+    });
+
+    var hint = document.getElementById('hint');
+    hint.innerHTML = '';
+    if (!token()) {
+      hint.appendChild(el('div', 'tip', '未检测到登录状态：请先登录，再回到本页购买。'));
+      var login = el('a', 'cta', '去登录');
+      login.href = '/';
+      hint.appendChild(login);
+    }
+    if (IS_WX && !openid()) {
+      var a = el('a', null, '点此完成微信授权');
+      a.href = '/api/pay/wx/authorize?redirect=' + encodeURIComponent(location.href);
+      hint.appendChild(a);
+      hint.appendChild(document.createElement('br'));
+    }
+    if (!ch.wx && !ch.ali) {
+      hint.appendChild(el('div', 'tip', '服务端尚未配置任何支付通道（缺 WXPAY_* / ALIPAY_* 环境变量）。'));
+    }
+  }
+
+  /* ---------- 购买 ---------- */
+  function buy(plan, btn) {
+    if (busy) return;
+    if (!token()) {
+      alert('请先在主站登录');
+      return;
+    }
+    var ch = (plansData && plansData.channels) || {};
+    var channel = ch.wx && IS_WX ? 'wx' : (ch.ali ? 'ali' : (ch.wx ? 'wx' : ''));
+    if (!channel) {
+      alert('没有可用的支付通道');
+      return;
+    }
+    if (channel === 'wx' && !openid()) {
+      location.href = '/api/pay/wx/authorize?redirect=' + encodeURIComponent(location.href);
+      return;
+    }
+
+    busy = true;
+    btn.disabled = true;
+    btn.textContent = '处理中…';
+
+    api('/api/pay/create', {
+      method: 'POST',
+      body: JSON.stringify({ planId: plan.id, channel: channel, openid: openid() }),
+    })
+      .then(function (r) {
+        if (r.channel === 'wx') {
+          return invokeWxPay(r.wx, r.outTradeNo);
+        }
+        if (r.channel === 'ali') {
+          location.href = r.url; // 支付宝收银台（整页跳转）
+          return;
+        }
+        throw new Error('未知支付通道');
+      })
+      .catch(function (e) {
+        alert('下单失败：' + e.message);
+        busy = false;
+        btn.disabled = false;
+        btn.textContent = '购买';
+      });
+  }
+
+  /* ---------- 微信 JSAPI 调起 ---------- */
+  function invokeWxPay(p, outTradeNo) {
+    return new Promise(function (resolve, reject) {
+      function run() {
+        WeixinJSBridge.invoke('getBrandWCPayRequest', {
+          appId: p.appId,
+          timeStamp: p.timeStamp,
+          nonceStr: p.nonceStr,
+          package: p.package,
+          signType: p.signType || 'RSA',
+          paySign: p.paySign,
+        }, function (res) {
+          if (res && res.err_msg === 'get_brand_wcpay_request:ok') {
+            pollOrder(outTradeNo);
+            resolve();
+          } else if (res && res.err_msg === 'get_brand_wcpay_request:cancel') {
+            reject(new Error('已取消支付'));
+          } else {
+            reject(new Error('支付失败：' + ((res && res.err_msg) || '未知')));
+          }
+        });
+      }
+      if (typeof WeixinJSBridge === 'undefined') {
+        document.addEventListener('WeixinJSBridgeReady', run, false);
+      } else {
+        run();
+      }
+    });
+  }
+
+  /* ---------- 轮询支付结果（回调是异步的，不能只信前端） ---------- */
+  function pollOrder(outTradeNo) {
+    var n = 0;
+    var timer = setInterval(function () {
+      n++;
+      api('/api/pay/order/' + encodeURIComponent(outTradeNo))
+        .then(function (r) {
+          if (r.order && r.order.status === 'paid') {
+            clearInterval(timer);
+            document.getElementById('hint').innerHTML =
+              '<div class="ok">支付成功，权益已到账。</div>' +
+              '<a class="cta" href="/">返回车库继续改装</a>';
+            renderEntitlements();
+          } else if (n >= 20) {
+            clearInterval(timer);
+            document.getElementById('hint').innerHTML =
+              '<div class="tip">支付已提交，但回调还没到账。稍后刷新本页查看权益。</div>';
+          }
+        })
+        .catch(function () {});
+    }, 2000);
+  }
+
+  /* ---------- 启动 ---------- */
+  handleWxCode()
+    .then(function () {
+      return api('/api/pay/plans');
+    })
+    .then(function (data) {
+      document.getElementById('subLine').textContent =
+        IS_WX ? '微信内支付（JSAPI）' : '浏览器支付（支付宝）';
+      renderPlans(data);
+      return renderEntitlements();
+    })
+    .catch(function (e) {
+      document.getElementById('subLine').innerHTML =
+        '<span class="err">加载失败：' + e.message + '</span>';
+    });
+})();
+</script>
+</body>
+</html>

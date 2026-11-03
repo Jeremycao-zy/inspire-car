@@ -1,0 +1,1235 @@
+/**
+ * garage.css — 「灵感车库」第一层入口页（复古电子 / 霓虹赛博 · synthwave）
+ *
+ * 整体：深空紫黑底色 + 透视网格地平线 + 霓虹落日辉光 + 扫描线质感；
+ * 收藏卡改为暗紫机体 + 霓虹描边，透明泡壳染青/紫冷光。
+ * 所有 3D 吸塑卡片机关（perspective / translateZ / hover 抬起）原样保留。
+ */
+
+/* 品牌标题英文使用 Archivo 可变字体（粗斜体 display 风），本地打包不依赖外网 */
+@import '@fontsource-variable/archivo';
+@import '@fontsource-variable/archivo/wght-italic.css';
+/* 品牌标题中文使用优设标题黑（锋利力量感、水平倾斜8°的免费商用标题字体），本地打包 */
+@font-face {
+  font-family: 'YouSheBiaoTiHei';
+  src: url('/fonts/you-she-biao-ti-hei.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.garage-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  /* 深空紫黑 + 霓虹落日辉光 + 透视地平线前的氛围底色 */
+  background:
+    radial-gradient(520px 460px at 50% 6%, rgba(255, 46, 151, 0.16), transparent 68%),
+    radial-gradient(900px 520px at 82% -12%, rgba(255, 46, 151, 0.2), transparent 60%),
+    radial-gradient(1000px 600px at 12% 2%, rgba(0, 240, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, #0b0820 0%, #0a0a14 46%, #120a24 100%);
+  background-attachment: fixed;
+  color: var(--text, #e8f6ff);
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  opacity: 1;
+  visibility: visible;
+  overflow-y: auto;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+/* 蓝图格点叠层：改为霓虹青/粉细线，强化「车库 / 工位」感 */
+.garage-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 46, 151, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 28%, #000 40%, transparent 100%);
+  z-index: 0;
+}
+
+/* 透视网格地平线：向远处收束的霓虹网格，营造合成波落日前的地面 */
+.garage-layer::after {
+  content: '';
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  width: 240vw;
+  height: 62vh;
+  transform: translateX(-50%) perspective(380px) rotateX(70deg);
+  transform-origin: bottom center;
+  background-image:
+    linear-gradient(rgba(255, 46, 151, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.42) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 0%,
+    #000 0%,
+    rgba(0, 0, 0, 0.45) 34%,
+    transparent 72%
+  );
+  mask-image: radial-gradient(
+    circle at 50% 0%,
+    #000 0%,
+    rgba(0, 0, 0, 0.45) 34%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+}
+
+.garage-layer.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 通用按钮：统一高度与圆角，霓虹描边 + 辉光 */
+.gb-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.gb-btn:hover {
+  transform: translateY(-1px);
+}
+.gb-btn:active {
+  transform: translateY(0);
+}
+.gb-btn.primary {
+  color: #0a0a14;
+  background: linear-gradient(100deg, var(--neon-pink) 0%, #ff66c4 45%, var(--neon-cyan) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 22px rgba(255, 46, 151, 0.35), 0 8px 22px rgba(0, 240, 255, 0.22);
+}
+.gb-btn.primary:hover {
+  box-shadow: 0 0 34px rgba(255, 46, 151, 0.55), 0 10px 30px rgba(0, 240, 255, 0.4);
+}
+.gb-btn.ghost {
+  color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.5), 0 0 14px rgba(0, 240, 255, 0.16);
+}
+.gb-btn.ghost:hover {
+  background: rgba(0, 240, 255, 0.14);
+  box-shadow: inset 0 0 0 1px var(--neon-cyan), 0 0 22px rgba(0, 240, 255, 0.36);
+}
+
+/* ---------------- 顶部品牌栏 ---------------- */
+
+.garage-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 32px;
+  background: rgba(12, 10, 22, 0.62);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 46, 151, 0.28);
+  box-shadow: 0 0 24px rgba(177, 74, 237, 0.12);
+}
+
+.garage-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 品牌图已去背（透明底 + 霓虹青线条），这里不再套白色卡片 / 圆角 / 描边阴影。
+   高度与右侧两行文字（26 + 10 + 间距 ≈ 46px）等高，
+   仅两层轻晕勾勒轮廓，避免多层叠加把线条糊成光团。 */
+.garage-logo {
+  height: 46px;
+  width: auto;
+  aspect-ratio: 353 / 324;
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 2px rgba(0, 240, 255, 0.5))
+    drop-shadow(0 0 5px rgba(0, 240, 255, 0.22));
+}
+
+.garage-brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.garage-brand__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #eafcff;
+  font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei',
+    'Source Han Sans SC', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 46, 151, 0.32);
+}
+
+.garage-brand__sub {
+  margin: 3px 0 0;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--neon-cyan);
+  font-family: 'Press Start 2P', 'Arial Black', 'PingFang SC', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* 顶部登录用户胶囊 + 注销 */
+.garage-userchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 14px;
+  border-radius: 999px;
+  background: rgba(18, 16, 31, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.3),
+    0 0 16px rgba(177, 74, 237, 0.15);
+}
+.garage-userchip__name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+.garage-userchip__btn {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(100deg, var(--neon-pink), var(--neon-purple));
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 46, 151, 0.4);
+  transition: filter 0.16s ease, box-shadow 0.16s ease;
+}
+.garage-userchip__btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 20px rgba(255, 46, 151, 0.6);
+}
+
+/* ---------------- Hero ---------------- */
+
+.garage-hero {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.1fr);
+  gap: 24px;
+  align-items: center;
+  padding: 22px 32px 28px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.garage-hero__text {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.garage-hero__title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  color: #eafcff;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 0 30px rgba(255, 46, 151, 0.3);
+}
+
+.garage-hero__sub {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-dim);
+  max-width: 460px;
+  line-height: 1.6;
+}
+
+.garage-hero__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.garage-hero__preview {
+  position: relative;
+  /* 260 → 300：给车模更多竖向空间。原先 260px 时车容易被下边缘硬切；
+     现在相机已按容器比例自适应取景（见 garage.js fitCamera），这里再补一点余量让车更舒展。 */
+  height: 300px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.garage-hero__badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #39ff14;
+  background: rgba(57, 255, 20, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(57, 255, 20, 0.45), 0 0 14px rgba(57, 255, 20, 0.3);
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}
+
+.garage-hero__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------- 方案区 ---------------- */
+
+.garage-body {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 6px 32px 64px;
+}
+
+.garage-section-title {
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+}
+
+/* ---------------- 顶层分页导航（车库 / 轮毂 / 论坛 / 资讯） ---------------- */
+
+/* 吸顶：滚到任何位置都能一键切页；背景要实心，否则滚动内容会透过导航 */
+.garage-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 24px;
+  /* 深空紫黑实底 + 霓虹分隔线，与车库整体 synthwave 基调一致 */
+  background: linear-gradient(180deg, rgba(11, 8, 32, 0.98) 0%, rgba(10, 10, 20, 0.94) 100%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.22);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(255, 46, 151, 0.18);
+}
+
+.garage-nav__item {
+  appearance: none;
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  background: rgba(0, 240, 255, 0.05);
+  color: var(--text-dim, #9aa7c7);
+  cursor: pointer;
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease,
+    background 0.18s ease, transform 0.12s ease;
+}
+
+.garage-nav__item:hover {
+  color: #eafcff;
+  border-color: rgba(0, 240, 255, 0.55);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+/* 激活态：青→粉霓虹描边 + 底部发光下划线，明显但不刺眼 */
+.garage-nav__item.active {
+  color: #eafcff;
+  border-color: rgba(255, 46, 151, 0.6);
+  background: linear-gradient(100deg, rgba(255, 46, 151, 0.2) 0%, rgba(0, 240, 255, 0.18) 100%);
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.35),
+    0 0 30px rgba(255, 46, 151, 0.22),
+    inset 0 -2px 0 var(--neon-cyan, #00f0ff);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.55);
+}
+
+/* ---------------- 分页容器 ---------------- */
+
+.garage-page {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 22px 32px 56px;
+}
+
+/* 顶层分页互斥显示：非当前页整体隐藏（惰性挂载的容器在没有内容时也不占位） */
+.garage-page.hidden {
+  display: none;
+}
+
+.garage-page__head {
+  max-width: 1180px;
+  margin: 0 auto 20px;
+  padding: 18px 22px;
+  border: 1px solid rgba(0, 240, 255, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(177, 74, 237, 0.08), rgba(0, 240, 255, 0.04));
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.garage-page__title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #eafcff;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 0 30px rgba(255, 46, 151, 0.28);
+}
+
+.garage-page__sub {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint, #6f8299);
+}
+
+/* 模块正文挂载点：与 .garage-grid 同一条 1180px 内容对齐线 */
+.garage-page__mount {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* 分页头已给标题：隐藏模块自带的重复标题，避免同一页出现两个同名标题。
+   论坛/资讯的工具栏里还有「发帖」按钮与「最近更新」时间戳，保留不隐藏。 */
+.garage-page--wheels .gw-head,
+.garage-page--forum .cm-toolbar__title,
+.garage-page--news .cm-toolbar__title {
+  display: none;
+}
+
+/* 标题隐藏后工具栏右侧元素（发帖按钮 / 更新时间）仍右对齐 */
+.garage-page--forum .cm-toolbar,
+.garage-page--news .cm-toolbar {
+  justify-content: flex-end;
+}
+
+.garage-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 28px 22px;
+  align-items: stretch;
+}
+
+/* ---------------- 玩具卡 / 风火轮风格收藏卡 ---------------- */
+
+.garage-card {
+  position: relative;
+  cursor: pointer;
+  perspective: 1200px;
+  /* 等高：填满网格拉伸后的单元格，配合下方 pack/backing 的 height:100% 链 */
+  height: 100%;
+}
+
+.garage-card__pack {
+  position: relative;
+  height: 100%;
+  border-radius: 18px;
+  /* 哑光黑收藏卡：中性深灰渐变 + 顶部微弱高光，去霓虹冷光 */
+  /* 卡面背景已移至 .garage-card__backing（便于对挂孔做真挖空 mask）；pack 只保留边框/投影 */
+  border: 1px solid rgba(190, 110, 240, 0.35);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.55),
+    0 8px 18px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  transform-style: preserve-3d;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s ease;
+}
+.garage-card:hover .garage-card__pack {
+  /* 「捏起」感：顶部向观者抬起，底部下沉，整体轻微放大 */
+  transform: translateY(-12px) translateZ(18px) rotateX(-5deg) rotateY(2.5deg) scale(1.02);
+  box-shadow:
+    0 34px 66px rgba(0, 0, 0, 0.62),
+    0 12px 24px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 26px rgba(255, 255, 255, 0.06);
+}
+
+/* 悬停时底部加深投影，强化捏起离地感 */
+.garage-card__pack::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -10px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  filter: blur(12px);
+  transform: translateZ(-20px);
+  opacity: 0.6;
+  transition: opacity 0.32s ease, transform 0.32s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+.garage-card:hover .garage-card__pack::after {
+  opacity: 1;
+  transform: translateZ(-36px) scale(1.06);
+}
+
+/* 顶部欧标挂孔：已改为 .garage-card__backing 的 mask 真挖空（无独立挂耳元素） */
+
+/* 背卡装饰：霓虹网格线（赛博朋克透视网格的平面近似，品红竖线 + 紫横线） */
+.garage-card__backing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 96, 226, 0.13) 0px,
+      rgba(255, 96, 226, 0.13) 1px,
+      transparent 1px,
+      transparent 30px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(126, 92, 255, 0.12) 0px,
+      rgba(126, 92, 255, 0.12) 1px,
+      transparent 1px,
+      transparent 30px
+    );
+  opacity: 0.75;
+}
+
+/* 背卡：霓虹网格收藏卡本体。
+   欧标挂孔 = 对整张卡面做 mask 真挖空：孔形 SVG（不透明=抠掉）与全幅遮罩按 intersect 合成，
+   挂孔区域完全透明，透出页面背景 —— 模拟真实车模挂牌的吊孔。 */
+.garage-card__backing {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 470px;
+  padding: 30px 16px 16px;
+  color: #f4f4f6;
+  /* 卡面背景（品紫 → 暗紫 → 深夜蓝 + 辉光） */
+  background:
+    /* 左上角品红辉光 */
+    radial-gradient(90% 60% at 12% 0%, rgba(255, 60, 200, 0.32) 0%, transparent 55%),
+    /* 右上角紫辉光 */
+    radial-gradient(80% 55% at 92% 4%, rgba(150, 70, 255, 0.3) 0%, transparent 55%),
+    /* 中部深紫雾 */
+    radial-gradient(120% 60% at 50% 34%, rgba(96, 42, 165, 0.32) 0%, transparent 60%),
+    /* 底部青色地平线光 */
+    radial-gradient(90% 40% at 50% 100%, rgba(40, 180, 255, 0.16) 0%, transparent 62%),
+    /* 主渐变：品紫 → 暗紫 → 深夜蓝 */
+    linear-gradient(180deg, #4a1566 0%, #2c1050 34%, #170b33 62%, #0a1224 100%);
+  /* 欧标挂孔真挖空（宽圆角槽 + 顶部梯形凸台，顶部居中 104×26）。
+     4 层 mask 默认 add 并集，拼出「整卡 − 挂孔」的不透明区域：
+     ① 顶部中央条带(104×26, evenodd=矩形挖孔) ②左侧整条 ③右侧整条 ④条带以下整幅 */
+  -webkit-mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' fill-rule='evenodd' d='M0 0H104V26H0Z M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000);
+  -webkit-mask-position: top center, left top, right top, 0 26px;
+  -webkit-mask-size: 104px 26px, calc(50% - 52px) 100%, calc(50% - 52px) 100%, 100% calc(100% - 26px);
+  -webkit-mask-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 26'%3E%3Cpath fill='black' fill-rule='evenodd' d='M0 0H104V26H0Z M36 12H46L49 5Q49 3.5 51 3.5H53Q55 3.5 55 5L58 12H68A5 5 0 0 1 68 22H36A5 5 0 0 1 36 12Z'/%3E%3C/svg%3E"),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000);
+  mask-position: top center, left top, right top, 0 26px;
+  mask-size: 104px 26px, calc(50% - 52px) 100%, calc(50% - 52px) 100%, 100% calc(100% - 26px);
+  mask-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+}
+
+/* 品牌字标区：INSPIRE（白斜体拉字距）/ CAR（超大白青渐变斜体）/ 粉青双色斜条 / 灵感改装 + 001 圆牌 */
+.garage-card__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 8px 8px 0;
+}
+.garage-card__brand-en1 {
+  font-family: 'Archivo Variable', 'Archivo', 'Arial Black', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: 0.38em;
+  text-indent: 0.38em; /* 抵消 letter-spacing 尾部空隙，保证视觉居中 */
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.garage-card__brand-en2 {
+  font-family: 'Archivo Variable', 'Archivo', 'Arial Black', sans-serif;
+  font-size: 62px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+  /* 白 → 冰青渐变字，对齐设计稿 CAR 的冷白金属感 */
+  background: linear-gradient(180deg, #ffffff 0%, #f4fbff 45%, #cfeeff 76%, #9fdcff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 14px rgba(120, 220, 255, 0.22));
+}
+
+/* CAR 下的粉/青双色斜条（设计稿签名元素） */
+.garage-card__brand-bars {
+  display: flex;
+  justify-content: center;
+  gap: 16%;
+  width: 76%;
+  height: 8px;
+  margin: 5px auto 0;
+}
+.garage-card__brand-bars i {
+  display: block;
+  height: 100%;
+  transform: skewX(-32deg);
+  border-radius: 1px;
+}
+.garage-card__brand-bars i:first-child {
+  width: 42%;
+  background: linear-gradient(90deg, #ff2fd0 0%, #ff5ce0 100%);
+  box-shadow: 0 0 10px rgba(255, 60, 210, 0.6);
+}
+.garage-card__brand-bars i:last-child {
+  width: 26%;
+  background: linear-gradient(90deg, #2fd8ff 0%, #6ff0ff 100%);
+  box-shadow: 0 0 10px rgba(60, 220, 255, 0.6);
+}
+
+.garage-card__brand-cn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+}
+.garage-card__brand-cn {
+  font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(210, 150, 255, 0.45), 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+/* 车型信息（背卡中下部，不会被泡壳压住） */
+.garage-card__model {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  padding: 10px 6px 0;
+  text-align: center;
+}
+.garage-card__title {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1.25;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.garage-card__desc {
+  position: relative;
+  z-index: 1;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 背卡水印字样（INSPIRE CAR 装饰，哑光银白，弱存在感） */
+.garage-card__watermark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) translateY(26px) rotate(-4deg);
+  font-family: 'Share Tech Mono', 'SF Mono', 'Menlo', monospace;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em; /* 抵消 letter-spacing 尾部空隙，保证视觉居中 */
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+.garage-card:hover .garage-card__watermark {
+  color: rgba(255, 255, 255, 0.16);
+}
+
+/* 底部信息条 */
+.garage-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(150, 110, 230, 0.3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.62);
+}
+.garage-card__footer-live {
+  color: #45e8ff;
+  text-shadow: 0 0 8px rgba(69, 232, 255, 0.45);
+}
+.garage-card__footer-action {
+  color: #fff;
+  text-shadow: none;
+}
+
+/* 收藏元数据：右侧青色比例标 1/64（对齐设计稿，去掉 COLLECTOR'S EDITION 字样） */
+.garage-card__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding: 0 14px;
+}
+.garage-card__meta-no {
+  font-family: 'Archivo Variable', 'Share Tech Mono', 'Menlo', monospace;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #45e8ff;
+  text-shadow: 0 0 10px rgba(64, 226, 255, 0.55);
+}
+
+/* 底部条形码（粉→青渐变，居中印刷在卡面上，对齐设计稿） */
+.garage-card__barcode-wrap {
+  margin: 8px auto 4px;
+  width: 62%;
+}
+.garage-card__barcode {
+  display: block;
+  width: 100%;
+  height: 26px;
+  opacity: 0.95;
+}
+
+/* ---------------- 透明塑料泡壳（blister，染青/紫冷光） ---------------- */
+
+/* 泡壳在背卡中部占位，不再压住底部文字 */
+.garage-card__blister-zone {
+  position: relative;
+  height: 178px;
+  margin: 10px 2px 6px;
+  z-index: 4;
+}
+
+.garage-card__blister {
+  position: absolute;
+  inset: 0;
+  transform: translateZ(28px);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.garage-card__shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 26px 26px 34px 34px;
+  /* 品红 → 暗紫 → 青蓝 渐变底色 + 粉白高光：霓虹透明塑料壳（车模仍可透出） */
+  background:
+    /* 锐利左上角高光（粉白） */
+    radial-gradient(120% 80% at 16% 10%, rgba(255, 214, 248, 0.38) 0%, transparent 26%),
+    /* 右下角青反光 */
+    radial-gradient(100% 100% at 88% 90%, rgba(70, 200, 255, 0.22) 0%, transparent 32%),
+    /* 中心品红光晕 */
+    radial-gradient(90% 70% at 50% 52%, rgba(150, 50, 170, 0.25) 0%, transparent 60%),
+    /* 吸塑成型表面微细条纹 */
+    repeating-linear-gradient(
+      96deg,
+      rgba(255, 255, 255, 0.03) 0px,
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    /* 品红 → 暗紫 → 青蓝 塑料底 */
+    linear-gradient(170deg, rgba(86, 22, 100, 0.86) 0%, rgba(24, 14, 52, 0.9) 50%, rgba(22, 64, 108, 0.84) 100%);
+  border: 1px solid rgba(255, 130, 235, 0.45);
+  box-shadow:
+    /* 外层悬浮投影 */
+    0 14px 38px rgba(0, 0, 0, 0.45),
+    0 8px 18px rgba(0, 0, 0, 0.35),
+    /* 顶层边缘光（粉白） */
+    inset 0 1px 0 rgba(255, 230, 250, 0.55),
+    /* 塑料厚度感：内侧品红阴影 */
+    inset 0 -5px 14px rgba(150, 60, 170, 0.3),
+    inset 0 0 24px rgba(120, 50, 160, 0.28),
+    inset 0 0 8px rgba(255, 200, 245, 0.2);
+  backdrop-filter: blur(5px);
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+
+/* 泡壳密封压边：粉紫双层压纹 */
+.garage-card__shell::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 20px 20px 26px 26px;
+  border: 1.5px solid rgba(255, 140, 235, 0.42);
+  box-shadow:
+    inset 0 0 0 1px rgba(150, 90, 210, 0.3),
+    0 0 0 1px rgba(160, 110, 240, 0.35),
+    inset 0 0 12px rgba(150, 80, 200, 0.25);
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* 泡壳底部厚度阴影 */
+.garage-card__shell::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 5px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  filter: blur(6px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 3D 车模画布容器 */
+.garage-card__thumb {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+.garage-card__thumb-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.garage-card__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* 空白占位卡（无自建方案时的卡位，邀请创作）：虚线青边 + 泡壳内 + 号 */
+.garage-card--blank .garage-card__pack {
+  border: 1px dashed rgba(0, 240, 255, 0.4);
+}
+.garage-card--blank:hover .garage-card__pack {
+  border-color: rgba(0, 240, 255, 0.75);
+}
+.garage-card__blank {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(0, 240, 255, 0.5);
+}
+.garage-card__blank-plus {
+  display: inline-flex;
+  opacity: 0.75;
+}
+.garage-card__blank-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+}
+.garage-card__title--blank {
+  color: rgba(255, 255, 255, 0.45);
+}
+.garage-card__footer-live--blank {
+  opacity: 0.55;
+}
+
+/* 泡壳顶部强光（粉白） */
+.garage-card__blister-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 42%;
+  border-radius: 26px 26px 0 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 216, 250, 0.32) 0%,
+    rgba(220, 150, 220, 0.14) 45%,
+    rgba(150, 90, 200, 0.03) 72%,
+    transparent 100%
+  );
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 泡壳边缘强反光带（青粉） */
+.garage-card__blister-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 26px 26px 34px 34px;
+  box-shadow:
+    inset 0 0 0 1px rgba(150, 235, 255, 0.7),
+    inset 0 0 14px rgba(255, 120, 220, 0.34),
+    0 0 0 1px rgba(255, 130, 220, 0.32);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 180, 235, 0.24) 0%,
+    rgba(150, 110, 230, 0) 30%,
+    rgba(150, 110, 230, 0) 60%,
+    rgba(90, 215, 255, 0.2) 100%
+  );
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* 泡壳内部折射 / 二次反射（品红 + 青） */
+.garage-card__blister-refraction {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 26px 26px 34px 34px;
+  background:
+    radial-gradient(120% 120% at 20% 16%, rgba(255, 170, 235, 0.32) 0%, transparent 32%),
+    radial-gradient(100% 100% at 86% 78%, rgba(70, 200, 255, 0.3) 0%, transparent 28%),
+    radial-gradient(60% 40% at 72% 22%, rgba(180, 120, 240, 0.2) 0%, transparent 45%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.92;
+  transition: opacity 0.3s ease;
+}
+.garage-card:hover .garage-card__blister-refraction {
+  opacity: 1;
+}
+
+/* 可移动眩光层（粉白高光） */
+.garage-card__blister-glare {
+  position: absolute;
+  top: -24%;
+  right: -28%;
+  width: 74%;
+  height: 92%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 180, 240, 0) 26%,
+    rgba(255, 205, 250, 0.42) 46%,
+    rgba(230, 245, 255, 0.24) 54%,
+    rgba(255, 180, 240, 0) 70%
+  );
+  transform: rotate(26deg);
+  z-index: 5;
+  pointer-events: none;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+  opacity: 0.82;
+}
+.garage-card:hover .garage-card__blister-glare {
+  transform: rotate(26deg) translate(-28px, 20px);
+  opacity: 1;
+}
+
+/* 收藏编号圆牌（粉→青渐变环 + 深色内芯，内嵌在「灵感改装」右侧，如 001） */
+.garage-card__no {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-family: 'Archivo Variable', 'Share Tech Mono', 'Menlo', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  /* 渐变环：外圈粉→紫→青，中心深色内芯 */
+  background:
+    radial-gradient(circle at 50% 50%, #15142e 0%, #15142e 56%, transparent 59%),
+    linear-gradient(135deg, #ff3fd0 0%, #a866ff 50%, #35e0ff 100%);
+  box-shadow:
+    0 0 10px rgba(160, 100, 255, 0.55),
+    inset 0 0 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+/* 删除按钮：放在 pack 内左上角，随卡片 3D 抬起 */
+.garage-card__delete {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 30;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(20, 24, 36, 0.5);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  opacity: 0.9;
+  pointer-events: auto;
+  transform: translateZ(40px) scale(1);
+  transform-style: preserve-3d;
+  transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+.garage-card:hover .garage-card__delete {
+  opacity: 1;
+}
+.garage-card__delete:hover {
+  background: rgba(255, 77, 109, 0.95);
+  box-shadow: 0 0 14px rgba(255, 77, 109, 0.6);
+  opacity: 1;
+}
+.garage-card__delete:active {
+  transform: translateZ(40px) scale(0.92);
+}
+
+/* ---------------- 空状态 ---------------- */
+
+.garage-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--text-faint);
+}
+.garage-empty__icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+  opacity: 0.7;
+  filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.4));
+}
+.garage-empty__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+}
+.garage-empty__hint {
+  margin: 0 0 18px;
+  font-size: 13px;
+}
+
+/* ---------------- 响应式 ---------------- */
+
+@media (max-width: 860px) {
+  .garage-hero {
+    grid-template-columns: 1fr;
+    padding: 26px 18px 18px;
+  }
+  .garage-hero__preview {
+    height: 260px;
+    order: -1;
+  }
+  .garage-header {
+    padding: 14px 18px;
+  }
+  .garage-brand__title {
+    font-size: 19px;
+  }
+  /* 窄屏下 logo 跟随标题：19+10 两行 ≈ 32px，与宽屏 46/26 同等比例。 */
+  .garage-logo {
+    height: 32px;
+  }
+  .garage-body {
+    padding: 10px 18px 36px;
+  }
+  .garage-grid {
+    grid-template-columns: 1fr;
+  }
+  /* 窄屏：导航收缩间距，4 项仍保持一行平级（不改成下拉，避免多一次点击） */
+  .garage-nav {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .garage-nav__item {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .garage-page {
+    padding: 16px 18px 40px;
+  }
+  .garage-page__head {
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  .garage-page__title {
+    font-size: 18px;
+  }
+  .garage-card__backing {
+    min-height: 440px;
+    padding-top: 26px;
+    /* 窄屏挂孔同步缩小（92×24），4 层 mask 尺寸同步 */
+    -webkit-mask-position: top center, left top, right top, 0 24px;
+    -webkit-mask-size: 92px 24px, calc(50% - 46px) 100%, calc(50% - 46px) 100%, 100% calc(100% - 24px);
+    mask-position: top center, left top, right top, 0 24px;
+    mask-size: 92px 24px, calc(50% - 46px) 100%, calc(50% - 46px) 100%, 100% calc(100% - 24px);
+  }
+  .garage-card__brand-en2 {
+    font-size: 48px;
+  }
+  .garage-card__blister-zone {
+    height: 156px;
+  }
+  .garage-card__no {
+    width: 24px;
+    height: 24px;
+    font-size: 8.5px;
+  }
+}
+
+/* ---------------- 页脚协议入口 ---------------- */
+
+.garage-legal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 18px 24px 26px;
+  font-size: 11.5px;
+  color: #5d6b85;
+}
+
+.garage-legal__link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  color: #6b7d95;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+.garage-legal__link:hover {
+  color: var(--neon-cyan, #00f0ff);
+}
+
+/* ---------------- 页脚协议入口 ---------------- */
+
+.garage-legal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 18px 24px 26px;
+  font-size: 11.5px;
+  color: #5d6b85;
+}
+
+.garage-legal__link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  color: #6b7d95;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+.garage-legal__link:hover {
+  color: var(--neon-cyan, #00f0ff);
+}

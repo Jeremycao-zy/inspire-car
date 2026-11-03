@@ -1,0 +1,38 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/garage/garage",
+    "pages/editor/editor",
+    "pages/mine/mine"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#0b0e13",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "灵感改装",
+    "backgroundColor": "#0b0e13",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#7b8794",
+    "selectedColor": "#3ee4ff",
+    "backgroundColor": "#0b0e13",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/garage/garage",
+        "text": "车库"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的"
+      }
+    ]
+  },
+  "requiredPrivateInfos": [],
+  "sitemapLocation": "sitemap.json",
+  "style": "v2"
+}

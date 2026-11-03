@@ -1,0 +1,1886 @@
+/**
+ * panel.js — 控制面板（声明式构建）
+ *
+ * 交互原则（对应需求 4「全程自动」）：
+ *   选完照片立刻开始生成，没有"确认"按钮；
+ *   滑杆拖动即生效，不需要"应用"；
+ *   模型生成完自动装载、自动摆正、自动切除原车轮、自动装配四个新轮。
+ *
+ * 需求 1：轮毂参数支持「4轮 / 前轴 / 后轴」三种作用域，
+ *         选「4轮」时一次改两根轴，选单轴时只改那一根。
+ */
+
+import { ET_REF } from '../tuning/wheelRig.js';
+import { createColorWheel } from './colorWheel.js';
+import { createSpecPicker } from './sizePicker.js';
+import { sfx } from './sfx.js';
+import { getBasis, canJudge } from '../tuning/tireBasis.js';
+import { createClearanceReport } from './clearanceReport.js';
+import { renderMyWheels } from './myWheels.js';
+import {
+  fenderStatus,
+  groundClearanceStatus,
+  deltaStatus,
+  MIN_GROUND_CLEARANCE_MM as MIN_GC,
+  GC_WARN_MM as GC_WARN,
+  FENDER_MIN_MM as FENDER_MIN,
+  FENDER_SAFE_MM as FENDER_SAFE,
+  MAX_TOTAL_DELTA_MM as MAX_DELTA,
+  DELTA_OK_MM as DELTA_OK,
+} from '../tuning/suspension.js';
+
+/**
+ * 生成缩略图 Blob（只用于预览）。
+ * 相机/相册原图动辄 1000~1200 万像素，浏览器解码一张要 ~48MB；原先直接拿原图
+ * `URL.createObjectURL` 当缩略图，多张并存 + 横竖屏切换时浏览器重新解码可见图片，
+ * 内存瞬间冲到峰值把页面顶崩。这里统一压到小尺寸再显示，生成质量不受影响
+ * （建模上传仍用原始 file）。
+ */
+async function makeThumbBlob(file, maxSide = 420) {
+  try {
+    if (!file || !file.type.startsWith('image/')) return null;
+    const bmp = await createImageBitmap(file).catch(() => null);
+    if (!bmp) return null;
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    bmp.close?.(); // 立刻释放位图，不等 GC
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+    c.width = 0;
+    c.height = 0;
+    return blob;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 给宿主元素接线拖拽上传：dragover 时加 .over 高亮，drop 时抽出图片文件回调。
+ * 侧栏触发卡与全屏引导层共用；非 guide（整车）路径仍沿用原有内联写法，不走这里。
+ * @param {HTMLElement} host
+ * @param {(files: File[]) => void} onDrop
+ */
+function wireDrop(host, onDrop) {
+  ['dragenter', 'dragover'].forEach((ev) =>
+    host.addEventListener(ev, (e) => {
+      e.preventDefault();
+      host.classList.add('over');
+    })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    host.addEventListener(ev, (e) => {
+      e.preventDefault();
+      host.classList.remove('over');
+    })
+  );
+  host.addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (files.length) onDrop(files);
+  });
+}
+
+/* ---------------------------- DOM 小工具 ---------------------------- */
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k === 'value' && 'value' in node) node.value = v;
+    else if (k === 'checked' && 'checked' in node) node.checked = !!v;
+    else if (k.startsWith('on') && typeof v === 'function')
+      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v !== undefined && v !== null && v !== false)
+      node.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+
+/* ---------------------------- 参数定义 ---------------------------- */
+
+const PRESETS = {
+  原厂: { et: 38, j: 8.5, camber: -0.5, rimInch: 18, tireWidthMm: 255, aspect: 40 },
+  齐平Flush: { et: 32, j: 9.5, camber: -1.5, rimInch: 19, tireWidthMm: 265, aspect: 35 },
+  宽体: { et: 20, j: 11, camber: -2.5, rimInch: 19, tireWidthMm: 295, aspect: 30 },
+  HellaFlush: { et: 12, j: 10.5, camber: -4.5, rimInch: 19, tireWidthMm: 275, aspect: 30 },
+};
+
+/** 轮毂本体参数：每根轴一份，受作用域选择器控制 */
+const AXLE_PARAMS = [
+  { key: 'et', label: 'ET 偏距', unit: 'mm', min: 0, max: 60, step: 1, hint: '越小越外凸' },
+  { key: 'j', label: 'J 值（轮辋宽度）', unit: 'J', min: 5, max: 13, step: 0.5, hint: '1J = 25.4mm' },
+  { key: 'camber', label: '倾角', unit: '°', min: -6, max: 3, step: 0.25, hint: '负值 = 顶部内倾' },
+  { key: 'rimInch', label: '轮辋直径', unit: 'in', min: 15, max: 24, step: 0.5, hint: '改尺寸时车高随之变化' },
+  { key: 'tireWidthMm', label: '胎宽', unit: 'mm', min: 185, max: 355, step: 5, hint: '断面宽' },
+  { key: 'aspect', label: '扁平比', unit: '%', min: 25, max: 60, step: 1, hint: '外径 = 轮辋 + 2×胎宽×扁平比' },
+];
+
+/** 车型识别数据：由 /api/specs 整理后落地，直接驱动 3D 比例 */
+const VEHICLE_PARAMS = [
+  { key: 'carLength', label: '车长', unit: 'm', min: 3.0, max: 6.5, step: 0.01, hint: '车型识别后自动填入，可手动校正', global: true },
+  { key: 'carWidth', label: '车宽', unit: 'm', min: 1.4, max: 2.3, step: 0.01, hint: '不含后视镜', global: true },
+  { key: 'carHeight', label: '车高', unit: 'm', min: 1.2, max: 2.3, step: 0.01, hint: '整车高度', global: true },
+  { key: 'wheelbase', label: '轴距', unit: 'mm', min: 2000, max: 4200, step: 10, hint: '前后轴中心距', global: true },
+  { key: 'trackFront', label: '前轮距', unit: 'mm', min: 1200, max: 2200, step: 5, hint: '前轮中心距', global: true },
+  { key: 'trackRear', label: '后轮距', unit: 'mm', min: 1200, max: 2200, step: 5, hint: '后轮中心距', global: true },
+  { key: 'groundClearance', label: '离地间隙', unit: 'mm', min: 80, max: 500, step: 5, hint: '底盘最低点离地高度', global: true },
+  { key: 'approachAngle', label: '接近角', unit: '°', min: 5, max: 45, step: 0.5, hint: '前端通过角', readOnly: true, global: true },
+  { key: 'departureAngle', label: '离去角', unit: '°', min: 5, max: 45, step: 0.5, hint: '后端通过角', readOnly: true, global: true },
+  { key: 'suspensionDelta', label: '悬挂降低 Δ', unit: 'mm', min: -10, max: 75, step: 1, hint: 'Δ>0 降低车身；与车身升降叠加成最终偏移', global: true },
+];
+
+/** 装配精细修正（旧版相对偏移，保留给 flush/宽体微调） */
+const FINE_PARAMS = [
+  { keyF: 'trackF', keyR: 'trackR', label: '轮距微调', unit: 'mm', min: -60, max: 60, step: 1, hint: '正 = 整体外扩' },
+  { keyF: 'axleF', keyR: 'axleR', label: '轴位置前后', unit: 'mm', min: -150, max: 150, step: 5, hint: '正 = 往车头方向移' },
+];
+
+/** 轮毂校准安全网：对 AI 生成的轮毂做手动微调（绕轮轴旋转 + 轮平面内/轴向小幅偏移） */
+const RIM_CALIB_PARAMS = [
+  { key: 'rimSpinDeg', label: '旋转', unit: '°', min: -180, max: 180, step: 1, hint: '绕轮轴旋转', global: true },
+  { key: 'rimOffsetX', label: '横向', unit: 'mm', min: -30, max: 30, step: 1, hint: '轮平面内横向偏移', global: true },
+  { key: 'rimOffsetY', label: '竖向', unit: 'mm', min: -30, max: 30, step: 1, hint: '轮平面内竖向偏移', global: true },
+  { key: 'rimOffsetZ', label: '轴向', unit: 'mm', min: -30, max: 30, step: 1, hint: '沿轮轴 seating 微调', global: true },
+];
+
+
+const AXLE_OPTIONS = [
+  ['all', '4 轮'],
+  ['front', '前轴'],
+  ['rear', '后轴'],
+];
+
+const SUSPENSION_OPTIONS = [
+  ['all', '四轮'],
+  ['front', '前轴'],
+  ['rear', '后轴'],
+  ['FL', '左前'],
+  ['FR', '右前'],
+  ['RL', '左后'],
+  ['RR', '右后'],
+];
+
+/** 曝光滑杆范围（与场景预设无关，用户随时可覆盖） */
+const EXPOSURE = { min: 0.3, max: 2.5, step: 0.01 };
+
+/* ---------------------------- 上传区 ---------------------------- */
+
+/**
+ * 构建轮毂上传的「单图轮播」拍摄舞台（方案 C，2026-10-15 用户定稿）。
+ *
+ * 与车型拍照引导彻底解耦：不再是全屏蓝图取景框那套，界面里只有轮毂示意图——
+ * 角度胶囊（正面｜侧面｜斜45°）+ 单张大示意图。拍完一张自动切到下一个角度；
+ * 已拍角度胶囊打 ✓，点任意胶囊可回看该角度（已拍的回看实拍缩略图，未拍的看示意图）。
+ *
+ * @param {{items: Array<{label:string, img:string, desc:string}>}} guide 角度定义（按拍摄顺序）
+ * @param {string} hint 顶部提示语（保留给外层弹窗副标题用，本函数不再展示）
+ * @param {HTMLElement} thumbs 复用主上传区的缩略图容器（按选择顺序一一对应角度）
+ * @returns {{stage:HTMLElement, advance:Function, showShot:Function, reset:Function}}
+ */
+function buildGuideStage(guide, hint, thumbs) {
+  const items = guide.items;
+  const len = items.length;
+
+  // ---- 角度胶囊：当前要拍 = 实心青；已拍 = ✓ 亮起；正在预览 = 描边提亮 ----
+  const tabs = items.map((item, i) =>
+    el(
+      'button',
+      { type: 'button', class: 'wg-tab', 'data-idx': String(i) },
+      el('span', { class: 'wg-tab__label' }, item.label),
+      el('span', { class: 'wg-tab__check', 'aria-hidden': 'true' }, '✓')
+    )
+  );
+  const tabsRow = el('div', { class: 'wg-tabs' }, ...tabs);
+
+  // ---- 单张大示意图（1:1）：未拍角度显示参考图；已拍角度被实拍缩略图覆盖 ----
+  const diagram = el('img', { class: 'wg-diagram', alt: '轮毂拍摄示意图' });
+  // ⚠️ 清空用 removeAttribute：赋空串在浏览器里会解析成文档 URL，getAttribute 判空会失真
+  const shot = el('img', { class: 'wg-shot hidden', alt: '已选照片' });
+  const stageBox = el('div', { class: 'wg-stage' }, diagram, shot);
+
+  // ---- 角度说明（label + desc）----
+  const metaLabel = el('div', { class: 'wg-meta__label' });
+  const metaDesc = el('div', { class: 'wg-meta__desc' });
+  const meta = el('div', { class: 'wg-meta' }, metaLabel, metaDesc);
+
+  // ---- 进度圆点 + 计数 ----
+  const dots = items.map(() => el('span', { class: 'wg-dot' }));
+  const countText = el('span', { class: 'wg-count' });
+  const dotsRow = el('div', { class: 'wg-dots' }, ...dots, countText);
+
+  // ---- CTA：常驻，拍完仍可点（重拍/继续拍）----
+  const cta = el('button', { type: 'button', class: 'wg-cta' }, '拍照或选相册');
+  const ctaRow = el(
+    'div',
+    { class: 'wg-cta-row' },
+    cta,
+    el('span', { class: 'wg-cta__hint' }, '或把照片拖进来')
+  );
+
+  const stage = el(
+    'div',
+    { class: 'wg-stage-wrap' },
+    tabsRow, stageBox, meta, dotsRow, ctaRow
+  );
+
+  // 已选数量高水位：只增不减（重新选更少张时不后退）
+  let count = 0;
+  let preview = 0; // 当前预览的角度：默认跟随目标角度，点胶囊可临时回看
+  const activeIdx = () => Math.min(count, len - 1);
+  const doneCount = () => Math.min(count, len);
+
+  /** 预览角度 i：已拍的显示实拍缩略图（复用 thumbs 里的 blob URL，不重复创建），未拍的显示示意图 */
+  function showAngle(i) {
+    preview = Math.max(0, Math.min(i, len - 1));
+    const item = items[preview];
+    const thumbImg = thumbs.children[preview];
+    const hasShot = !!(thumbImg && thumbImg.getAttribute('src'));
+    if (hasShot) {
+      shot.src = thumbImg.src;
+      shot.classList.remove('hidden');
+    } else {
+      shot.removeAttribute('src');
+      shot.classList.add('hidden');
+    }
+    if (item) {
+      diagram.src = item.img;
+      let suffix = '';
+      if (preview < doneCount()) suffix = ' · 已拍，可重拍';
+      else if (preview === activeIdx() && count < len) suffix = ' · 当前要拍';
+      metaLabel.textContent = item.label + suffix;
+      metaDesc.textContent = item.desc;
+    }
+    tabs.forEach((t, j) => {
+      t.classList.toggle('is-current', j === activeIdx() && count < len);
+      t.classList.toggle('is-done', j < doneCount());
+      t.classList.toggle('is-preview', j === preview);
+    });
+    dots.forEach((d, j) => {
+      d.classList.toggle('is-done', j < doneCount());
+      d.classList.toggle('is-current', j === activeIdx() && count < len);
+    });
+    countText.textContent =
+      count >= len ? `已拍 ${len}/${len}，可关闭继续调整` : `第 ${Math.min(count + 1, len)} / ${len} 张`;
+  }
+
+  tabs.forEach((t, i) =>
+    t.addEventListener('click', (e) => {
+      e.stopPropagation(); // 切角度 ≠ 选图
+      showAngle(i);
+    })
+  );
+
+  showAngle(0);
+
+  return {
+    stage,
+    /** setThumbs 入口：推进高水位，并跳回当前要拍的角度（拍完自动切下一张） */
+    advance(n) {
+      if (n > count) count = n;
+      showAngle(activeIdx());
+    },
+    /** 实拍缩略图就绪（src 已写进 thumbs）：刷新当前预览（同一张 blob URL，不重复创建） */
+    showShot() {
+      showAngle(preview);
+    },
+    /** 生成完成重置：高水位归零、回到第一个角度 */
+    reset() {
+      count = 0;
+      showAngle(0);
+    },
+  };
+}
+
+/**
+ * 上传区控件。
+ * @param {Object} o
+ * @param {boolean=} o.recognition 是否启用视觉识别（车型识别 + 真车参数）。
+ *   轮毂传 false：轮毂照片识别不出车型，跑视觉接口没有意义（用户要求取消）。
+ * @param {Object=} o.guide 拍摄引导配置（opt-in，仅轮毂传）。传入后上传区变为
+ *   「左取景框 + 右参考列」两列舞台，视觉语言复用拍照引导；不传则走原单列逻辑，
+ *   行为与之前完全一致（整车上传绝不能变）。
+ */
+function makeUploader({ title, hint, onFiles, recognition = true, guide = null }) {
+  const input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files || []);
+    if (files.length) onFiles(files);
+    input.value = '';
+  });
+
+  const thumbs = el('div', { class: 'thumbs' });
+  const bar = el('div', { class: 'prog-bar' }, el('div', { class: 'prog-fill' }));
+  const status = el('div', { class: 'upload-status' }, hint);
+  // 失败后的恢复操作（继续等待 / 重试 / 换票后重试 / 改用演示模型）
+  const actions = el('div', { class: 'upload-actions' });
+  // 失败原因的展开细节（错误码、JobId 等），默认收起
+  const detail = el('div', { class: 'upload-detail' });
+
+  // 任务名称：整车由视觉模型识别后自动填入；轮毂不做识别，纯手动（选填）
+  const nameInput = el('input', {
+    type: 'text',
+    class: 'task-name',
+    placeholder: recognition ? '上传后自动识别车型，可手动修改' : '可手动命名（选填）',
+    maxlength: '40',
+  });
+  const nameWrap = el(
+    'div',
+    { class: 'task-name-wrap' },
+    el('label', { class: 'task-name-label' }, '任务名称'),
+    nameInput
+  );
+  // 识别状态提示（识别中 / 已识别 / 未配置识别模型）——轮毂不启用，不渲染
+  const recog = el('div', { class: 'recog-hint' }, '');
+
+  // 拍摄引导（opt-in）：仅轮毂传 guide。guide 分支把上传 UI 搬进全屏引导层，侧栏只留触发卡；
+  // 非 guide 分支走原单列逻辑，与引入 guide 前逐字节一致（整车 carUpload 零变化）。
+  let guideUI = null;
+  let zone;
+
+  if (guide && Array.isArray(guide.items) && guide.items.length) {
+    /* ===== guide 分支：侧栏紧凑触发卡 + 遮罩上的居中弹窗（方案 C 单图轮播，2026-10-15 定稿）=====
+     * 不再套用车型拍照引导的全屏蓝图取景框：界面里只有轮毂示意图（角度胶囊 + 单张大图）。
+     * 遮罩仍 fixed 全屏（锁滚动/挡背景交互），但内容是一个 ~560px 居中弹窗。 */
+    guideUI = buildGuideStage(guide, hint, thumbs);
+    // 提示语已由弹窗副标题展示，状态行清空、只留给生成状态（避免同一句话出现两次）
+    status.textContent = '';
+
+    let prevBodyOverflow = '';
+    function openLayer() {
+      if (!layer.classList.contains('hidden')) return; // 已打开：避免重复覆盖 prevBodyOverflow
+      prevBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden'; // 锁背后滚动，避免侧栏跟着滚
+      layer.classList.remove('hidden');
+    }
+    function closeLayer() {
+      document.body.style.overflow = prevBodyOverflow; // 恢复；不 dispose，thumbs blob URL 保留
+      layer.classList.add('hidden');
+    }
+
+    const modal = el(
+      'div',
+      { class: 'wheel-guide-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': '轮毂拍摄引导' },
+      el(
+        'div',
+        { class: 'wg-head' },
+        el('div', { class: 'wg-title' }, title),
+        el(
+          'button',
+          { type: 'button', class: 'wg-close', 'aria-label': '关闭拍摄引导', onClick: closeLayer },
+          '✕'
+        )
+      ),
+      el('div', { class: 'wg-sub' }, hint),
+      guideUI.stage,
+      thumbs,
+      bar,
+      status,
+      actions,
+      detail,
+      nameWrap,
+      // 轮毂 recognition:false，这里本就不渲染识别行
+      ...(recognition ? [recog] : [])
+    );
+    const layer = el('div', { class: 'wheel-guide-layer hidden' }, modal);
+    document.body.appendChild(layer);
+
+    // 点遮罩空白处关闭（点弹窗内部不关）
+    layer.addEventListener('click', (e) => {
+      if (e.target === layer) closeLayer();
+    });
+    // 选图入口只开在舞台上（示意图 / 实拍覆盖图 / CTA）：进度条、状态、失败恢复、
+    // 任务名输入都在 stage 外，点它们不会误开文件选择；角度胶囊有自己的 handler。
+    guideUI.stage.addEventListener('click', (e) => {
+      if (e.target === input) return;
+      if (e.target.closest('.wg-tab')) return; // 胶囊已 stopPropagation，双保险
+      input.click();
+    });
+    // 弹窗内拖拽 → 处理照片
+    wireDrop(layer, onFiles);
+    // Esc 关闭
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !layer.classList.contains('hidden')) closeLayer();
+    });
+
+    // ---- 侧栏触发卡（保留 .dropzone 类名 + 「上传轮毂照片」文案，e2e 契约可达）----
+    // 隐藏 input 挂在触发卡里：既有 e2e 选择器 .dropzone:has-text("上传轮毂照片") input[type=file]
+    // 保持可达（hidden 不参与布局，不影响紧凑卡视觉）。
+    zone = el(
+      'div',
+      { class: 'dropzone wheel-guide-trigger', role: 'button', tabindex: '0', 'aria-label': '打开轮毂拍摄引导' },
+      el('div', { class: 'wgt-icon', 'aria-hidden': 'true' }, '📷'),
+      el(
+        'div',
+        { class: 'wgt-body' },
+        el('div', { class: 'dz-title' }, title),
+        el('div', { class: 'wgt-hint' }, hint)
+      ),
+      el('div', { class: 'wgt-go', 'aria-hidden': 'true' }, '›'),
+      input
+    );
+    zone.addEventListener('click', (e) => {
+      // input.click()（层内选图时触发）会派发冒泡 click，须忽略，否则 openLayer 会被
+      // 重复调用把 prevBodyOverflow 覆盖成 'hidden'，导致关闭后 body 滚动锁死
+      if (e.target === input) return;
+      openLayer();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openLayer();
+      }
+    });
+    // 触发卡拖拽 → 处理照片并打开层，让用户立刻看到结果
+    wireDrop(zone, (files) => {
+      onFiles(files);
+      openLayer();
+    });
+  } else {
+    /* ===== 非 guide 分支：原单列逻辑（整车 carUpload，与引入 guide 前逐字节一致）===== */
+    zone = el(
+      'div',
+      { class: 'dropzone' },
+      el('div', { class: 'dz-title' }, title),
+      el('div', { class: 'dz-sub' }, '点击选择，或把照片拖到这里'),
+      input,
+      thumbs,
+      bar,
+      status,
+      actions,
+      detail,
+      nameWrap,
+      // 关掉识别的上传区（轮毂）不渲染识别行，避免留一行永远为空的提示
+      ...(recognition ? [recog] : [])
+    );
+    zone.addEventListener('click', (e) => {
+      // 恢复按钮区、细节区不触发"重新选图"
+      if (e.target === input) return;
+      if (actions.contains(e.target) || detail.contains(e.target)) return;
+      input.click();
+    });
+    ['dragenter', 'dragover'].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.add('over');
+      })
+    );
+    ['dragleave', 'drop'].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.remove('over');
+      })
+    );
+    zone.addEventListener('drop', (e) => {
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (files.length) onFiles(files);
+    });
+  }
+
+  return {
+    zone,
+    setStatus(text, tone = '') {
+      // 状态变化 → 音效。所有状态消息都走这一个入口（生成成功/失败/配额用尽/
+      // 演示模式等有十几处调用点），按 tone 映射，不去散着改。
+      if (tone === 'ok') sfx.success();
+      else if (tone === 'err') sfx.fail();
+      else if (tone === 'warn') sfx.warn();
+      status.textContent = text;
+      status.className = `upload-status ${tone}`;
+    },
+    setProgress(p) {
+      bar.style.display = p > 0 && p < 1 ? 'block' : 'none';
+      bar.firstChild.style.width = `${Math.round(p * 100)}%`;
+    },
+    setThumbs(files) {
+      // 回收上一轮的 blob URL（原实现只管创建、从不 revoke，会越积越多）
+      const prev = thumbs._blobUrls || [];
+      for (const u of prev) URL.revokeObjectURL(u);
+      thumbs._blobUrls = [];
+      thumbs.innerHTML = '';
+      // guide 模式：按已选数量推进取景框 ghost 高水位 + 同步右侧参考列高亮
+      if (guideUI) guideUI.advance(files.length);
+      for (const f of files) {
+        const img = el('img', { src: '', class: 'thumb', title: f.name });
+        thumbs.appendChild(img);
+        // 用压缩缩略图显示，避免原图解码吃掉几十 MB（横竖屏切换会重新解码）
+        makeThumbBlob(f)
+          .then((blob) => {
+            const url = URL.createObjectURL(blob || f);
+            thumbs._blobUrls.push(url);
+            img.src = url;
+            // guide 模式：把最近一张缩略图的 blob URL 复用进取景框（不重复 createObjectURL）
+            if (guideUI && img === thumbs.lastElementChild) guideUI.showShot(url);
+          })
+          .catch(() => {});
+      }
+    },
+    /** 取当前任务名称（trim 后） */
+    getTaskName() {
+      return (nameInput.value || '').trim();
+    },
+    /** 设置任务名称（识别成功后回填） */
+    setTaskName(v) {
+      nameInput.value = v || '';
+    },
+    /** 设置识别提示行；tone: ''|'ok'|'warn'|'err' */
+    setRecog(text, tone = '') {
+      recog.textContent = text || '';
+      recog.className = `recog-hint ${tone}`;
+    },
+
+    /**
+     * 渲染失败后的恢复动作。
+     * @param {Array<{label:string, onClick:Function, tone?:'primary'|'ghost'}>} list 传空数组即清空
+     */
+    setActions(list = []) {
+      actions.innerHTML = '';
+      for (const a of list) {
+        actions.appendChild(
+          el(
+            'button',
+            {
+              class: `btn small ${a.tone === 'primary' ? 'primary' : 'ghost'}`,
+              onclick: (e) => {
+                e.stopPropagation();
+                a.onClick();
+              },
+            },
+            a.label
+          )
+        );
+      }
+    },
+
+    /** 多行说明 / 错误细节；传空字符串即清空 */
+    setDetail(lines = '') {
+      detail.innerHTML = '';
+      if (!lines) return;
+      for (const line of (Array.isArray(lines) ? lines : [lines]).filter(Boolean)) {
+        detail.appendChild(el('div', { class: 'ud-line' }, line));
+      }
+    },
+
+    /** 一次性把上一轮的失败痕迹清干净（重新开始生成时调用） */
+    clearRecovery() {
+      actions.innerHTML = '';
+      detail.innerHTML = '';
+    },
+
+    /** 生成完成后完全清空上传区，方便用户继续上传下一张 */
+    reset() {
+      input.value = '';
+      thumbs.innerHTML = '';
+      // guide 模式：ghost 高水位归零、取景框回空态、参考列高亮复位
+      if (guideUI) guideUI.reset();
+      nameInput.value = '';
+      status.textContent = '';
+      status.className = 'upload-status';
+      bar.style.display = 'none';
+      bar.firstChild.style.width = '0%';
+      actions.innerHTML = '';
+      detail.innerHTML = '';
+    },
+  };
+}
+
+/* ---------------------------- 面板装配 ---------------------------- */
+
+export function createPanel(app, mount) {
+  const sliders = [];
+
+  /** 未识别到真车参数时的估算默认值 */
+  function fallbackValue(key) {
+    const L = app.params.carLength || 4.6;
+    const W = app.params.carWidth || L * 0.45;
+    switch (key) {
+      case 'carWidth': return L * 0.45;
+      case 'carHeight': return L * 0.32;
+      case 'wheelbase': return L * 1000 * 0.5645;
+      case 'trackFront': return W * 1000 * 0.859;
+      case 'trackRear': return W * 1000 * 0.852;
+      case 'groundClearance': return L * 1000 * 0.0272;
+      case 'approachAngle': return 15;
+      case 'departureAngle': return 15;
+      default: return 0;
+    }
+  }
+
+  /** 按当前作用域读一个参数（null 时返回估算默认值） */
+  function readVal(spec) {
+    const t = app.params.axleTarget;
+    let v;
+    if (spec.global) v = app.params[spec.key];
+    else if (spec.keyF) v = t === 'rear' ? app.params[spec.keyR] : app.params[spec.keyF];
+    else v = t === 'rear' ? app.params.rear[spec.key] : app.params.front[spec.key];
+    if (v == null && spec.global) return fallbackValue(spec.key);
+    return v;
+  }
+
+  /** 按当前作用域写一个参数 */
+  function writeVal(spec, v) {
+    const t = app.params.axleTarget;
+    if (spec.global) {
+      app.params[spec.key] = v;
+    } else if (spec.keyF) {
+      if (t !== 'rear') app.params[spec.keyF] = v;
+      if (t !== 'front') app.params[spec.keyR] = v;
+    } else {
+      if (t !== 'rear') app.params.front[spec.key] = v;
+      if (t !== 'front') app.params.rear[spec.key] = v;
+    }
+  }
+
+  function decimals(spec) {
+    return spec.step < 1 ? String(spec.step).split('.')[1]?.length || 1 : 0;
+  }
+
+  function makeSlider(spec, onChange) {
+    const valueLabel = el('span', { class: 'ctl-value' });
+    const input = spec.readOnly
+      ? null
+      : el('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, id: spec.key, name: spec.key });
+
+    const render = () => {
+      const d = decimals(spec);
+      const t = app.params.axleTarget;
+      const val = readVal(spec);
+      if (input) input.value = val;
+
+      let txt;
+      if (spec.global) {
+        txt = `${Number(val).toFixed(d)} ${spec.unit}`;
+      } else if (t === 'all') {
+        const fv = spec.keyF ? app.params[spec.keyF] : app.params.front[spec.key];
+        const rv = spec.keyF ? app.params[spec.keyR] : app.params.rear[spec.key];
+        txt =
+          Math.abs(fv - rv) > 1e-9
+            ? `前${fv.toFixed(d)} / 后${rv.toFixed(d)} ${spec.unit}`
+            : `${fv.toFixed(d)} ${spec.unit}`;
+      } else {
+        txt = `${Number(val).toFixed(d)} ${spec.unit}`;
+      }
+      valueLabel.textContent = txt;
+    };
+
+    if (input) {
+      input.addEventListener('input', () => {
+        writeVal(spec, parseFloat(input.value));
+        onChange?.();
+        render();
+      });
+    }
+
+    render();
+    sliders.push({ render });
+
+    const children = [
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, spec.label), valueLabel),
+    ];
+    if (input) children.push(input);
+    if (spec.hint) children.push(el('div', { class: 'ctl-hint' }, spec.hint));
+    return el('div', { class: 'ctl' }, ...children);
+  }
+
+  function makeSwitch(label, get, set) {
+    const input = el('input', { type: 'checkbox' });
+    input.checked = !!get();
+    input.addEventListener('change', () => set(input.checked));
+    return el('label', { class: 'switch' }, input, el('span', {}, label));
+  }
+
+  /* ---- 作用域选择器 ---- */
+  const segButtons = AXLE_OPTIONS.map(([val, label]) =>
+    el('button', {
+      class: 'seg-btn',
+      'data-axle': val,
+      onclick: () => {
+        app.params.axleTarget = val;
+        syncSeg();
+        syncAll();
+      },
+    }, label)
+  );
+  const segBar = el('div', { class: 'seg' }, ...segButtons);
+  function syncSeg() {
+    for (const b of segButtons)
+      b.classList.toggle('on', b.dataset.axle === app.params.axleTarget);
+  }
+
+  /* ---- 步骤 1 / 2 ---- */
+  const carUpload = makeUploader({
+    title: '① 上传整车照片',
+    hint: '建议 3–5 张：正面、侧前、正侧、正后、侧后',
+    onFiles: (files) => app.generateCar(files),
+  });
+  const wheelUpload = makeUploader({
+    title: '② 上传轮毂照片',
+    hint: '建议 3 张：轮毂正面 / 侧面 / 斜 45°，画面里只有轮毂、不要带车身',
+    // 轮毂不做视觉识别：识别不出车型，纯浪费一次接口调用与时间
+    recognition: false,
+    // 拍摄引导：方案 C 单图轮播——角度胶囊切换 + 单张大示意图（与车身引导解耦，只有轮毂示意图）
+    guide: {
+      // 按顺序对应三次拍摄；拍完一张自动切到下一个角度
+      items: [
+        { label: '正面', img: '/guides/wheel-front.png', desc: '镜头正对辐条面，轮毂居中占满画面' },
+        { label: '侧面', img: '/guides/wheel-side.png', desc: '拍轮毂桶身侧面，展现轮辋深度' },
+        { label: '斜 45°', img: '/guides/wheel-45.png', desc: '斜 45° 同时拍到辐条与桶身' },
+      ],
+    },
+    onFiles: (files) => app.generateWheel(files),
+  });
+
+  /* ---- 轮毂生成引擎：默认 Hyper3D Rodin ----
+   * 与整车的引擎下拉框分开：轮毂必须走 Hyper3D，轮辋/辐条/螺栓孔位才准，
+   * 不受全局引擎（默认 fal）影响。 */
+  const WHEEL_ENGINE_OPTS = [
+    ['hyper3d', 'Hyper3D Rodin — 轮毂默认'],
+    ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
+  ];
+  const wheelEngineSelect = el(
+    'select',
+    {
+      class: 'cw-select',
+      onchange: (e) => {
+        app.params.wheelEngine = e.target.value;
+      },
+    },
+    ...WHEEL_ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
+  );
+  wheelEngineSelect.value = app.params.wheelEngine || 'hyper3d';
+
+  /* ---- 步骤 3：轮毂参数 ---- */
+  const presetBar = el('div', { class: 'presets' });
+  for (const name of Object.keys(PRESETS)) {
+    presetBar.appendChild(
+      el('button', {
+        class: 'chip',
+        onclick: () => {
+          const t = app.params.axleTarget;
+          const src = PRESETS[name];
+          if (t !== 'rear') Object.assign(app.params.front, src);
+          if (t !== 'front') Object.assign(app.params.rear, src);
+          syncAll();
+          app.apply();
+        },
+      }, name)
+    );
+  }
+
+  const readout = el('div', { class: 'readout' });
+
+  /* ---- 真实规格选择器（替代 AXLE_PARAMS 的 6 根连续滑杆）----
+   * 滑杆能拖出 237mm 胎宽这类不存在的规格，填不出真实值就没资格谈间隙判定。
+   * 倾角保留滑杆（它是装配角度，不是轮胎规格）。 */
+  const specPicker = createSpecPicker({
+    el,
+    basis: getBasis(app.params.realSpecs?.carKey),
+    getSpec() {
+      const t = app.params.axleTarget;
+      // axleTarget 'all' 时以当前作用域的 front 为准展示（写回时按 all 分发到两根轴）
+      return { ...app.params.front, axleTarget: t };
+    },
+    applySpec(patch) {
+      const t = app.params.axleTarget;
+      if (t !== 'rear') Object.assign(app.params.front, patch);
+      if (t !== 'front') Object.assign(app.params.rear, patch);
+    },
+    onChange() {
+      app.apply();
+      syncAll();
+    },
+  });
+
+  /* ---- 动态间隙检测报告（精准适配）----
+   * 替代不了旧的规则估算读数，而是**补充**几何检测结论：
+   * 报「哪个角 + 什么工况 + 哪个方向 + 多少 mm + 怎么改」，而不是一个绿黄红。 */
+  const clearanceReport = createClearanceReport({
+    app,
+    el,
+    onApplied() {
+      app.apply();
+      syncAll();
+    },
+  });
+
+  const paramBox = el(
+    'div',
+    {},
+    segBar,
+    presetBar,
+    specPicker.root,
+    clearanceReport.root,
+    readout
+  );
+
+  /* ---- 悬挂读数（3 行着色，依赖 chassis.suspensionReadout）---- */
+  const suspReadout = el('div', { class: 'readout susp' });
+  const suspNote = el(
+    'div',
+    { class: 'susp-note' },
+    '悬挂调节只移动车身，轮胎始终贴地；下方分角悬挂可与全局 Δ 叠加'
+  );
+
+  /* ---- 车型数据（由识别结果整理，直接驱动比例） ---- */
+  const vehicleBox = el(
+    'div',
+    { class: 'fine' },
+    ...VEHICLE_PARAMS.map((spec) =>
+      makeSlider(spec, () => {
+        if (spec.key === 'suspensionDelta') app.apply();
+        else app.rescaleCar(app.params.carLength);
+      })
+    ),
+    suspNote,
+    suspReadout,
+    el(
+      'div',
+      { class: 'switches' },
+      makeSwitch('显示轮胎', () => app.params.showTire, (v) => {
+        app.params.showTire = v;
+        app.apply();
+      }),
+      makeSwitch('车轮随动旋转', () => app.params.spin, (v) => {
+        app.params.spin = v;
+      }),
+      makeSwitch('相机自动环绕', () => app.params.autoRotate, (v) => {
+        app.viewer.controls.autoRotate = v;
+      })
+    ),
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', { class: 'btn ghost', onclick: () => app.reset() }, '重置参数')
+    )
+  );
+
+  /* ---- 悬挂高度（分角/分轴/四轮同时调节） ---- */
+  const suspValueLabel = el('span', { class: 'ctl-value' });
+  const suspInput = el('input', { type: 'range', min: -120, max: 120, step: 1, id: 'suspensionHeight', name: 'suspensionHeight' });
+  const suspReadoutCorners = el('div', { class: 'susp-corners' });
+
+  function avgSuspension(target) {
+    const s = app.params.suspension;
+    switch (target) {
+      case 'all': return (s.FL + s.FR + s.RL + s.RR) / 4;
+      case 'front': return (s.FL + s.FR) / 2;
+      case 'rear': return (s.RL + s.RR) / 2;
+      default: return s[target] || 0;
+    }
+  }
+  function setSuspension(target, v) {
+    const s = app.params.suspension;
+    switch (target) {
+      case 'all': s.FL = s.FR = s.RL = s.RR = v; break;
+      case 'front': s.FL = s.FR = v; break;
+      case 'rear': s.RL = s.RR = v; break;
+      default: s[target] = v; break;
+    }
+  }
+  function renderSuspensionReadout() {
+    const s = app.params.suspension;
+    const fmt = (n) => `${n > 0 ? '+' : ''}${n.toFixed(0)}`;
+    suspReadoutCorners.innerHTML = '';
+    const items = [
+      ['FL', '左前'], ['FR', '右前'], ['RL', '左后'], ['RR', '右后'],
+    ];
+    for (const [id, label] of items) {
+      const active = app.params.suspensionTarget === 'all' || app.params.suspensionTarget === id ||
+        (app.params.suspensionTarget === 'front' && id.startsWith('F')) ||
+        (app.params.suspensionTarget === 'rear' && id.startsWith('R'));
+      suspReadoutCorners.appendChild(
+        el('span', { class: `susp-corner ${active ? 'active' : ''}` }, `${label} ${fmt(s[id])}`)
+      );
+    }
+  }
+  function renderSuspension() {
+    const v = avgSuspension(app.params.suspensionTarget);
+    suspInput.value = v;
+    suspValueLabel.textContent = `${v > 0 ? '+' : ''}${v.toFixed(0)} mm`;
+    renderSuspensionReadout();
+  }
+  suspInput.addEventListener('input', () => {
+    setSuspension(app.params.suspensionTarget, parseFloat(suspInput.value));
+    app.apply();
+    renderSuspension();
+  });
+
+  const suspTargetButtons = SUSPENSION_OPTIONS.map(([val, label]) =>
+    el('button', {
+      class: 'seg-btn small',
+      'data-susp': val,
+      onclick: () => {
+        app.params.suspensionTarget = val;
+        syncSuspTarget();
+        renderSuspension();
+      },
+    }, label)
+  );
+  const suspTargetBar = el('div', { class: 'seg susp-seg' }, ...suspTargetButtons);
+  function syncSuspTarget() {
+    for (const b of suspTargetButtons) b.classList.toggle('on', b.dataset.susp === app.params.suspensionTarget);
+  }
+
+  const suspensionBox = el(
+    'div',
+    { class: 'fine' },
+    suspTargetBar,
+    el('div', { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '悬挂高度偏移'), suspValueLabel),
+      suspInput,
+      el('div', { class: 'ctl-hint' }, '正值 = 该角/轴车身升高；四轮同步即整车升降')
+    ),
+    suspReadoutCorners,
+    el('div', { class: 'ctl-hint' }, '正值 = 该角/轴车身相对地面升高；前后差会产生俯仰，左右差会产生侧倾')
+  );
+
+  /* ---- 装配精细修正（相对偏移，可选） ---- */
+  const fineBox = el(
+    'div',
+    { class: 'fine fine-secondary' },
+    ...FINE_PARAMS.map((spec) => makeSlider(spec, () => app.apply()))
+  );
+
+  /* ---- 场景与灯光 ---- */
+
+  const SCENE_OPTIONS = app.viewer.listPresets(); // [{ id, label, hint }]
+  const sceneButtons = SCENE_OPTIONS.map((p) =>
+    el('button', {
+      class: 'seg-btn',
+      'data-scene': p.id,
+      title: p.hint || p.label,
+      onclick: () => app.setEnvironment(p.id),
+    }, p.label)
+  );
+  const sceneBar = el('div', { class: 'seg six' }, ...sceneButtons);
+  const sceneHint = el('div', { class: 'ctl-hint' }, '');
+
+  function syncScene() {
+    const cur = app.params.envId;
+    for (const b of sceneButtons) b.classList.toggle('on', b.dataset.scene === cur);
+    const p = SCENE_OPTIONS.find((x) => x.id === cur);
+    sceneHint.textContent = p?.hint || '';
+  }
+
+  const sceneBox = el('div', {}, sceneBar, sceneHint);
+
+  // 灯光行：切场景后光源数量/种类都会变，整块重建
+  const lightList = el('div', { class: 'light-list' });
+  const lightRows = [];
+
+  function rebuildLights() {
+    lightList.innerHTML = '';
+    lightRows.length = 0;
+
+    for (const L of app.viewer.getLights()) {
+      const valueLabel = el('span', { class: 'ctl-value' });
+      const range = el('input', {
+        type: 'range',
+        min: L.min,
+        max: L.max,
+        step: L.step,
+        value: L.intensity,
+      });
+      const chk = el('input', { type: 'checkbox' });
+      const row = el('div', { class: 'light-row' });
+
+      const sync = () => {
+        const cur = app.viewer.getLights().find((x) => x.id === L.id);
+        const on = cur ? cur.enabled : L.enabled;
+        const iv = cur ? cur.intensity : L.intensity;
+        chk.checked = on;
+        range.value = iv;
+        valueLabel.textContent = Number(iv).toFixed(2);
+        row.classList.toggle('off', !on);
+      };
+
+      chk.addEventListener('change', () => {
+        app.setLightEnabled(L.id, chk.checked);
+        sync();
+      });
+      range.addEventListener('input', () => {
+        app.setLightIntensity(L.id, parseFloat(range.value));
+        sync();
+      });
+
+      row.appendChild(
+        el(
+          'div',
+          { class: 'light-head' },
+          el('label', { class: 'switch' }, chk, el('span', {}, L.label)),
+          el('span', { class: 'light-role' }, `${L.role}${L.castShadow ? ' · 投影' : ''}`),
+          valueLabel
+        )
+      );
+      row.appendChild(range);
+      lightList.appendChild(row);
+      lightRows.push(sync);
+      sync();
+    }
+  }
+
+  // 曝光
+  const expoValue = el('span', { class: 'ctl-value' });
+  const expoInput = el('input', {
+    type: 'range',
+    min: EXPOSURE.min,
+    max: EXPOSURE.max,
+    step: EXPOSURE.step,
+  });
+  function syncExposure() {
+    const v = app.viewer.getExposure();
+    expoInput.value = v;
+    expoValue.textContent = Number(v).toFixed(2);
+  }
+  expoInput.addEventListener('input', () => {
+    app.setExposure(parseFloat(expoInput.value));
+    syncExposure();
+  });
+
+  const lightBox = el(
+    'div',
+    {},
+    lightList,
+    el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '曝光'), expoValue),
+      expoInput,
+      el('div', { class: 'ctl-hint' }, '整体明暗；切换场景会回到该场景的出厂曝光')
+    ),
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', {
+        class: 'btn ghost',
+        onclick: () => {
+          app.resetLights();
+          syncExposure();
+          for (const s of lightRows) s();
+        },
+      }, '恢复本场景默认灯光')
+    )
+  );
+
+  /* ---- 视角 ---- */
+  const views = el(
+    'div',
+    { class: 'views' },
+    ...[
+      ['45°', 'iso'],
+      ['正侧', 'side'],
+      ['正前', 'front'],
+      ['正后', 'rear'],
+      ['俯视', 'top'],
+      ['轮毂特写', 'wheel'],
+    ].map(([label, key]) =>
+      el('button', { class: 'btn small', onclick: () => app.setView(key) }, label)
+    )
+  );
+
+  // 凭证状态卡：四态（LIVE / 临近过期 / 已失效 / DEMO），带换票指引与「我已更新」
+  const modeBadge = el('div', { class: 'mode-badge' }, '');
+
+  /* ---- 车漆：HSV 色轮（见 colorWheel.js），改色只动车身材质 ---- */
+  const colorWheel = createColorWheel({
+    value: app.params.bodyColor,
+    solid: app.params.bodySolid,
+    onChange: (hex, { solid }) => {
+      app.params.bodyColor = hex;
+      app.params.bodySolid = !!solid;
+      app.setBodyColor(hex, !!solid);
+    },
+  });
+
+  /* ---- 顶层功能分层级：整车 / 轮毂 / 车漆 / 场景 ----
+   * 注意：BANG 拆解**不在这里**。拆解是生成流水线里的自动环节
+   *（见 server/index.mjs runHyper3D 的自动 BANG 阶段），
+   * 用户在 Hyper3D 生成完成后直接拿到已拆好的部件，不需要自己触发。 */
+  const TABS = [
+    ['body', '整车'],
+    ['wheels', '轮毂'],
+    ['paint', '车漆'],
+    ['scene', '场景'],
+  ];
+  const tabBodies = {};
+  const tabButtons = {};
+  const tabsBar = el('div', { class: 'tabs' });
+  for (const [id, label] of TABS) {
+    const btn = el('button', { class: 'tab', 'data-tab': id, onclick: () => setTab(id) }, label);
+    tabButtons[id] = btn;
+    tabsBar.appendChild(btn);
+    tabBodies[id] = el('div', { class: 'tab-body' });
+  }
+  function setTab(id) {
+    for (const k of Object.keys(tabBodies)) {
+      tabBodies[k].classList.toggle('hidden', k !== id);
+      tabButtons[k].classList.toggle('active', k === id);
+    }
+  }
+
+  // 轮毂校准安全网（摆位微调）
+  const rimCalibBox = el(
+    'div',
+    { class: 'fine' },
+    ...RIM_CALIB_PARAMS.map((spec) => makeSlider(spec, () => app.apply())),
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '旋转：绕轮轴转动；横/竖向：轮平面内微调；轴向：沿轮轴 seating 微调'
+    )
+  );
+
+  /* ---- 生成引擎：精度 / 成本由用户选择 ----
+   * 引擎优先级（自动回退）见 main.js ENGINE_PRIORITY；这里给手动覆盖的入口。 */
+  const ENGINE_OPTS = [
+    ['hyper3d', 'Hyper3D Rodin — 车模生成专用'],
+    ['hunyuan', '腾讯混元 — 免费，每天 5 次'],
+    ['higen3d', 'HiGen3D — 待配置'],
+  ];
+  const engineSelect = el(
+    'select',
+    {
+      class: 'cw-select',
+      onchange: (e) => {
+        app.params.engine = e.target.value;
+        // 立刻重查后端凭证状态，让状态卡反映新引擎能不能跑 LIVE
+        app.refreshHealth?.();
+      },
+    },
+    ...ENGINE_OPTS.map(([v, label]) => el('option', { value: v }, label))
+  );
+  engineSelect.value = app.params.engine;
+  /* ---- 车身数据摘要卡片：融合进「车身」tab 顶部（不再浮在 #stage 上遮挡车模） ---- */
+  const bodyInfoEl = el(
+    'div',
+    { id: 'body-info', class: 'body-info' },
+    el('div', { class: 'body-info__head' },
+      el('span', { class: 'body-info__name' }, '—'),
+      el('span', { class: 'body-info__conf' })
+    ),
+    el('div', { class: 'body-info__src' }),
+    el('div', { class: 'body-info__grid' })
+  );
+  // 始终注入到「车身」tab 最上方（在首个 appendChild 之前插队 firstChild）
+  tabBodies.body.insertBefore(section('车型数据摘要', bodyInfoEl), tabBodies.body.firstChild);
+
+  tabBodies.body.appendChild(
+    section(
+      '生成引擎',
+      el(
+        'div',
+        { class: 'fine' },
+        el('div', { class: 'ctl' }, engineSelect),
+        el(
+          'div',
+          { class: 'ctl-hint' },
+          '没配凭证的引擎会自动跳过，回退到有凭证的那个；具体状态看下方状态卡。'
+        )
+      )
+    )
+  );
+
+  /* ---- 拆解部件视图（Hyper3D BANG） ----
+   * 生成流水线会自动 BANG 拆解，产物按**原坐标装配回整车原位**，
+   * 所以这里看到的仍是"一辆完整的车"，只是它由可拆部件组成。
+   * 给两个视图切换 + 爆炸滑杆，用来核对拆出来的部件。 */
+  const bangStatus = el('div', { class: 'ctl-hint' }, '尚未拆解');
+  const bangExplodeVal = el('span', { class: 'ctl-value' }, '0%');
+  const bangExplode = el('input', {
+    type: 'range',
+    min: 0,
+    max: 100,
+    step: 1,
+    value: Math.round((app.params.bangExplode || 0) * 100),
+    oninput: (e) => {
+      const pct = Number(e.target.value);
+      bangExplodeVal.textContent = `${pct}%`;
+      app.setBangExplode(pct / 100);
+    },
+  });
+  function syncBang() {
+    const info = app.bangInfo();
+    if (!info.total) {
+      bangStatus.textContent = app.params.carModelUrl
+        ? '这台车还没有拆解产物：点下方「重新拆解」拿实体车身（车身自动带真实轮拱，不需要再切）'
+        : '尚未拆解（生成整车时会自动拆解，不需要手动操作）';
+      return;
+    }
+    const g = info.geom;
+    bangStatus.textContent =
+      `已装配 ${info.body} 个车身部件（只放拆开的车身，车轮不进场景）· 当前${
+        info.view === 'single' ? '整车单体' : '拆解装配'
+      }视图` +
+      (g
+        ? ` · 轮位按拆解实测：轴距 ${g.wheelbase} / 前 ${g.trackFront} / 后 ${g.trackRear} mm`
+        : '');
+  }
+  const bangBox = el(
+    'div',
+    { class: 'fine' },
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', { class: 'btn small', onclick: () => { app.setBangView('assembled'); syncBang(); } }, '拆解装配视图')
+    ),
+    el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, '爆炸视图'), bangExplodeVal),
+      bangExplode
+    ),
+    el(
+      'div',
+      { class: 'btn-row' },
+      el(
+        'button',
+        {
+          class: 'btn ghost',
+          onclick: async () => {
+            bangStatus.textContent = '正在提交拆解…';
+            const r = await app.bangCurrentCar();
+            syncBang();
+            if (!r) bangStatus.textContent = '拆解失败（详见提示）';
+          },
+        },
+        '重新拆解（消耗 1 次额度）'
+      ),
+      el('button', { class: 'btn ghost', onclick: () => { app.clearBang(); syncBang(); } }, '清除拆解产物')
+    ),
+    bangStatus,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      'Hyper3D 生成完成后会自动拆解：只把拆开的**车身**按原坐标装回原位（车轮不入场景），所以不会是两辆车、也不会少件。拆出来的四个车轮用来反推真实轴距/轮距，生成的轮毂因此精确落在原车轮位置上，不会偏离轮拱造成穿模。拖爆炸滑杆可把车身部件散开核对。'
+    )
+  );
+
+  /* 车身朝向调正：Hyper3D 生成的车头朝向随机（左右可能颠倒），
+   * 点按钮兜底一键转 90°/180°，会重新归一 + 重算轮位。 */
+  const orientBox = el(
+    'div',
+    { class: 'fine' },
+    el(
+      'div',
+      { class: 'btn-row' },
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(1) }, '↺ 左转 90°'),
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(-1) }, '↻ 右转 90°'),
+      el('button', { class: 'btn small', onclick: () => app.rotateCar(2) }, '⇋ 翻转 180°')
+    ),
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      'Hyper3D 生成的车头朝向随机（左右可能颠倒），如果你的车看起来前后反了或侧面反了，点对应按钮一键旋转。每次点都会重新归一并按新朝向重算轮位。'
+    )
+  );
+
+  /* 整车模型：车模统一由上游「拍照引导」生成（photoGuide 直调生成接口，不经此处），
+     原先这里还摆一个"上传整车照片"的大框，是并行的冗余入口 —— 用户进了工作室
+     再看到它就属于多余信息，默认收起。
+     ⚠️ 不能把 carUpload.zone 从 DOM 摘掉：生成进度、失败恢复按钮、
+     「继续等待上次生成」横幅、以及任务名称读取都仍然写进/读自它，摘掉会静默失效。 */
+  const carZoneWrap = el('div', { class: 'regen-zone is-collapsed' }, carUpload.zone);
+  tabBodies.body.appendChild(
+    section(
+      '整车模型',
+      el(
+        'div',
+        { class: 'fine' },
+        el(
+          'div',
+          { class: 'regen-bar' },
+          el('span', { class: 'ctl-hint' }, '整车模型由「新建方案 → 拍照引导」自动生成'),
+          el(
+            'button',
+            {
+              class: 'btn small',
+              onclick: (e) => {
+                const collapsed = carZoneWrap.classList.toggle('is-collapsed');
+                e.target.textContent = collapsed ? '↻ 重新生成整车模型' : '收起';
+              },
+            },
+            '↻ 重新生成整车模型'
+          )
+        ),
+        carZoneWrap
+      )
+    )
+  );
+  tabBodies.body.appendChild(section('车身朝向', orientBox));
+  tabBodies.body.appendChild(section('拆解部件（Hyper3D BANG）', bangBox));
+  tabBodies.body.appendChild(section('车型数据', vehicleBox));
+  tabBodies.body.appendChild(section('悬挂高度（分轴/分角）', suspensionBox));
+  tabBodies.body.appendChild(collapsible('精细修正（相对偏移）', fineBox));
+  tabBodies.wheels.appendChild(section('轮毂模型', wheelUpload.zone));
+
+  /* ---- 我的轮毂：生成后展示在这里，点击即可换装 ---- */
+  const myWheelsBox = el('div', { class: 'myw-section' });
+  function syncMyWheels() {
+    renderMyWheels(myWheelsBox, { app, activeUrl: app.params.customWheelUrl || null });
+  }
+  tabBodies.wheels.appendChild(section('我的轮毂', myWheelsBox));
+
+  tabBodies.wheels.appendChild(
+    section(
+      '轮毂生成引擎',
+      el(
+        'div',
+        { class: 'fine' },
+        el('div', { class: 'ctl' }, wheelEngineSelect),
+        el(
+          'div',
+          { class: 'ctl-hint' },
+          '轮毂固定走 Hyper3D Rodin（与整车同一家，按订阅额度计费），不受整车引擎下拉框影响；轮毂不做自动拆解，省一次额度。'
+        )
+      )
+    )
+  );
+  tabBodies.wheels.appendChild(section('轮毂校准（生成模型摆位不正时微调）', rimCalibBox));
+  tabBodies.wheels.appendChild(section('轮毂参数', paramBox));
+
+  /* ---- 切除原车轮：换轮毂前必须的一步 ----
+   * AI 生成的车车轮是焊死在车身里的（实测为单连通块），不切掉的话
+   * 新轮毂会和原车轮重叠。按四轮位置做圆柱区域剔除。 */
+  const cutStatus = el('div', { class: 'ctl-hint' }, '未切除');
+  const cutBtn = el('button', { class: 'btn primary' }, '切除原车轮');
+  const restoreBtn = el('button', { class: 'btn ghost' }, '恢复原车轮');
+
+  /* 切除余量做成可调：不同车型轮子大小不一。
+   * 默认值来自实测——演示车上最近的车轮几何在径向 0.369 / 轴向 0.158，
+   * 而 rig 估算的轮胎半径 0.33、半宽 0.1275，必须放大才罩得住。 */
+  const cutR = { v: 1.15 };
+  const cutW = { v: 0.04 };
+  const mkCutSlider = (label, store, min, max, step, fmt) => {
+    const val = el('span', { class: 'ctl-value' }, fmt(store.v));
+    return el(
+      'div',
+      { class: 'ctl' },
+      el('div', { class: 'ctl-head' }, el('label', { class: 'ctl-label' }, label), val),
+      el('input', {
+        type: 'range',
+        min,
+        max,
+        step,
+        value: store.v,
+        oninput: (e) => {
+          store.v = Number(e.target.value);
+          val.textContent = fmt(store.v);
+        },
+      })
+    );
+  };
+
+  cutBtn.onclick = () => {
+    const r = app.cutOriginalWheels({ radiusScale: cutR.v, widthPad: cutW.v });
+    if (!r || !r.cylinders) {
+      cutStatus.textContent = '切除失败：未找到轮位（请先载入整车）';
+      return;
+    }
+    cutStatus.textContent = r.removed
+      ? `已切除 ${r.removed.toLocaleString()} 个三角面（${r.meshes} 个网格 / ${r.cylinders} 个轮位）`
+      : '未切到任何面：试试调大切除半径';
+  };
+  restoreBtn.onclick = () => {
+    const r = app.restoreOriginalWheels();
+    cutStatus.textContent = r?.restored ? `已还原 ${r.restored} 个网格` : '没有可还原的内容';
+  };
+
+  const cutBox = el(
+    'div',
+    { class: 'fine' },
+    mkCutSlider('半径放大', cutR, 1.0, 1.6, 0.01, (v) => `${v.toFixed(2)}×`),
+    // 上限放到 300mm：rig 是按车身尺寸**估算**轮位的，实际轮子可能窄 100~200mm，
+    // 必须允许把轴向余量拉大才切得干净（演示车实测偏差约 170mm）
+    mkCutSlider('轴向余量', cutW, 0, 0.3, 0.005, (v) => `${(v * 1000).toFixed(0)}mm`),
+    el('div', { class: 'btn-row' }, cutBtn, restoreBtn),
+    cutStatus,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '按四个轮位把原车轮从车身网格里剔除，新轮毂才能装进轮拱。切多了会伤到轮眉、切少了会有残留，用上面两个滑杆微调。可随时「恢复原车轮」。'
+    )
+  );
+  // 切除原车轮：BANG 自动拆解已把原车轮剥掉，这个手切是「BANG 失败」的兜底，
+  // 正常流程几乎用不到。收到「高级/兜底工具」里，默认收起，减少面板堆砌。
+  tabBodies.wheels.appendChild(collapsible('切除原车轮 · 兜底工具', cutBox));
+
+  tabBodies.paint.appendChild(section('车漆', colorWheel.root));
+
+  /* ---- 导入已拆解的部件（BANG 产物） ----
+   * BANG 走 API 要 $120/月订阅，走网页版按次付费约 $0.75/台。
+   * 所以用户在 Hyper3D 网页版 / Scenario 拆完，把 GLB 拖回这里，
+   * 由本项目自动识别车轮并装到四轮 rig 上。 */
+  const partInput = el('input', {
+    type: 'file',
+    accept: '.glb',
+    multiple: true,
+    class: 'part-file',
+    style: 'display:none',
+    onchange: async (e) => {
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      const r = await app.importBangParts(files);
+      if (r?.total) {
+        const wheelTxt = r.wheel
+          ? `已识别车轮并装配 4 只（直径 ${(r.wheel.diameter * 1000).toFixed(0)}mm / 宽 ${(r.wheel.width * 1000).toFixed(0)}mm）`
+          : '未识别到车轮（其余部件已摆在车旁）';
+        wheelUpload.setStatus(`导入 ${r.total} 个部件：${wheelTxt}`, r.wheel ? 'ok' : 'warn');
+      }
+      e.target.value = ''; // 允许重复选同一批文件
+    },
+  });
+  const partBox = el(
+    'div',
+    { class: 'fine' },
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn primary', onclick: () => partInput.click() }, '导入已拆部件（GLB）')),
+    partInput,
+    el(
+      'div',
+      { class: 'ctl-hint' },
+      '在 Hyper3D 网页版 / Scenario 用 BANG 拆完部件后，把拆出的 GLB 选进来；会自动识别车轮并装到四个轮位，其余部件摆在车旁。'
+    )
+  );
+  // 手动导入已拆解部件：BANG 现在在 pipeline 内自动跑，手动拖 GLB 回来是「逃生舱」性质的覆盖入口。
+  // 默认收起，避免和上面的自动化流程并列显得冗余。
+  tabBodies.wheels.appendChild(collapsible('导入已拆解部件(BANG) · 手动兜底', partBox));
+
+  tabBodies.scene.appendChild(section('场景', sceneBox));
+  tabBodies.scene.appendChild(collapsibleOpen('灯光', lightBox));
+  tabBodies.scene.appendChild(section('视角', views));
+
+  mount.appendChild(
+    el(
+      'div',
+      { class: 'panel' },
+      el(
+        'header',
+        { class: 'panel-head' },
+        el('h1', {}, 'TUNING STUDIO'),
+        el('p', { class: 'sub' }, '照片 → Hyper3D Rodin → GLB → 四轮实时装配')
+      ),
+      modeBadge,
+      tabsBar,
+      // 由 TABS 派生而不是逐个手写：新增 Tab 时不会漏挂对应的 body
+      // （曾经因为手写列表漏挂，导致点了 Tab 所有面板都隐藏）
+      ...TABS.map(([id]) => tabBodies[id])
+    )
+  );
+
+  setTab('body');
+
+  syncSeg();
+  syncScene();
+  syncExposure();
+  rebuildLights();
+
+  /* ---- 车身数据摘要卡片：渲染进 #body-info（融合进「车身」tab，不遮挡车模） ---- */
+  function renderBodyData() {
+    const rs = app.params.realSpecs;
+    if (!bodyInfoEl) return;
+    // 无数据：显示占位提示，不报错
+    if (!rs || !rs.length) {
+      bodyInfoEl.classList.add('is-empty');
+      bodyInfoEl.querySelector('.body-info__name').textContent = '尚未识别到车型';
+      bodyInfoEl.querySelector('.body-info__conf').textContent = '';
+      bodyInfoEl.querySelector('.body-info__src').textContent = '上传整车照片后显示真实尺寸';
+      bodyInfoEl.querySelector('.body-info__grid').innerHTML = '';
+      return;
+    }
+    bodyInfoEl.classList.remove('is-empty');
+
+    const mm = (v) => (v ? `${v} mm` : '—');
+    const deg = (v) => (v != null ? `${v}°` : '—');
+
+    // 车名识别把握度（来自视觉，独立字段）
+    bodyInfoEl.querySelector('.body-info__name').textContent = rs.fullName || rs.query || '已识别车型';
+    bodyInfoEl.querySelector('.body-info__conf').textContent =
+      rs.nameConfidence ? `车名把握 ${Math.round(rs.nameConfidence * 100)}%` : '';
+
+    // 参数来源 + 参数可信度（与车名把握分离）
+    const src = bodyInfoEl.querySelector('.body-info__src');
+    const isOfficial = rs.source === 'official-db';
+    const isVision = rs.source === 'vision';
+    src.className = 'body-info__src ' + (isOfficial ? 'is-official' : isVision ? 'is-vision' : 'is-llm');
+    src.textContent = isOfficial
+      ? `来源：官方车型库 · 参数可信度 ${Math.round((rs.confidence ?? 0.95) * 100)}%`
+      : isVision
+        ? `来源：视觉识别 · 仅车名（未查到真车参数）`
+        : `来源：大模型估算 · 参数可信度 ${Math.round((rs.confidence ?? 0) * 100)}%`;
+
+    // 复用原 rows：车长/车宽/车高/轴距/前后轮距/离地/接近离去角
+    const rows = [
+      ['车长', mm(rs.length)],
+      ['车宽', mm(rs.width)],
+      ['车高', mm(rs.height)],
+      ['轴距', mm(rs.wheelbase)],
+      ['前/后轮距', rs.trackFront || rs.trackRear ? `${rs.trackFront || '—'} / ${rs.trackRear || '—'}` : '—'],
+      ['离地间隙', mm(rs.groundClearance)],
+      ['接近/离去角', `${deg(rs.approachAngle)} / ${deg(rs.departureAngle)}`],
+    ];
+    bodyInfoEl.querySelector('.body-info__grid').innerHTML = rows
+      .map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`)
+      .join('');
+  }
+
+  function syncAll() {
+    specPicker?.render();
+    clearanceReport?.render();
+    syncSeg();
+    syncSuspTarget();
+    syncScene();
+    syncExposure();
+    syncBang();
+    renderBodyData();
+    for (const s of sliders) s.render();
+    renderSuspension();
+    for (const s of lightRows) s();
+    syncMyWheels();
+  }
+
+  function updateReadout() {
+    const r = app.rig.report(app.params);
+    readout.innerHTML = '';
+
+    const line = (tag, val, verdict) => {
+      const tone = verdict.level === 'good' ? 'good' : verdict.level === 'warn' ? 'warn' : 'ok';
+      return el(
+        'div',
+        { class: `fit ${tone}` },
+        el('span', { class: 'fit-verdict' }, `${tag} ${verdict.text}`),
+        el('span', { class: 'fit-num' }, `${val >= 0 ? '+' : ''}${val.toFixed(0)} mm`)
+      );
+    };
+
+    if (r.same) {
+      readout.appendChild(line('', r.flushMm, r.verdict));
+    } else {
+      readout.appendChild(line('前轴', r.front.flushMm, r.front.verdict));
+      readout.appendChild(line('后轴', r.rear.flushMm, r.rear.verdict));
+    }
+    readout.appendChild(
+      el(
+        'div',
+        { class: 'fit-detail' },
+        `轮辋外缘距车身侧面；相对 ET${ET_REF}，前轴外移 ${r.front.etOffsetMm.toFixed(0)}mm、` +
+          `后轴外移 ${r.rear.etOffsetMm.toFixed(0)}mm`
+      )
+    );
+
+    /* ---- 悬挂读数：3 行，按阈值绿/黄/红着色 + tooltip ---- */
+    suspReadout.innerHTML = '';
+    const chassis = app.chassis;
+    // 底盘尚未完成 derive（rideHeight 仍为 0）时，先显示「计算中…」并强制 neutral 色，
+    // 避免 derive 完成前的那一帧误报 danger 红；derive 完成后 rideHeight>0 再显示真实数值 + 三色状态。
+    if (!chassis.derived && chassis.p.rideHeight <= 0) {
+      for (const label of ['离地间隙', '轮拱间隙', '降低量 Δ']) {
+        suspReadout.appendChild(
+          el(
+            'div',
+            { class: 'susp-row' },
+            el('span', { class: 'susp-label' }, label),
+            el('span', { class: 'susp-val' }, '计算中…')
+          )
+        );
+      }
+    } else {
+      const sr = chassis.suspensionReadout();
+    const suspRows = [
+      {
+        label: '离地间隙',
+        val: sr.groundClearance,
+        status: groundClearanceStatus(sr.groundClearance),
+        tip:
+          sr.groundClearance < MIN_GC
+            ? '已低于 ADR 最低离地 100mm'
+            : sr.groundClearance < GC_WARN
+              ? '接近 ADR 最低离地 100mm'
+              : '',
+      },
+      {
+        label: '轮拱间隙',
+        val: sr.fenderGap,
+        status: fenderStatus(sr.fenderGap),
+        tip:
+          sr.fenderGap < 0
+            ? '必蹭胎'
+            : sr.fenderGap < FENDER_MIN
+              ? '轮拱 <5mm，将蹭胎'
+              : sr.fenderGap < FENDER_SAFE
+                ? '轮拱间隙偏紧，注意蹭胎风险'
+                : '',
+      },
+      {
+        label: '降低量 Δ',
+        val: sr.deltaMm,
+        status: deltaStatus(sr.deltaMm),
+        tip:
+          Math.abs(sr.deltaMm) > MAX_DELTA
+            ? '超出合规总高变化 50mm'
+            : Math.abs(sr.deltaMm) > DELTA_OK
+              ? '总高变化较大，建议四轮定位'
+              : '',
+      },
+    ];
+    /* ---- 承诺收口（2026-10-15）----
+     * 这里的轮拱间隙来自 suspension.js 的标量减法 `baseFG − Δ`，**不是几何验证**。
+     * 产品定位已明确分两层：灵感预览（可承诺好看）/ 精准适配（可承诺依据）。
+     * 未建档车型没有可信的轮拱基准，此时继续给绿/黄/红就是在误导 ——
+     * 所以未建档时一律不显示判定结论，只显示数值 + 明确说明。 */
+    const basisKey = app.params.realSpecs?.carKey;
+    const mayJudge = canJudge(basisKey);
+
+    for (const row of suspRows) {
+      const cls = mayJudge
+        ? row.status === 'good'
+          ? 'susp-good'
+          : row.status === 'warn'
+            ? 'susp-warn'
+            : 'susp-danger'
+        : 'susp-raw'; // 未建档：不着色，纯数值
+      const valText = `${row.val >= 0 ? '+' : ''}${row.val.toFixed(0)} mm`;
+      const lineEl = el(
+        'div',
+        { class: `susp-row ${cls}`, title: row.tip || '' },
+        el('span', { class: 'susp-label' }, row.label),
+        el('span', { class: 'susp-val' }, valText)
+      );
+      if (row.tip) lineEl.appendChild(el('span', { class: 'susp-tip' }, row.tip));
+      suspReadout.appendChild(lineEl);
+    }
+
+    suspReadout.appendChild(
+      el(
+        'div',
+        { class: 'susp-disclaimer' },
+        mayJudge
+          ? '轮拱间隙为「原厂基准 − 降低量」的规则估算，非几何验证；不等同于工程结论。'
+          : '该车型未建档，以上仅为估算数值，不构成任何适配结论。'
+      )
+    );
+    } // end else (chassis 已 derive)
+  }
+
+  return {
+    syncAll,
+    updateReadout,
+    setMode,
+    // 车漆色随方案恢复时同步色轮显示（不回调，避免重复上色）
+    syncColor: () => colorWheel.set(app.params.bodyColor, app.params.bodySolid),
+    // 拆解部件装配/清除后同步状态行与滑杆
+    syncBang: () => {
+      syncBang();
+      bangExplode.value = Math.round((app.params.bangExplode || 0) * 100);
+      bangExplodeVal.textContent = `${Math.round((app.params.bangExplode || 0) * 100)}%`;
+    },
+    // 引擎可能在 refreshHealth 里被自动回退，下拉框建好之后仍要能跟着改
+    syncEngine: () => {
+      engineSelect.value = app.params.engine;
+    },
+    // 切场景时光源数量会变，由 main.js 的 setEnvironment 回调触发重建
+    rebuildLights() {
+      rebuildLights();
+      syncExposure();
+    },
+    syncScene,
+    syncMyWheels,
+    carUpload,
+    wheelUpload,
+
+    /* ---- 车身旁空间锚点联动 ---- */
+    // 点某车轮 → 切到轮毂 Tab，作用域落到该轮所属轴（前/后），并滚到轮毂参数
+    selectWheel(cornerId) {
+      setTab('wheels');
+      const axle = cornerId && cornerId.startsWith('F') ? 'front' : 'rear';
+      app.params.axleTarget = axle;
+      syncSeg();
+      syncAll();
+      if (paramBox && paramBox.scrollIntoView) paramBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    // 点某角悬挂锚 → 切到整车 Tab，设悬挂目标为该角，并滚到悬挂区高亮
+    focusSuspension(cornerId) {
+      setTab('body');
+      app.params.suspensionTarget = cornerId;
+      syncSuspTarget();
+      renderSuspension();
+      if (suspensionBox && suspensionBox.scrollIntoView) suspensionBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    // 点爆炸锚 → 切换 拆解装配 / 整车单体，并滚到拆解区
+    toggleBang() {
+      const cur = app.params.bangView || 'assembled';
+      const next = cur === 'single' ? 'assembled' : 'single';
+      app.setBangView(next);
+      syncBang();
+      if (bangBox && bangBox.scrollIntoView) bangBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+  };
+
+  /**
+   * 渲染凭证状态卡。
+   *
+   * @param {Object} s
+   * @param {'live'|'expiring'|'expired'|'demo'|'unknown'} s.state
+   * @param {string=} s.expiresAt  ISO8601，凭证预计失效时刻
+   * @param {boolean=} s.rejected  这张票被云端明确拒过（此时文件里写的有效期不可信）
+   * @param {string=} s.note       额外一行说明（例如刚失败的原因）
+   * @param {Function=} s.onRefresh 点「我已更新」时回调（重查 /api/health）
+   */
+  function setMode(s) {
+    const {
+      state = 'unknown',
+      expiresAt = '',
+      rejected = false,
+      note = '',
+      onRefresh,
+      engine = 'hunyuan',
+      engineMode = 'demo',
+    } = s || {};
+
+    const ENGINE = {
+      hyper3d: { name: 'Hyper3D', tokenFile: 'hyper3d', env: 'HYPER3D_API_KEY' },
+      higen3d: { name: 'HiGen3D', tokenFile: 'higen3d', env: 'HIGEN3D_API_KEY' },
+      hunyuan: { name: '混元 3D', tokenFile: 'hunyuan3d', env: 'HUNYUAN3D_TOKEN' },
+    }[engine] || { name: '混元 3D', tokenFile: 'hunyuan3d', env: 'HUNYUAN3D_TOKEN' };
+
+    // 只有当前引擎真正 live 才显示 LIVE；否则即便别的引擎有 key 也按当前引擎状态提示
+    const isLive = state === 'live' && engineMode === 'live';
+
+    const TEXT = {
+      live: {
+        icon: '●',
+        title: `LIVE — 已接${ENGINE.name}`,
+        body: '上传照片会真实生成模型，每次成功生成消耗一次额度。',
+      },
+      expiring: {
+        icon: '◐',
+        title: `LIVE — ${ENGINE.name}凭证即将过期`,
+        body: '现在还能生成，但建议先换一张新票，避免生成到一半失效。',
+      },
+      expired: {
+        icon: '○',
+        title: rejected ? '凭证被拒 — 无法真实生成' : `凭证已过期 — 无法真实生成`,
+        body: '换票后点下面的「我已更新」即可恢复，不用重启服务。',
+      },
+      demo: {
+        icon: '○',
+        title: `DEMO — 未配置${ENGINE.name}凭证`,
+        body: '上传照片只会返回预置的演示模型（不是你的车），不消耗额度。',
+      },
+      unknown: {
+        icon: '？',
+        title: '后端未连接',
+        body: '本地服务没起来，先运行 npm run dev。',
+      },
+    }[state] || { icon: '？', title: '状态未知', body: '' };
+
+    modeBadge.className = `mode-badge ${state}`;
+    modeBadge.innerHTML = '';
+    modeBadge.appendChild(
+      el('div', { class: 'mb-title' }, el('span', { class: 'mb-dot' }, TEXT.icon), TEXT.title)
+    );
+    modeBadge.appendChild(el('div', { class: 'mb-body' }, TEXT.body));
+
+    if (expiresAt) {
+      // 被云端拒过时，文件里写的有效期已经不可信，不能再显示"还有 xx 小时"误导人
+      modeBadge.appendChild(
+        el(
+          'div',
+          { class: 'mb-meta' },
+          rejected
+            ? `文件写的有效期至 ${fmtExpiry(expiresAt, false)}，但云端已拒绝这张票`
+            : `凭证有效期至 ${fmtExpiry(expiresAt)}`
+        )
+      );
+    }
+    if (note) {
+      modeBadge.appendChild(el('div', { class: 'mb-note' }, note));
+    }
+
+    // 只有需要换票的两态才给指引 + 按钮，LIVE 正常时保持干净
+    if (state === 'expired' || state === 'demo') {
+      modeBadge.appendChild(
+        el(
+          'ol',
+          { class: 'mb-steps' },
+          el('li', {}, `在对话里说一句「刷新${ENGINE.name}凭证」拿新票`),
+          el('li', {}, `新票会自动写进 ~/.workbuddy/tokens/${ENGINE.tokenFile}（或环境变量 ${ENGINE.env}）`),
+          el('li', {}, '回到这里点「我已更新」')
+        )
+      );
+    }
+    if (onRefresh) {
+      modeBadge.appendChild(
+        el(
+          'div',
+          { class: 'mb-actions' },
+          el(
+            'button',
+            {
+              class: 'btn small primary',
+              onclick: async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '重新检查中…';
+                try {
+                  await onRefresh();
+                } finally {
+                  // setMode 会整块重绘，这里兜底恢复（状态没变时）
+                  if (btn.isConnected) {
+                    btn.disabled = false;
+                    btn.textContent = '我已更新';
+                  }
+                }
+              },
+            },
+            '我已更新'
+          )
+        )
+      );
+    }
+  }
+}
+
+/**
+ * 把 ISO 时间转成「8月30日 20:47（还有 15 小时）」这种人话。
+ * @param {boolean} withRemain 是否附带"还有多久"，票已被拒时要关掉，避免自相矛盾
+ */
+function fmtExpiry(iso, withRemain = true) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${t.getMonth() + 1}月${t.getDate()}日 ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  if (!withRemain) return stamp;
+  const leftMs = t.getTime() - Date.now();
+  if (leftMs <= 0) return `${stamp}（已过期）`;
+  const h = Math.floor(leftMs / 3600000);
+  const m = Math.round((leftMs % 3600000) / 60000);
+  return `${stamp}（还有 ${h > 0 ? `${h} 小时` : ''}${h > 0 && m > 0 ? ' ' : ''}${h === 0 || m > 0 ? `${m} 分钟` : ''}）`;
+}
+
+function section(title, ...children) {
+  return el('section', { class: 'sec' }, el('h2', { class: 'sec-title' }, title), ...children);
+}
+
+function collapsible(title, ...children) {
+  const body = el('div', { class: 'sec-body collapsed' }, ...children);
+  const head = el('h2', { class: 'sec-title toggle' }, title, el('span', { class: 'caret' }, '▸'));
+  head.addEventListener('click', () => {
+    body.classList.toggle('collapsed');
+    head.classList.toggle('open');
+  });
+  return el('section', { class: 'sec' }, head, body);
+}
+
+/** 默认展开的折叠区块（灯光面板内容多，但希望进来就能调） */
+function collapsibleOpen(title, ...children) {
+  const node = collapsible(title, ...children);
+  node.querySelector('.sec-body')?.classList.remove('collapsed');
+  node.querySelector('.sec-title')?.classList.add('open');
+  return node;
+}

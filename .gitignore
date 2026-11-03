@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-logo/
+dist-verify/
+
+# cache
+.cache/
+
+# QA / generated artifacts
+outputs/
+scripts/_qa-*.png
+scripts/_qa-*.mjs
+/_qa-*.png
+
+# logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# local env (keep .env.example)
+.env
+.env.local
+
+# project data (not source)
+.workbuddy/
+
+# 用户扩展车型库（手动加车，不进版本管理；种子库 carSpecs.db.json 进 git）
+server/carSpecs.user.db.json
+
+# large binary demo assets — kept on disk locally, not in git
+# (regenerate or add via Git LFS if a fresh clone must ship them)
+# 注意：真实车模 my-car.glb / wheel.glb 必须进仓库，否则 Railway 构建后线上无车模
+public/models/_test-part.glb
+
+# vite dev temporary configs
+vite.config.js.timestamp-*.mjs
+
+# playwright artifacts
+test-results/
+playwright-report/

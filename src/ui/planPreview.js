@@ -1,0 +1,796 @@
+/**
+ * planPreview.js — 灵感车库卡片「动态旋转 3D 预览」引擎
+ *
+ * 设计要点（对应需求 1：每个方案卡片展示用户改装车辆的实时旋转 3D，而非静态照片）：
+ *
+ *   · 全车库卡片**共用一个 WebGLRenderer**（离屏 tile），每帧把各卡片场景渲染到
+ *     这张离屏画布，再用 drawImage 拷到卡片自己的 2D <canvas>。
+ *     → 无论有多少卡片，WebGL 上下文只有 1 个，不会撞浏览器的上下文上限。
+ *
+ *   · 每卡片一个独立 Scene，里面按 `plan.params` 完整重建一辆改装车：
+ *     Chassis（底盘/轮距/轮心高）→ WheelRig（四轮 ET/J/倾角），
+ *     所以预览里看到的姿态/轮距/轮毂和 TUNING STUDIO 里完全一致。
+ *
+ *   · 懒加载 + 视口可见才渲染：卡片滑入视口才构建并旋转，滑出即暂停（IntersectionObserver），
+ *     长列表也不卡。
+ *
+ * 资源复用：carSource（GLB 只解析一次）、env 贴图 / 天空 / 装饰模板按 key 缓存，
+ * 多实例共享几何与贴图，只在 instance 卸载时释放「本实例专属」的车身几何。
+ */
+
+import * as THREE from 'three';
+import { loadGLB, normalizeCar, normalizeWheel, boxOf } from '../core/glb.js';
+import { PRESET_CAR_URL, isPresetCarUrl } from '../core/presetCar.js';
+import { WheelRig } from '../tuning/wheelRig.js';
+import { Chassis } from '../tuning/chassis.js';
+import { measure } from '../tuning/shellMeasure.js';
+import { RIM_PRESETS } from '../tuning/proceduralRim.js';
+import { getPreset, buildEnvScene, disposeEnvScene } from '../core/environments.js';
+import { buildDecor, makeSkyTexture } from '../core/scenes.js';
+
+/* 离屏渲染分辨率（宽高比 1.6，与卡片缩略图一致，drawImage 不拉伸） */
+const TILE_W = 560;
+const TILE_H = 350;
+
+/** 没有 params 的方案（示例方案）回退用的默认改装参数 */
+export const DEFAULT_PREVIEW_PARAMS = {
+  axleTarget: 'all',
+  front: { rimInch: 19, j: 8.5, et: 30, tireWidthMm: 255, aspect: 35, camber: -1.0 },
+  rear: { rimInch: 19, j: 9.5, et: 31, tireWidthMm: 285, aspect: 30, camber: -1.5 },
+  trackF: 0,
+  trackR: 0,
+  axleF: 0,
+  axleR: 0,
+  fenderOffsetF: 0,
+  fenderOffsetR: 0,
+  carLength: 4.6,
+  showTire: true,
+  spin: false,
+  autoRotate: false,
+  envId: 'studio',
+  chassis: { deckHeight: null, shellLiftUser: 0, visible: false },
+};
+
+/** 取某方案用于预览的参数（缺省回退默认） */
+export function previewParamsOf(plan) {
+  if (plan && plan.params && plan.params.front && plan.params.rear) return plan.params;
+  return DEFAULT_PREVIEW_PARAMS;
+}
+
+/* ------------------------------------------------------------------ */
+/*                          共享资源缓存                                */
+/* ------------------------------------------------------------------ */
+
+const _carPromiseByUrl = new Map();
+
+/**
+ * 源车身缓存上限（份数）。
+ *
+ * ⚠️ 这里原先是**无上限**缓存，而每个方案的车型 URL 各不相同、单份 GLB 解析后
+ * 高达 30~48MB：用户每点开一个方案就永久占用一份，反复切换/新建几次就能堆到几百 MB，
+ * 正好命中以前踩过的 iOS Safari jetsam —— GPU/内存超限后系统直接杀掉 WebContent 进程，
+ * 页面表现就是「闪退 / 闪回初始页」。现在改成上限受控的 LRU。
+ */
+const CAR_SOURCE_CACHE_MAX = 2;
+
+/**
+ * 释放一份源车身占用的显存/内存。
+ * **只释放 Mesh 的几何**，两条边界：
+ * 1. 材质与贴图是和卡片实例共享的（见 deepCloneCar），在这里销毁会让正在显示的卡片失效；
+ * 2. deepCloneCar 只对 isMesh 做了 geometry.clone()，所以 Points/Line 的几何是**共享**的，
+ *    一起 dispose 会误伤还在显示的卡片 —— 这里必须与 deepCloneCar 的处理范围严格一致。
+ */
+function disposeCarSource(group) {
+  if (!group) return;
+  try {
+    group.traverse((o) => {
+      if (o.isMesh) o.geometry?.dispose?.();
+    });
+  } catch {
+    /* 源可能已被拆掉，忽略 */
+  }
+}
+
+/** 淘汰超出上限的缓存项（LRU：Map 的迭代顺序即插入顺序） */
+function evictCarSourceCache() {
+  while (_carPromiseByUrl.size > CAR_SOURCE_CACHE_MAX) {
+    const oldestKey = _carPromiseByUrl.keys().next().value;
+    const p = _carPromiseByUrl.get(oldestKey);
+    _carPromiseByUrl.delete(oldestKey);
+    Promise.resolve(p)
+      .then((g) => disposeCarSource(g))
+      .catch(() => {});
+  }
+}
+
+/** 车库卸载/离开时彻底清空解析缓存，别让整份车模常驻内存 */
+export function clearCarSourceCache() {
+  for (const p of _carPromiseByUrl.values()) {
+    Promise.resolve(p)
+      .then((g) => disposeCarSource(g))
+      .catch(() => {});
+  }
+  _carPromiseByUrl.clear();
+}
+
+/* 真实轮毂模型缓存（按 URL）。体积远小于车身，简单缓存即可多卡片共享。 */
+const _wheelPromiseByUrl = new Map();
+
+/**
+ * 按方案参数加载真实轮毂模型（自定义生成 / 预设款式 glbUrl）。
+ * 失败时返回 null，调用方回退程序化轮毂。
+ */
+async function loadWheelSource(params) {
+  let url = params?.customWheelUrl || null;
+  // rimPreset='custom' 表示当前是自定义生成轮毂，已由 customWheelUrl 处理
+  if (!url && params?.rimPreset && params.rimPreset !== 'custom') {
+    const preset = RIM_PRESETS.find((p) => p.style === params.rimPreset);
+    url = preset?.glbUrl || null;
+  }
+  if (!url) return null;
+
+  if (_wheelPromiseByUrl.has(url)) return _wheelPromiseByUrl.get(url);
+  const p = loadGLB(url, { progress: false })
+    .then(({ group }) => {
+      const measured = normalizeWheel(group);
+      return { group, measured };
+    })
+    .catch((e) => {
+      console.warn('[plan-preview] 轮毂模型载入失败，将回退程序化轮毂', url, e);
+      _wheelPromiseByUrl.delete(url);
+      return null;
+    });
+  _wheelPromiseByUrl.set(url, p);
+  return p;
+}
+
+/**
+ * 按车型 GLB 地址加载车身源（只解析一次，按 URL 缓存，上限受控）。
+ * 优先用方案里用户提交的车型（plan.carModelUrl）；地址缺失或加载失败时
+ * 回退到系统默认 SL 350 演示车，绝不因车型缺失而白屏。
+ */
+function loadCarSource(url) {
+  const key = url || PRESET_CAR_URL;
+  if (_carPromiseByUrl.has(key)) {
+    // 命中即"最近使用"：挪到队尾，避免被 LRU 淘汰掉正在用的那份
+    const cached = _carPromiseByUrl.get(key);
+    _carPromiseByUrl.delete(key);
+    _carPromiseByUrl.set(key, cached);
+    return cached;
+  }
+  const p = loadGLB(key, { progress: false })
+    .then(({ group }) => group)
+    .catch((e) => {
+      console.warn('[plan-preview] 车型载入失败，回退默认车模', key, e);
+      _carPromiseByUrl.delete(key); // 失败不缓存，下次重试
+      return loadCarSource(); // 回退到默认车（默认已缓存或正在加载）
+    });
+  _carPromiseByUrl.set(key, p);
+  evictCarSourceCache();
+  return p;
+}
+
+/** 深克隆车身：几何独立，材质与源共享（卡片内独立显示，不污染源模型） */
+function deepCloneCar(src) {
+  const g = src.clone(true);
+  g.traverse((o) => {
+    if (o.isMesh) o.geometry = o.geometry.clone();
+  });
+  return g;
+}
+
+/** 让整车 XZ 居中并贴地 */
+function groundCar(obj) {
+  obj.updateMatrixWorld(true);
+  const box = boxOf(obj);
+  obj.position.x -= (box.min.x + box.max.x) / 2;
+  obj.position.z -= (box.min.z + box.max.z) / 2;
+  obj.position.y -= box.min.y;
+  obj.updateMatrixWorld(true);
+}
+
+/** 软接触阴影贴图（预览关了阴影贴图，用一张径向渐变补一块接地影） */
+let _blobTex = null;
+function blobShadowTexture() {
+  if (_blobTex) return _blobTex;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+  g.addColorStop(0, 'rgba(0,0,0,0.45)');
+  g.addColorStop(0.6, 'rgba(0,0,0,0.18)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  _blobTex = new THREE.CanvasTexture(c);
+  _blobTex.colorSpace = THREE.SRGBColorSpace;
+  return _blobTex;
+}
+
+/* ------------------------------------------------------------------ */
+/*                          预览引擎                                   */
+/* ------------------------------------------------------------------ */
+
+class PreviewEngine {
+  constructor() {
+    this.instances = new Map();
+    this.envCache = new Map(); // presetId -> PMREM 贴图
+    this.skyCache = new Map(); // presetId -> 背景渐变贴图
+    this.decorCache = new Map(); // decorKey -> 模板 Group（共享几何/贴图）
+    this.ok = false;
+    this.raf = 0;
+    // 移动端判定：iPhone/iPad/Android，或窄屏。
+    // 单个生成的车模 40~47MB（.cache/models 实测 46.7MB / 45.8MB / 44.4MB …），
+    // 一张已构建卡片就吃掉这么一份 —— 移动端必须比桌面端保守得多。
+    const mobile =
+      /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') ||
+      (typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(max-width: 768px)').matches);
+
+    // 卡片滑出视口后，延迟多久释放它的克隆几何（毫秒）。
+    // 每张已构建的卡片都持有一份 40~47MB 的车模克隆（deepCloneCar 会 clone 全部几何），
+    // 滚过的方案越多、显存堆积越多 —— 这正是移动端反复进出方案后被系统杀进程的原因之一。
+    // 延迟是为了避免快速来回滚动时反复构建/销毁；移动端更激进一些。
+    this.releaseOffscreenMs = mobile ? 1500 : 4000;
+    // 同时"已构建"的卡片数量上限（兜底：即便视口里同时能看到好几张，也封住峰值内存）
+    this.maxBuilt = mobile ? 1 : 3;
+
+    this._createRenderer();
+    if (!this.ok) return;
+
+    // 视口可见性：滑入才渲染/构建，滑出先暂停、再释放
+    if ('IntersectionObserver' in window) {
+      this.io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            const inst = this.instances.get(e.target);
+            if (!inst) continue;
+            inst.visible = e.isIntersecting;
+
+            if (inst.visible) {
+              inst.lastSeenTs = Date.now(); // 供"超出上限时淘汰最久未见者"排序
+              // 重新进入视口：取消待执行的释放，必要时重建，再补一帧
+              if (inst.offscreenTimer) {
+                clearTimeout(inst.offscreenTimer);
+                inst.offscreenTimer = 0;
+              }
+              if (!inst.built && !inst.building) this._build(inst);
+              else if (inst.built) this._markDirty(inst); // 卡片是静态侧视，一帧就够
+            } else if (inst.built && this.releaseOffscreenMs > 0) {
+              // 离开视口：到期释放本实例的克隆几何（画布保留最后一帧，不闪白）
+              if (inst.offscreenTimer) clearTimeout(inst.offscreenTimer);
+              inst.offscreenTimer = setTimeout(() => {
+                inst.offscreenTimer = 0;
+                if (!inst.visible && inst.built && !inst.building) {
+                  this._disposeInstance(inst);
+                }
+              }, this.releaseOffscreenMs);
+            }
+          }
+        },
+        { threshold: 0.05 }
+      );
+    }
+
+    /* 卡片内车模是静态侧视摆放，不需要连续渲染。改为"脏标记 + 按需渲染"：
+     * 每张卡片只在构建完成 / 滑入视口 / 尺寸变化时渲染一帧，
+     * 没有待渲染卡片时 RAF 完全停止。
+     * 之前的 60fps 常驻循环在 iOS Safari 上是持续的 GPU 负载，
+     * 和 hero 预览、studio 三个渲染循环叠在一起，足以触发系统
+     * 把 WebContent 进程杀掉（页面表现为"重复出现问题"崩溃）。 */
+    this.raf = 0;
+    this._tick = () => {
+      this.raf = 0;
+      if (!this.ok) return;
+      let pending = false;
+      for (const inst of this.instances.values()) {
+        if (!inst.built || !inst.visible || !inst.dirty) continue;
+        this.renderer.render(inst.scene, inst.camera);
+        inst.ctx.drawImage(this.renderer.domElement, 0, 0, inst.canvas.width, inst.canvas.height);
+        inst.dirty = false;
+      }
+      for (const inst of this.instances.values()) {
+        if (inst.built && inst.visible && inst.dirty) pending = true;
+      }
+      // 还有未完成的（例如本轮刚构建完又标记脏）→ 继续下一帧，否则停转
+      if (pending) this.raf = requestAnimationFrame(this._tick);
+    };
+  }
+
+  /** 标记一张卡片需要重绘，并确保渲染循环在跑 */
+  _markDirty(inst) {
+    inst.dirty = true;
+    if (!this.raf) this.raf = requestAnimationFrame(this._tick);
+  }
+
+  getEnvTexture(preset) {
+    if (this.envCache.has(preset.id)) return this.envCache.get(preset.id);
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const envScene = buildEnvScene(preset);
+    let tex = null;
+    try {
+      const rt = pmrem.fromScene(envScene, preset.envSigma ?? 0.04);
+      tex = rt.texture;
+      this.envCache.set(preset.id, tex);
+    } finally {
+      pmrem.dispose();
+      disposeEnvScene(envScene);
+    }
+    return tex;
+  }
+
+  getSkyTexture(preset) {
+    if (!preset.sky) return null;
+    if (!this.skyCache.has(preset.id)) this.skyCache.set(preset.id, makeSkyTexture(preset.sky));
+    return this.skyCache.get(preset.id);
+  }
+
+  getDecorTemplate(key) {
+    if (this.decorCache.has(key)) return this.decorCache.get(key);
+    const tpl = buildDecor(key, null);
+    this.decorCache.set(key, tpl);
+    return tpl;
+  }
+
+  /* ---- 挂载一张卡片 ---- */
+  mount(container, params, carModelUrl) {
+    if (!container) return null;
+    if (!this.ok || !this.renderer) this._createRenderer();
+    if (!this.ok) return null;
+    if (this.instances.has(container)) return this.instances.get(container);
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'garage-card__thumb-canvas';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.round(container.clientWidth * dpr)) || TILE_W;
+    canvas.height = Math.max(1, Math.round(container.clientHeight * dpr)) || TILE_H;
+    container.appendChild(canvas);
+
+    const inst = {
+      container,
+      canvas,
+      ctx: canvas.getContext('2d'),
+      params: params || DEFAULT_PREVIEW_PARAMS,
+      carModelUrl: carModelUrl || null, // 方案里用户提交的车型（缺省回退默认 SL 350）
+      envId: (params && params.envId) || 'studio',
+      scene: null,
+      camera: null,
+      pivot: null,
+      carOuter: null,
+      chassis: null,
+      rig: null,
+      cutter: null,
+      decor: null,
+      lights: [],
+      visible: false,
+      built: false,
+      building: false,
+      ro: null,
+      // 世代令牌：每次释放/卸载实例就 +1。buildScene 里 await 回来后据此判断
+      // 「这次构建结果是否已经作废」，避免滑出视口期间完成的构建被装进实例再也无人释放。
+      gen: 0,
+      offscreenTimer: 0,
+    };
+    this.instances.set(container, inst);
+
+    // 跟随卡片尺寸变化，保持画布清晰
+    const ro = new ResizeObserver(() => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.round(container.clientWidth * dpr));
+      const h = Math.max(1, Math.round(container.clientHeight * dpr));
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+    });
+    ro.observe(container);
+    inst.ro = ro;
+
+    if (this.io) this.io.observe(container);
+    else {
+      // 无 IO 时直接构建并常显
+      inst.visible = true;
+      this._build(inst);
+    }
+    return inst;
+  }
+
+  /* ---- 卸载一张卡片 ---- */
+  unmount(container) {
+    const inst = this.instances.get(container);
+    if (!inst) return;
+    if (this.io) this.io.unobserve(container);
+    inst.ro?.disconnect();
+    if (inst.offscreenTimer) {
+      clearTimeout(inst.offscreenTimer);
+      inst.offscreenTimer = 0;
+    }
+    // 作废可能正在飞行中的构建（不管当前有没有 built）
+    inst.gen = (inst.gen || 0) + 1;
+    if (inst.built) this._disposeInstance(inst);
+    inst.canvas?.remove();
+    this.instances.delete(container);
+  }
+
+  /** 清空全部（网格重绘前调用） */
+  clear() {
+    for (const c of [...this.instances.keys()]) this.unmount(c);
+  }
+
+  /**
+   * 封住"同时已构建"的卡片数量。
+   * 每张已构建卡片都常驻一整份 40~47MB 的车模几何，即便有滑出视口释放作兜底，
+   * 视口内同时可见多张（桌面）或快速来回滚动（移动端）仍可能瞬间堆到数百 MB。
+   * 这里做硬上限：超出的按「最后可见时间」从最久的开始释放，优先淘汰已滑出视口的。
+   */
+  _enforceBuiltLimit() {
+    if (!this.maxBuilt) return;
+    const built = [...this.instances.values()].filter((i) => i.built);
+    if (built.length <= this.maxBuilt) return;
+    built.sort((a, b) => (a.lastSeenTs || 0) - (b.lastSeenTs || 0));
+    let need = built.length - this.maxBuilt;
+    for (const i of built) {
+      if (need <= 0) break;
+      if (!i.visible && i.built) {
+        this._disposeInstance(i);
+        need--;
+      }
+    }
+    for (const i of built) {
+      if (need <= 0) break;
+      if (i.built) {
+        this._disposeInstance(i);
+        need--;
+      }
+    }
+  }
+
+  _build(inst) {
+    if (inst.built || inst.building) return;
+    inst.building = true;
+    buildScene(this, inst)
+      .catch((e) => console.warn('[plan-preview] 构建失败', e))
+      .finally(() => {
+        inst.building = false;
+        inst.lastSeenTs = Date.now();
+        // 构建刚完成就先封一次顶，避免峰值超过上限
+        this._enforceBuiltLimit();
+        // 关键：构建是在 await 中完成的。若期间卡片已经滑出视口，
+        // 此时必须补装释放定时器，否则这份 30~48MB 的克隆几何会永久驻留
+        // （快速滚动时很容易命中：滑出时还在 building，装不上定时器）
+        if (
+          inst.built &&
+          !inst.visible &&
+          this.releaseOffscreenMs > 0 &&
+          !inst.offscreenTimer
+        ) {
+          inst.offscreenTimer = setTimeout(() => {
+            inst.offscreenTimer = 0;
+            if (!inst.visible && inst.built && !inst.building) {
+              this._disposeInstance(inst);
+            }
+          }, this.releaseOffscreenMs);
+        }
+      });
+  }
+
+  _disposeInstance(inst) {
+    // 作废正在飞行中的构建：它 await 回来后会发现 gen 变了，自行丢弃结果
+    inst.gen = (inst.gen || 0) + 1;
+    try {
+      inst.cutter?.release?.();
+      inst.rig?.dispose?.();
+      inst.chassis?.dispose?.();
+      // 释放本实例专属的车身几何（材质与 carSource 共享，不释放）
+      if (inst.carOuter)
+        inst.carOuter.traverse((o) => {
+          if (o.isMesh) o.geometry?.dispose?.();
+        });
+      if (inst.pivot) inst.scene.remove(inst.pivot);
+      if (inst.decor) inst.scene.remove(inst.decor); // 共享模板资源，不 dispose
+      for (const l of inst.lights || []) inst.scene.remove(l);
+    } catch {
+      /* ignore */
+    }
+    inst.built = false;
+  }
+
+  _createRenderer() {
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'low-power',
+      });
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(TILE_W, TILE_H, false);
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.05;
+      this.ok = true;
+    } catch {
+      this.ok = false;
+      this.renderer = null;
+    }
+  }
+
+  /** 释放卡片引擎独占的 WebGL 上下文与 GPU 贴图。
+   * 车库切到 studio / 拍照引导等需要 3D 大视口时，保留卡片上下文会白白占用
+   * iOS Safari 的 GPU 内存；销毁后再重建，可把同时活着的上下文压到最低。 */
+  disposeRenderer() {
+    if (!this.ok || !this.renderer) return;
+    this.clear();
+
+    for (const t of this.envCache.values()) t?.dispose?.();
+    this.envCache.clear();
+
+    for (const t of this.skyCache.values()) t?.dispose?.();
+    this.skyCache.clear();
+
+    for (const group of this.decorCache.values()) {
+      if (!group) continue;
+      group.traverse((o) => {
+        o.geometry?.dispose?.();
+        if (Array.isArray(o.material)) {
+          for (const m of o.material) m?.dispose?.();
+        } else if (o.material) {
+          o.material?.dispose?.();
+        }
+      });
+    }
+    this.decorCache.clear();
+
+    // 释放共享的轮毂模型源（此时所有实例已被 clear() 卸掉，不会误伤）
+    for (const p of _wheelPromiseByUrl.values()) {
+      Promise.resolve(p)
+        .then((src) => {
+          if (!src?.group) return;
+          src.group.traverse((o) => {
+            if (o.isMesh) {
+              o.geometry?.dispose?.();
+              const mats = Array.isArray(o.material) ? o.material : [o.material];
+              for (const m of mats) m?.dispose?.();
+            }
+          });
+        })
+        .catch(() => {});
+    }
+    _wheelPromiseByUrl.clear();
+
+    this.renderer.dispose();
+    this.renderer.forceContextLoss?.();
+    this.renderer = null;
+    this.ok = false;
+    if (this.raf) {
+      cancelAnimationFrame(this.raf);
+      this.raf = 0;
+    }
+  }
+}
+
+/** 延迟引入，避免与 environments.js 形成循环依赖 */
+/* （buildEnvScene / disposeEnvScene 已在文件顶部 import） */
+
+/* ------------------------------------------------------------------ */
+/*                       单卡片场景构建                                */
+/* ------------------------------------------------------------------ */
+
+function addPreviewLight(scene, lights, spec) {
+  const color = spec.color ?? 0xffffff;
+  const intensity = spec.intensity;
+  let light;
+  switch (spec.type) {
+    case 'ambient':
+      light = new THREE.AmbientLight(color, intensity);
+      break;
+    case 'hemisphere':
+      light = new THREE.HemisphereLight(spec.sky ?? 0xffffff, spec.ground ?? 0x222222, intensity);
+      break;
+    case 'point':
+      light = new THREE.PointLight(color, intensity, spec.distance ?? 0, spec.decay ?? 2);
+      light.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
+      break;
+    case 'spot':
+      light = new THREE.SpotLight(
+        color,
+        intensity,
+        spec.distance ?? 0,
+        spec.angle ?? 0.6,
+        spec.penumbra ?? 0.4,
+        spec.decay ?? 2
+      );
+      light.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
+      break;
+    case 'directional':
+    default:
+      light = new THREE.DirectionalLight(color, intensity);
+      light.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
+      break;
+  }
+  light.name = `plight-${spec.id}`;
+  light.visible = spec.enabled !== false;
+  if (light.target && spec.type !== 'point') {
+    if (spec.target) light.target.position.set(spec.target[0], spec.target[1], spec.target[2]);
+    else light.target.position.set(0, 0.6, 0);
+    scene.add(light.target);
+    lights.push(light.target);
+  }
+  scene.add(light);
+  lights.push(light);
+  return light;
+}
+
+function fitView(pivot, camera) {
+  const box = new THREE.Box3().setFromObject(pivot);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.z);
+  const dist = maxDim * 0.62 + size.y * 0.5 + 1.4;
+  const dir = new THREE.Vector3(0.62, 0.34, 0.92).normalize();
+  camera.position.copy(center).addScaledVector(dir, dist);
+  camera.lookAt(center);
+  camera.near = 0.1;
+  camera.far = 600;
+  camera.updateProjectionMatrix();
+}
+
+/** 卡片缩略图专用：侧视水平摆放，带安全边距不压泡壳 */
+function fitCardSideView(pivot, camera) {
+  const box = new THREE.Box3().setFromObject(pivot);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  // 侧视：相机从 +Z 看向原点，车长（X 轴）在画面中水平展开
+  const fovRad = (camera.fov * Math.PI) / 180;
+  const padding = 1.00; // 几乎贴边，让车身尽量充满卡片
+  const distX = (size.x * padding * 0.5) / Math.tan(fovRad * 0.5);
+  const distY = (size.y * padding * 0.5) / Math.tan(fovRad * 0.5) / camera.aspect;
+  const dist = Math.max(distX, distY, size.z * 1.5) + 0.4;
+
+  camera.position.set(center.x, center.y + size.y * 0.06, center.z + dist);
+  camera.lookAt(center);
+  camera.near = 0.1;
+  camera.far = 600;
+  camera.updateProjectionMatrix();
+}
+
+async function buildScene(engine, inst) {
+  const params = inst.params;
+  // 捕获当前世代，用于在 await 返回后判断本次构建是否已经作废
+  const gen = inst.gen;
+  const preset = getPreset(inst.envId) || getPreset('studio');
+
+  const scene = new THREE.Scene();
+  inst.scene = scene;
+  scene.environment = engine.getEnvTexture(preset);
+  // 卡片预览统一白底，与灵感车库白色科技风一致（不再用深色 studio 背景）
+  scene.background = new THREE.Color(0xffffff);
+  scene.fog = new THREE.Fog(0xffffff, preset.fog?.near ?? 40, preset.fog?.far ?? 120);
+
+  // 灯光（释放滑出视口的卡片后会重建同一实例，这里必须先清空旧引用，
+  // 否则 inst.lights 会把上一轮已被销毁的灯光越积越多）
+  inst.lights = [];
+  for (const spec of preset.lights) addPreviewLight(scene, inst.lights, spec);
+
+  // 实景装饰（赛道 / 欧洲城市）——白底下不叠加深色场景，保持"只放模型"的纯净感
+  if (preset.decor) {
+    inst.decor = engine.getDecorTemplate(preset.decor).clone(true);
+    if (inst.decor) scene.add(inst.decor);
+  }
+
+  // 车身：优先用方案里用户提交的车型，缺省回退默认 SL 350 演示车
+  const src = await loadCarSource(inst.carModelUrl);
+  // await 期间实例可能已被释放或卸载（滑出视口 / 网格重绘）。
+  // 此时必须丢弃这次构建，否则会在已作废的实例上留下 30~48MB 的克隆几何，
+  // 而且再也装不上释放定时器 —— 快滚时会一次留下好几份。
+  if (gen !== inst.gen) return;
+  const carGroup = deepCloneCar(src);
+  const carInner = new THREE.Group();
+  carInner.add(carGroup);
+  const carOuter = new THREE.Group();
+  carOuter.add(carInner);
+  const pivot = new THREE.Group();
+  pivot.add(carOuter);
+  scene.add(pivot);
+  inst.pivot = pivot;
+  inst.carOuter = carOuter;
+
+  normalizeCar(carInner, { targetLength: params.carLength || 4.6, groundY: 0 });
+  groundCar(carOuter);
+
+  // 预设展示车：原样完整显示，不做底盘/切轮/装配 procedural 轮毂。
+  // 这样卡片里看到的是「完整模型」，而不是被切掉原车轮后再装上程序化轮毂的残缺效果。
+  // 用户自己的车：走完整改装预览（切轮 + procedural 轮毂 + 姿态）。
+  if (!isPresetCarUrl(inst.carModelUrl)) {
+    const metrics = measure(carOuter, {
+      deckHeight:
+        params.chassis && Number.isFinite(params.chassis.deckHeight)
+          ? params.chassis.deckHeight
+          : 0.3,
+    });
+
+    // 底盘 + 四轮（与工作流主程序 refitCar 完全一致：真实轴距/轮距/轴位置优先）
+    const chassis = new Chassis(pivot);
+    const p = params;
+    const real = {
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      // 实测前后轴的绝对 x 坐标（米）。给了才采信，不给退回 ±wheelbase/2。
+      axleX_F: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleX_R: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+      // ChassisParams 内部按半轮距用，故 track / 2000
+      halfTrack_F: p.trackFront ? p.trackFront / 2000 : null,
+      halfTrack_R: p.trackRear ? p.trackRear / 2000 : null,
+      rideHeight: p.groundClearance ? p.groundClearance / 1000 : null,
+    };
+    chassis.derive(metrics, { front: p.front, rear: p.rear }, real);
+    chassis.build();
+    // 卡片预览只展示用户改装后的车身外观（车身+车轮），隐藏底盘结构，
+    // 避免在缩略图里露出银色大底盘，影响玩具卡观感。
+    chassis.setVisible(p.chassis?.visible === true);
+    inst.chassis = chassis;
+
+    const rig = new WheelRig(pivot);
+    // 关键：把整车真实尺寸喂给轮位求解，否则退回默认 4.6m 车长 → 车轮永远错位
+    const carSize = boxOf(carOuter).getSize(new THREE.Vector3());
+    rig.setCarSize(carSize);
+
+    const wheelSrc = await loadWheelSource(p);
+    if (gen !== inst.gen) return;
+    if (wheelSrc) {
+      // 用用户在工作室里换的真实轮毂模型（A款/B款/自定义生成）
+      rig.setWheelSource(wheelSrc.group, wheelSrc.measured);
+    } else {
+      // 无真实轮毂模型时回退程序化轮毂，保证预览永远可用
+      rig.useProceduralWheel(p.rimPreset === 'custom' ? 'default' : (p.rimPreset || 'default'));
+    }
+
+    // 实测前后轴绝对坐标优先于 ±wheelbase/2 对称摆位；缺测时清掉残留轴位退回估算。
+    // 卡片每次都是全新 rig，无旧车轴位残留，clearAxlePositions 在此仅为与 studio 同语义。
+    if (!(Number.isFinite(p.axleXFront) && Number.isFinite(p.axleXRear))) {
+      rig.clearAxlePositions();
+    }
+    rig.setRealGeometry({
+      wheelbase: p.wheelbase ? p.wheelbase / 1000 : null,
+      trackFront: p.trackFront ? p.trackFront / 1000 : null,
+      trackRear: p.trackRear ? p.trackRear / 1000 : null,
+      axleXFront: Number.isFinite(p.axleXFront) ? p.axleXFront / 1000 : null,
+      axleXRear: Number.isFinite(p.axleXRear) ? p.axleXRear / 1000 : null,
+    });
+
+    rig.setCornerSpec(chassis.cornerSpec());
+    rig.setBodyHalfWidth(metrics.bodyHalfWidth);
+    rig.update(p);
+    inst.rig = rig;
+  }
+
+  // 卡片内整体放大，让车模在预览区更突出，仍保留泡壳边缘安全距离
+  pivot.scale.setScalar(1.08);
+  pivot.updateMatrixWorld(true);
+
+  // 软接地阴影（跟随整车一起缩放）
+  const box = boxOf(pivot);
+  const size = box.getSize(new THREE.Vector3());
+  const blob = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.max(size.x, size.z) * 1.15, Math.max(size.x, size.z) * 1.15),
+    new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false })
+  );
+  blob.rotation.x = -Math.PI / 2;
+  blob.position.y = 0.015;
+  scene.add(blob);
+
+  // 相机
+  const camera = new THREE.PerspectiveCamera(38, TILE_W / TILE_H, 0.1, 600);
+  inst.camera = camera;
+  fitCardSideView(pivot, camera);
+
+  inst.built = true;
+  // 构建完成（异步）后主动标记一帧：按需渲染模式下不会常驻 RAF，
+  // 若不在这里补 _markDirty，卡片会停在空白画布上（IntersectionObserver
+  // 不会因同一次可见再触发，导致首帧永不绘制）。
+  engine._markDirty(inst);
+}
+
+/* 单例：全车库共用 */
+export const previewEngine = new PreviewEngine();

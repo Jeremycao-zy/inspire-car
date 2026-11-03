@@ -1,0 +1,347 @@
+/**
+ * auth.css — 登录 / 注册浮层（复古电子 / 霓虹赛博 · synthwave）
+ * 视觉与 garage.css 的卡片 / 品牌区保持一致：深空紫黑、透视网格、霓虹青/粉、玻璃辉光。
+ */
+
+.auth-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(520px 460px at 50% 4%, rgba(255, 46, 151, 0.16), transparent 68%),
+    radial-gradient(900px 520px at 82% 110%, rgba(255, 46, 151, 0.18), transparent 60%),
+    radial-gradient(1000px 600px at 12% -8%, rgba(0, 240, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, #0b0820 0%, #0a0a14 50%, #120a24 100%);
+  background-attachment: fixed;
+  color: var(--text, #e8f6ff);
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'SF Pro SC',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.auth-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 46, 151, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 30%, #000 40%, transparent 100%);
+}
+
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: rgba(18, 16, 31, 0.86);
+  backdrop-filter: blur(14px);
+  border-radius: 22px;
+  padding: 32px 30px 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(0, 240, 255, 0.28), 0 0 30px rgba(177, 74, 237, 0.18);
+}
+
+.auth-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+/* 登录卡片：直接用霓虹青线条源图，无需反相；放大到与右侧灵感改装/INSPIRE CAR 两行文字块等高，
+   仅两层轻晕勾勒轮廓，避免多层叠加把线条糊成光团。 */
+.auth-card__logo {
+  height: 38px;
+  width: auto;
+  aspect-ratio: 353 / 324;
+  display: block;
+  filter: drop-shadow(0 0 2px rgba(0, 240, 255, 0.55))
+  drop-shadow(0 0 6px rgba(0, 240, 255, 0.28));
+}
+.auth-card__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.auth-card__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #eafcff;
+  font-family: 'YouSheBiaoTiHei', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+}
+.auth-card__sub {
+  margin: 2px 0 0;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--neon-cyan, #00f0ff);
+  font-family: 'Press Start 2P', 'Arial Black', sans-serif;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+.auth-card__heading {
+  margin: 18px 0 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+}
+.auth-card__hint {
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  color: var(--text-dim, #9aa7c7);
+  line-height: 1.5;
+}
+
+.auth-field {
+  position: relative;
+  margin-bottom: 14px;
+}
+.auth-field__input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  background: rgba(10, 10, 20, 0.6);
+  font-size: 14px;
+  color: var(--text, #e8f6ff);
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.auth-field__input::placeholder {
+  color: var(--text-faint, #6b7390);
+}
+.auth-field__input:focus {
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.16), 0 0 16px rgba(0, 240, 255, 0.2);
+}
+
+.auth-error {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: #ff8aa0;
+  background: rgba(255, 77, 109, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 109, 0.32), 0 0 14px rgba(255, 77, 109, 0.18);
+}
+
+.auth-submit {
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0a0a14;
+  background: linear-gradient(100deg, var(--neon-pink, #ff2e97) 0%, #ff66c4 45%, var(--neon-cyan, #00f0ff) 100%);
+  box-shadow: 0 0 22px rgba(255, 46, 151, 0.35), 0 10px 26px rgba(0, 240, 255, 0.22);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+.auth-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 34px rgba(255, 46, 151, 0.55), 0 12px 32px rgba(0, 240, 255, 0.4);
+}
+.auth-submit:active {
+  transform: translateY(0);
+}
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.auth-switch {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-dim, #9aa7c7);
+}
+.auth-switch button {
+  border: none;
+  background: none;
+  color: var(--neon-cyan, #00f0ff);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+.auth-switch button:hover {
+  text-decoration: underline;
+}
+
+/* ---------------- 注册时的协议同意勾选 ---------------- */
+
+.auth-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 4px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9fd8e6;
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.auth-agree:hover {
+  border-color: rgba(0, 240, 255, 0.34);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.auth-agree input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 1px 0 0;
+  cursor: pointer;
+  accent-color: var(--neon-cyan, #00f0ff);
+}
+
+.auth-agree__text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 协议链接：做成按钮样式但视觉上是内联链接，点击弹出协议弹窗 */
+.auth-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  color: var(--neon-cyan, #00f0ff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+.auth-link:hover {
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+
+/* ---------------- 手机号验证码（注册时） ---------------- */
+
+.auth-code-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.auth-code-row .auth-field__input {
+  flex: 1;
+}
+.auth-code-btn {
+  flex: 0 0 auto;
+  width: 116px;
+  height: 46px;
+  border: 1px solid rgba(0, 240, 255, 0.34);
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.06);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.auth-code-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.12);
+}
+.auth-code-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  color: var(--text-dim, #9aa7c7);
+}
+
+/* 提示信息（成功 / 开发模式验证码）——与错误框区分色 */
+.auth-info {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8ff0d4;
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.3), 0 0 14px rgba(0, 240, 255, 0.16);
+}
+.auth-info--dev {
+  color: #ffe08a;
+  background: rgba(255, 196, 0, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 196, 0, 0.3), 0 0 14px rgba(255, 196, 0, 0.14);
+}
+
+/* ---------------- 其他登录方式：微信 / 苹果图标入口 ---------------- */
+
+.auth-oauth {
+  margin-top: 22px;
+}
+.auth-oauth__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: var(--text-dim, #9aa7c7);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.auth-oauth__divider::before,
+.auth-oauth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.28), transparent);
+}
+.auth-oauth__row {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.auth-oauth-btn {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  background: rgba(10, 10, 20, 0.6);
+  color: #e8f6ff;
+  transition: transform 0.14s ease, box-shadow 0.2s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.auth-oauth-btn:hover {
+  transform: translateY(-2px);
+}
+.auth-oauth-btn--wechat {
+  color: #2ee06f;
+}
+.auth-oauth-btn--wechat:hover {
+  border-color: #2ee06f;
+  background: rgba(7, 193, 96, 0.1);
+  box-shadow: 0 0 18px rgba(7, 193, 96, 0.42);
+}
+.auth-oauth-btn--apple {
+  color: #f2f4f8;
+}
+.auth-oauth-btn--apple:hover {
+  border-color: #f2f4f8;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.28);
+}
