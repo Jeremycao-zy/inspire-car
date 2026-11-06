@@ -198,23 +198,44 @@ curl http://127.0.0.1:8899/api/pay/plans   # channels 为 false 表示密钥未�
 
 ### 环境风险
 
-- 域名 `www.inspire-car.com` 当前 DNS 混指 Fly（境外）+ 腾讯云（境内）多个 IP，建议清理为单一来源
-- ICP 备案要求服务器在境内；长期挂在 Fly 上有被注销备案的风险
+- **备案期间禁止解析域名**。2026-11 首次备案因「域名指境外 Fly IP + 网站可访问」被驳回；现已清空所有 A/AAAA 记录，重新提交中。任何解析变更都要等备案通过后再做。
+- **Fly 上的数据是孤本**。Fly 卷 `inspire_car_data` 里的用户/订单/额度数据比本地 `.cache` 新，关停 Fly 前必须先按 `MIGRATE_TO_CN_SERVER.md` 5.2 导出，否则会丢。
+- 导出的 `.cache` 内含 `.cache/users/.secret`（会话签名密钥），**不可外传、不可提交 git、不可发群**。
+- 模型总体积约 37MB（`base-high-pbr.glb` 18M + `base-high-shaded.glb` 12M + 7 个轮毂），迁移后建议开 Nginx / Caddy 的 gzip + 长缓存，否则国内首屏仍慢。
 
 ---
 
 ## 九、部署
 
-**Fly.io**，配置见 `fly.toml`（app: `inspire-car`，region: `sin`）。
+**唯一生产环境：腾讯云轻量服务器（中国大陆境内），Docker + docker-compose。**
 
-```bash
-fly deploy --remote-only      # 远程构建，本地不需要 Docker
-```
+| 环境 | 状态 | 说明 |
+|---|---|---|
+| 腾讯云 `62.234.134.252` | ✅ **目标环境** | ICP 备案通过后启用，步骤见 `MIGRATE_TO_CN_SERVER.md` |
+| Fly.io（`sin` 新加坡） | ⛔ **已废弃，待关停** | 境外节点，备案必然驳回；`fly.toml` / `FLY_DEPLOY.md` 仅作历史留存 |
+| Railway / Zeabur | ⛔ **已废弃** | `railway.toml`、`ZEABUR_DEPLOY.md` 仅作历史留存 |
 
-- 单端口 8080，持久卷 `inspire_car_data` 挂载到 `/app/.cache`（**用户数据都在这里，别动**）
-- 敏感 key 用 `fly secrets set`，**绝不写进 `fly.toml` 或 git**
-- Dockerfile 是 `COPY . .` + `npm run build`，新增文件自动进镜像
-- 其他平台配置：`railway.toml`、`ZEABUR_DEPLOY.md`
+> **为什么放弃 Fly**：它跑的是同一个 `Dockerfile`，本质是「一台境外虚拟机 + 一块持久卷」，当初选它是为了绕开 Railway 到期收费。但 ICP 备案硬性要求服务器在**境内**且接入商与备案服务商一致，域名指境外 IP 直接驳回（2026-11 已实际发生一次）。所以生产环境**只能用腾讯云**，不要再往 Fly / Railway / Zeabur 部署。
+
+### 9.1 当前部署状态（2026-11-06）
+
+- 域名 `www.inspire-car.com` / `inspire-car.com` 的 A / AAAA 记录**已全部清空**，公共 DNS 返回 `NXDOMAIN`
+- 备案**已重新提交审核中** → 期间保持「域名无解析 + 服务器不对外」，**不要加回任何解析（尤其不能指回 Fly 境外 IP）**，否则二次驳回
+- Fly 应用 `inspire-car` **仍在运行**，持久卷 `inspire_car_data` 中有线上真实数据（用户 / 订单 / 额度 / 生成的 GLB），**关停前必须先导出**，见 `MIGRATE_TO_CN_SERVER.md` 第 5 节
+
+### 9.2 迁移到腾讯云（备案通过后）
+
+完整步骤见 `MIGRATE_TO_CN_SERVER.md`（含 Docker 安装、`.env` 密钥、数据搬迁、Caddy 自动 HTTPS、验证清单、常见坑）。要点：
+
+- 单端口 8080，`server` 同时服务 `dist/` 静态产物与 `/api/*`
+- 持久卷挂载到 `/app/.cache`（**用户数据都在这里，别动**）
+- 敏感 key 全部走 `.env`，**绝不写进任何会提交到 git 的文件**（环境变量清单见第五节）
+- `Dockerfile` 是 `COPY . .` + `npm run build`，新增文件自动进镜像
+
+### 9.3 上线前必改的两处
+
+1. `public/sw.js` 的 `CACHE = 'inspire-car-v1'` → **`v2`**。否则老用户会被 Service Worker 缓存喂旧版本（这正是"服务器关了网站还能打开"的原因）。
+2. `PAY_ENFORCE` 在 `WXPAY_*` / `ALIPAY_*` 密钥配好之前保持 `0`。此时付费闸门关闭、免费流程正常；密钥填好并验过 0.01 元支付后再改 `1`，否则用户点付款只会看到「通道未配置」。
 
 ---
 

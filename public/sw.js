@@ -2,7 +2,7 @@
  * 作用：缓存应用外壳（HTML/JS/CSS/图标），让「添加到主屏幕」后可离线打开首屏；
  *       /api/ 与 3D 模型等动态资源始终走网络，不拦截、不破坏后端逻辑。
  * 注意：仅在生产构建（import.meta.env.PROD）下由 main.js 注册。 */
-const CACHE = 'inspire-car-v1';
+const CACHE = 'inspire-car-v2';
 const SHELL = [
   '/',
   '/index.html',

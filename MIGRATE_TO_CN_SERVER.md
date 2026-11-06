@@ -12,7 +12,9 @@
 
 1. **先备案**：中国大陆管局要求备案主体必须有一台**境内服务器**（境外的 Fly.io 新加坡节点不算）。所以你买境内机器、提交备案，是**为了拿备案号**，不是为了先跑服务。
 2. **备案通过后再搬家**：等备案号下来、域名（如 `www.inspirecar.cn`）解析到你这台境内机器之后，再执行本文第 3～8 节的迁移。
-3. 搬家期间 Fly.io 那台**先别删**，等国内跑稳了、验证清单全过，再下线 Fly 以省心省钱。
+3. **Fly.io 那台要分两步退**：备案期间**先停服务但保留卷**（`flyctl scale count 0`，域名必须无解析、不能指向境外 IP）；等数据导出完、国内跑稳、第 8 节验证清单全过，再 `fly apps destroy` 彻底删除。
+   > 顺序不能反：**先导出数据（第 5 节）→ 再关机器 → 最后删应用**。卷删了数据就没了，Fly 没有回收站。
+   > 不需要记任何 token：`flyctl auth login` 走 **GitHub OAuth**（账号 `Jeremycao-zy`），随时能重新进。
 
 > 为什么不能反过来：没备案就把域名指向境内服务器并提供公开访问，管局会**阻断访问**甚至注销备案。所以"先有境内服务器用于备案 → 备案通过 → 再切流量"。
 
@@ -232,7 +234,35 @@ docker compose logs -f inspire-car
 
 ### 5.2 搬 `/app/.cache`（JSON 模式 / 或 SQL 模式下的 GLB+上传）
 
-在**本地 Mac**（已登录 flyctl）执行，把 Fly 卷打包拉回：
+#### 5.2.0 前置：拿到 flyctl 并登进去（不需要 token）
+
+Fly 用的是 **GitHub OAuth**，不靠 API token，所以哪怕旧 token 丢了也能重新授权进去。
+
+```bash
+# Windows（PowerShell）
+iwr https://fly.io/install.ps1 -useb | iex
+# macOS / Linux
+curl -L https://fly.io/install.sh | sh
+
+# 登录：浏览器弹出 → 用 GitHub 账号（Jeremycao-zy）授权
+flyctl auth login
+flyctl auth whoami          # 应打印你的邮箱
+
+# 确认应用和卷还在
+flyctl apps list
+flyctl volumes list -a inspire-car
+```
+
+> 机器可能处于休眠（`min_machines_running = 0`）。先唤醒，否则 ssh 连不上：
+> ```bash
+> flyctl machines list -a inspire-car     # 看 STATE，可能是 stopped
+> flyctl machines start -a inspire-car    # 唤醒
+> ```
+> 稳妥起见也可以顺手访问一次 `https://inspire-car.fly.dev`（这个域名不走你的自定义域名，不受 ICP 影响）。
+
+#### 5.2.1 打包并拉回本地
+
+在**本地**（已 `flyctl auth login`）执行：
 
 ```bash
 # 1) 进 Fly 机器，把 /app/.cache 打成 tar（容器内只打包数据目录，别打包 node_modules）
@@ -240,9 +270,17 @@ flyctl ssh console -a inspire-car -C "tar czf /tmp/cache.tgz -C /app .cache"
 
 # 2) 把 tar 拉到本地
 flyctl ssh sftp get /tmp/cache.tgz ./cache-from-fly.tgz -a inspire-car
+
+# 3) 立刻验证拉下来的东西是完整的（不是 0 字节、不是报错页）
+ls -lh cache-from-fly.tgz
+tar tzf cache-from-fly.tgz | head -20
 ```
 
-再把 `cache-from-fly.tgz` 传到新服务器，并灌进 Docker 卷：
+> ⚠️ **安全**：`cache.tgz` 里含 `.cache/users/.secret`（会话签名密钥）和用户手机号/邮箱。**不要提交 git、不要发群、不要传网盘**，拿到服务器上解压完就删本地副本。若必须长期留存，单独存加密压缩包（`openssl enc -aes-256-cbc -in cache-from-fly.tgz -out cache.enc`）。
+
+#### 5.2.2 灌进国内服务器的 Docker 卷
+
+把 `cache-from-fly.tgz` 传到新服务器，并灌进 Docker 卷：
 
 ```bash
 # 传到服务器
@@ -259,9 +297,18 @@ docker run --rm -v inspire_car_data:/data -v /opt/cache-from-fly.tgz:/src/cache-
 docker compose restart inspire-car
 ```
 
+灌完在服务器上核对（应能看到 users/ orders/ 等子目录和非空文件）：
+
+```bash
+docker run --rm -v inspire_car_data:/data busybox ls -la /data/.cache
+```
+
 > 这条干什么：把 Fly 卷里的 `.cache` 原样搬进国内服务器的持久卷。失败会怎样：
-> - `flyctl ssh console` 连不上 → Fly 机器可能在休眠（min_machines_running=0），先访问一次 `https://inspire-car.fly.dev` 把它唤醒，或显式 `flyctl machines start`；
-> - 数据没生效 → 确认卷名是 `inspire_car_data`（与 compose 一致），且解压后 `/data/.cache/...` 结构正确。
+> - 数据没生效 → 确认卷名是 `inspire_car_data`（与 compose 一致），且解压后是 `/data/.cache/...` 而不是 `/data/.cache/.cache/...`（多套一层就把路径搞错了）；
+> - 服务起来报权限错 → busybox 解出的文件属主是 root，而容器内 node 用户可能不同，加 `chown -R` 修正：
+>   ```bash
+>   docker run --rm -v inspire_car_data:/data busybox chown -R 1000:1000 /data
+>   ```
 
 ### 5.3 如果用的是 Postgres（SQL 模式，仅当 5.1 确认有 DATABASE_URL）
 
@@ -274,9 +321,35 @@ pg_dump -h <fly-pg-host> -U <user> <dbname> > fly-db.sql
 
 然后在国内用本文 compose 注释里的 `db` 服务（或云 Postgres），`psql ... -f fly-db.sql` 导入，并在 `.env` 填好 `DATABASE_URL` 与固定的 `AUTH_SECRET`。
 
-### 5.4 取舍：数据不重要就直接重建
+### 5.4 关停 Fly（数据导出完成之后）
+
+**只有在 5.2 / 5.3 都做完、`cache-from-fly.tgz` 已验证可用之后**才执行这几步。顺序错了会丢数据。
+
+```bash
+# 第 1 步：机器缩到 0，停止对外服务、不再计费（卷和数据都还在）
+flyctl scale count 0 -a inspire-car
+
+# 第 2 步：确认已停
+flyctl status -a inspire-car
+
+# 第 3 步：删除自定义域名绑定（防止有人误把域名再指回来）
+flyctl certs list -a inspire-car
+flyctl certs remove www.inspire-car.com -a inspire-car
+flyctl certs remove inspire-car.com -a inspire-car
+
+# 第 4 步：国内站点跑满一个月、确认数据无缺失后，再彻底删除
+# ⚠️ 这一步不可逆，卷和备份会一起没
+flyctl apps destroy inspire-car
+```
+
+> 备案期间**只做第 1～3 步**，不要做第 4 步。已 scale 0 的应用不产生计算费（只留几分钱存储费），万一国内迁移出问题还能从卷里再救一次数据。
+> 如果第 3 步报 `no certificate found`，说明域名早就解绑了，跳过即可——这不影响备案。
+
+### 5.5 取舍：数据不重要就直接重建
 
 如果这只是个人 Demo、历史数据无所谓，**最省事的做法是跳过 5.2/5.3**：直接 `docker compose up -d --build`，Docker 卷会自动初始化空目录，首次启动无用户、无历史方案，但站点功能完全正常（还能用离线演示模式）。生成的新模型、新注册用户都会正常落到新卷。
+
+> ⚠️ 但**即使跳过数据迁移，也要执行 5.4 关停 Fly**——域名指境外 IP 是备案驳回的直接原因，只迁数据不关机器等于没解决问题。
 
 ---
 

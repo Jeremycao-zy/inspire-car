@@ -1,3 +1,7 @@
+# ⛔ 已废弃（2026-11-06）：生产环境迁至腾讯云境内服务器，本文件仅作历史留存。
+#    原因：ICP 备案硬性要求服务器在境内，境外节点（sin 新加坡）必然驳回。
+#    现行方案见 MIGRATE_TO_CN_SERVER.md；部署现状见 HANDOFF.md 第九章。
+#
 # 灵感改装 / Inspire Car — Fly.io 部署配置（基础设施即代码）
 # 文档: https://fly.io/docs/reference/configuration/
 #
