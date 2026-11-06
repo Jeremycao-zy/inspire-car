@@ -221,7 +221,10 @@ curl http://127.0.0.1:8899/api/pay/plans   # channels 为 false 表示密钥未�
 
 - 域名 `www.inspire-car.com` / `inspire-car.com` 的 A / AAAA 记录**已全部清空**，公共 DNS 返回 `NXDOMAIN`
 - 备案**已重新提交审核中** → 期间保持「域名无解析 + 服务器不对外」，**不要加回任何解析（尤其不能指回 Fly 境外 IP）**，否则二次驳回
-- Fly 应用 `inspire-car` **仍在运行**，持久卷 `inspire_car_data` 中有线上真实数据（用户 / 订单 / 额度 / 生成的 GLB），**关停前必须先导出**，见 `MIGRATE_TO_CN_SERVER.md` 第 5 节
+- Fly 应用 `inspire-car` **已停服**（2026-11-06 11:37 手工 `machine stop`，机器 `d8d1616f020968` / region `sin`）
+- ✅ **线上数据已于 2026-11-06 导出完毕**：`C:\Users\admin\WorkBuddy\Claw\fly-cache-backup-2026-11-06.tgz`（167KB / 20 条目 / 14 个用户 / 含 `.cache/users/.secret`）
+- 持久卷 `vol_re1qyldxlgqlw3d4`（1GB，`inspire_car_data`）**仍保留未销毁**，作为二次兜底；国内站点跑稳一个月后再 `fly apps destroy`
+- ⚠️ 导出包含用户 PII 与会话签名密钥，**不可外传、不可提交 git、不可发群**
 
 ### 9.2 迁移到腾讯云（备案通过后）
 

@@ -310,6 +310,85 @@ docker run --rm -v inspire_car_data:/data busybox ls -la /data/.cache
 >   docker run --rm -v inspire_car_data:/data busybox chown -R 1000:1000 /data
 >   ```
 
+#### 5.2.3 实测踩过的坑（2026-11-06 真机跑通，Windows）
+
+以下都是实际遇到的报错和解法，照抄即可，不用再试错：
+
+**① flyctl 可能早就装好了，只是不在 PATH**
+
+```bash
+ls ~/.fly/bin/flyctl.exe        # 本项目机器上是 v0.5.2，116MB
+~/.fly/bin/flyctl version
+```
+
+**② 登录不需要任何 token**
+
+`flyctl auth login` 会打印一个 `https://fly.io/app/auth/cli/<code>` 链接，浏览器里点授权即可，20 秒内自动完成。非交互终端下它会提示"can't paste code"，但**登录依然会自动完成**，别被这句话吓到。实测账号是 Apple 私密转发邮箱（`xxx@privaterelay.appleid.com`），不是 GitHub 邮箱，属正常。
+
+**③ Windows 上 ssh 会报 socket 被占**
+
+```
+Error: can't establish agent: agent: failed to start
+srv failed removing existing socket: remove C:\Users\admin\.fly\fly-agent.sock: Access is denied.
+```
+
+这个 socket 文件删不掉（特殊属性 + 可能被占用）。**解法：每次调用都换一个全新的空配置目录**，把 `config.yml` 复制进去：
+
+```bash
+d=$(mktemp -d /c/Users/admin/.flyrun-XXXXXX); mkdir -p "$d/.fly"
+cp ~/.fly/config.yml "$d/.fly/"
+UP=$(cygpath -w "$d")
+USERPROFILE="$UP" ~/.fly/bin/flyctl ssh console -a inspire-car -C "..."
+```
+
+注意：**同一个目录只能成功用一次**——会话结束后还会留下新锁。所以每次命令都要重新 `mktemp`。
+
+**④ `ssh console -C` 不经过 shell**
+
+`-C "unset TAR_OPTIONS; tar ..."` 会报 `exec: "unset": executable file not found in $PATH`（它直接 exec argv，不解析分号和内建命令）。必须包一层：
+
+```bash
+-C "sh -c 'unset TAR_OPTIONS; tar czf - -C /app .cache | base64'"
+```
+
+**⑤ 容器里 `TAR_OPTIONS` 带 `--same-order`，与打包冲突**
+
+```
+tar: '--same-order' cannot be used with '-c'
+```
+
+`unset TAR_OPTIONS` 即可（见上一条）。
+
+**⑥ 数据量不大时，不用 sftp，直接走 SSH 流出更快**
+
+sftp 也依赖那个爱坏的 agent。数据在 2MB 以内时，用 base64 流出来最省事：
+
+```bash
+d=$(mktemp -d /c/Users/admin/.flyrun-XXXXXX); mkdir -p "$d/.fly"; cp ~/.fly/config.yml "$d/.fly/"
+USERPROFILE=$(cygpath -w "$d") ~/.fly/bin/flyctl ssh console -a inspire-car \
+  -C "sh -c 'unset TAR_OPTIONS; tar czf - -C /app .cache | base64'" > /tmp/flyraw.out 2>/tmp/flyerr.txt
+
+# 滤掉 "Connecting to ..." 之类的非 base64 行
+grep -E '^[A-Za-z0-9+/=]{8,}$' /tmp/flyraw.out | tr -d '\r' > /tmp/flyclean.b64
+base64 -d /tmp/flyclean.b64 > fly-cache-backup-2026-11-06.tgz
+
+# 必须验证，别信"看起来成功了"
+tar tzf fly-cache-backup-2026-11-06.tgz | wc -l     # 本项目实测：20 条目
+tar xzf fly-cache-backup-2026-11-06.tgz -O .cache/users/users.json | head -c 100
+```
+
+**⑦ 本项目 2026-11-06 的实测结果（可作为对账基线）**
+
+| 项 | 值 |
+|---|---|
+| `/app/.cache` 总大小 | 1.9 MB |
+| 导出包 | 167 KB / 20 条目 |
+| `users.json` | 14 条记录（数组） |
+| `plans/` `wheels/` `models/` | 目录存在但**为空**（当时无用户保存方案、无生成资产） |
+| `client-errors.jsonl` | 32 KB，最后写入 11-04 |
+| 应用状态 | `suspended`，机器 `d8d1616f020968`（sin） |
+| 持久卷 | `vol_re1qyldxlgqlw3d4`，1 GB，`inspire_car_data` |
+
 ### 5.3 如果用的是 Postgres（SQL 模式，仅当 5.1 确认有 DATABASE_URL）
 
 ```bash
@@ -326,7 +405,10 @@ pg_dump -h <fly-pg-host> -U <user> <dbname> > fly-db.sql
 **只有在 5.2 / 5.3 都做完、`cache-from-fly.tgz` 已验证可用之后**才执行这几步。顺序错了会丢数据。
 
 ```bash
-# 第 1 步：机器缩到 0，停止对外服务、不再计费（卷和数据都还在）
+# 第 1 步：机器停止，不再对外服务、不再计费（卷和数据都还在）
+# ✅ 2026-11-06 已执行：机器 d8d1616f020968 已 stopped（用 machine stop，效果等同 scale count 0）
+flyctl machine stop d8d1616f020968 -a inspire-car
+# 或（会一并调整机器数量配置）：
 flyctl scale count 0 -a inspire-car
 
 # 第 2 步：确认已停
