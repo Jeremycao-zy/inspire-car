@@ -103,31 +103,37 @@
   color: var(--text-dim);
 }
 
-/* ================= 导航 pill：黑底 → 浅灰底 ================= */
+/* ================= 文本导航：浅色下仍是纯文字，不能把胶囊带回来 ================= */
 :root[data-theme='light'] .garage-nav__item {
-  background: rgba(26, 27, 32, 0.04);
-  border-color: var(--line-2);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-dim);
 }
 :root[data-theme='light'] .garage-nav__item:hover {
   color: var(--text);
-  box-shadow: 0 4px 16px rgba(20, 24, 40, 0.1);
+  box-shadow: none;
 }
 :root[data-theme='light'] .garage-nav__item.active {
   color: var(--text);
-  border-color: var(--text-dim);
-  background: var(--panel);
-  box-shadow: 0 4px 16px rgba(20, 24, 40, 0.12);
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+:root[data-theme='light'] .garage-nav__item.active::after {
+  background: var(--text);
 }
 
-/* ================= ghost 按钮：白色描边 → 深色描边 ================= */
+/* ================= ghost 按钮：浅色下保持文字链，无描边无阴影 ================= */
 :root[data-theme='light'] .gb-btn.ghost {
   color: var(--text-dim);
-  box-shadow: inset 0 0 0 1px var(--line-2), 0 3px 14px rgba(20, 24, 40, 0.06);
+  background: transparent;
+  box-shadow: none;
 }
 :root[data-theme='light'] .gb-btn.ghost:hover {
   color: var(--text);
-  background: rgba(26, 27, 32, 0.05);
-  box-shadow: inset 0 0 0 1px var(--text), 0 5px 22px rgba(20, 24, 40, 0.1);
+  background: rgba(23, 24, 28, 0.04);
+  box-shadow: none;
 }
 
 /* ================= 「浅底 + 硬编码深字」按钮 → 黑底白字 =================
@@ -155,11 +161,14 @@
   border-color: var(--line-2);
 }
 
-/* ================= Hero 徽标（实时 3D 预览）：荧光绿 → 墨绿 ================= */
+/* ================= Hero 徽标：单色低对比，浅色下随背景反相 ================= */
 :root[data-theme='light'] .garage-hero__badge {
-  color: var(--good);
-  background: rgba(46, 125, 84, 0.1);
-  border-color: rgba(46, 125, 84, 0.28);
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--line);
+}
+:root[data-theme='light'] .garage-hero__badge::before {
+  background: var(--text-faint);
 }
 
 /* ================= AI 球：标签 / 悬停 / 字幕 / 对话面板 ================= */
@@ -382,13 +391,13 @@
 }
 :root[data-theme='light'] .gb-btn.ghost {
   color: var(--text-dim);
-  background: rgba(23, 24, 28, 0.03);
-  box-shadow: inset 0 0 0 1px var(--line-2);
+  background: transparent;
+  box-shadow: none;
 }
 :root[data-theme='light'] .gb-btn.ghost:hover {
   color: var(--text);
-  background: rgba(23, 24, 28, 0.07);
-  box-shadow: inset 0 0 0 1px #b9bdc9;
+  background: rgba(23, 24, 28, 0.04);
+  box-shadow: none;
 }
 
 /* ---- 工作室：3D 舞台 / HUD / 侧栏面板浅色化 ---- */

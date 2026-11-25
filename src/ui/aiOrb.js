@@ -11,7 +11,6 @@
  */
 
 import './aiOrb.css';
-import { isLoggedIn } from '../auth.js';
 import mascotIdleUrl from '../assets/mascot-idle.png';
 import mascotIdleWebpUrl from '../assets/mascot-idle.webp';
 import mascotActiveUrl from '../assets/mascot-active.png';
@@ -697,9 +696,7 @@ function mountAiOrb() {
   let greetingAudio = null; // 预取的引导语音频：手势一来立刻播，不用等合成
 
   function greetingText() {
-    return isLoggedIn()
-      ? '你好，我是小灵！告诉我你的车型和想法，咱们开始改装吧。想换轮毂、调姿态还是改车漆，直接跟我说。'
-      : '你好，我是小灵，你的改装助手！第一次来的话，先点右上角登录或注册一下，之后告诉我你的车型和想法，我帮你定制轮毂、姿态或者车漆方案。';
+    return '想改什么？直接说。';
   }
 
   // 进页面就并行预取引导语音频（fetch 不受自动播放策略限制，只有播放需要手势）
@@ -724,7 +721,7 @@ function mountAiOrb() {
     if (greetingCleanup) greetingCleanup();
     const text = greetingText();
     showCaption(text, 0); // 先上字幕，音频就绪前也有反馈
-    const onEnd = () => showCaption(isLoggedIn() ? '点我，随时跟我聊改装' : '点我随时说话，或先点右上角登录', 6000);
+    const onEnd = () => showCaption('点我说话', 6000);
     if (greetingAudio) {
       wrap.classList.add('is-speaking');
       Promise.resolve(playTts(greetingAudio, onEnd, audioEpoch)).then((ok) => {
@@ -748,7 +745,7 @@ function mountAiOrb() {
       // 浏览器自动播放策略：必须等用户首次手势才能出声。
       // 先用人偶弹跳 + 字幕吸引注意，任意点击/按键即解锁并播放引导语。
       wrap.classList.add('is-greeting');
-      showCaption('你好呀，点一下页面，听我打招呼', 0);
+      showCaption('点一下页面，听我打招呼', 0);
       const onGesture = (ev) => {
         const t = ev && ev.target;
         if (t && t.closest && t.closest('.ai-orb')) {

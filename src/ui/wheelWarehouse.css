@@ -122,10 +122,19 @@
   text-overflow: ellipsis;
 }
 .gw-preview__meta {
-  font-size: 11px;
-  color: var(--neon-cyan, var(--accent));
-  letter-spacing: 0.08em;
-  opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.gw-preview__meta::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--text-faint);
 }
 .gw-preview__actions {
   display: flex;

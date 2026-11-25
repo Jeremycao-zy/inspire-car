@@ -43,47 +43,38 @@
   pointer-events: none;
 }
 
-/* 通用按钮：统一高度与圆角，霓虹描边 + 辉光 */
+/* 通用按钮：克制的高 42 / 8px 圆角，无光晕、无位移，靠明度差表达动作 */
 .gb-btn {
   appearance: none;
   border: none;
   cursor: pointer;
-  height: 44px;
-  padding: 0 22px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  height: 42px;
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-md);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-2);
   white-space: nowrap;
-  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-.gb-btn:hover {
-  transform: translateY(-1px);
-}
-.gb-btn:active {
-  transform: translateY(0);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .gb-btn.primary {
   color: var(--bg);
   background: var(--accent);
-  border: none;
-  box-shadow: 0 5px 22px rgba(0,0,0,0.297), 0 8px 22px rgba(0,0,0,0.154);
 }
 .gb-btn.primary:hover {
-  box-shadow: 0 8px 34px rgba(0,0,0,0.468), 0 10px 30px rgba(0,0,0,0.28);
+  background: var(--accent-strong);
 }
 .gb-btn.ghost {
   color: var(--text-dim);
   background: transparent;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.09), 0 3px 14px rgba(0,0,0,0.136);
 }
 .gb-btn.ghost:hover {
-  background: rgba(0,0,0,0.4);
-  box-shadow: inset 0 0 0 1px var(--neon-cyan), 0 5px 22px rgba(0,0,0,0.306);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ---------------- 顶部整体条（logo 条 + 功能导航 融合吸顶） ----------------
@@ -226,93 +217,35 @@
   flex-direction: column;
   gap: 14px;
 }
-.garage-hero__eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: rgba(150,170,210,0.85);
-}
-
 .garage-hero__title {
   margin: 0;
-  font-size: clamp(34px, 5vw, 52px);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.08;
-  color: #f3f6fb;
+  font-size: var(--fs-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text);
 }
 
 .garage-hero__sub {
-  margin: 4px 0 0;
-  font-size: 15px;
+  margin: 0;
+  font-size: var(--fs-body);
   color: var(--text-dim);
-  max-width: 420px;
-  line-height: 1.7;
+  max-width: 34ch;
+  line-height: 1.6;
 }
 
 .garage-hero__actions {
   display: flex;
-  gap: 12px;
-  margin-top: 10px;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
   flex-wrap: wrap;
-}
-.garage-hero__actions .gb-btn.primary {
-  background: #f3f6fb;
-  color: #0c0e12;
-  border-color: transparent;
-  box-shadow: 0 8px 22px rgba(0,0,0,0.35);
-}
-.garage-hero__actions .gb-btn.primary:hover {
-  background: #ffffff;
-}
-.garage-hero__actions .gb-btn.ghost {
-  background: rgba(255,255,255,0.04);
-  color: #e8edf5;
-  border-color: rgba(255,255,255,0.14);
 }
 
 .garage-hero__preview {
   position: relative;
-  /* 增高到 380：给车模更舒展的竖向空间，配合底部柔光阴影形成"悬浮"质感。 */
   height: 380px;
-  border-radius: 22px;
-  background:
-    radial-gradient(120% 95% at 50% 16%, rgba(255,255,255,0.05), rgba(0,0,0,0) 60%),
-    radial-gradient(85% 60% at 50% 102%, rgba(120,150,200,0.12), rgba(0,0,0,0) 70%);
+  border-radius: var(--r-lg);
   overflow: hidden;
-}
-.garage-hero__preview::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 13%;
-  width: 58%;
-  height: 26px;
-  transform: translateX(-50%);
-  background: radial-gradient(50% 100% at 50% 50%, rgba(0,0,0,0.55), rgba(0,0,0,0) 70%);
-  filter: blur(7px);
-  z-index: 0;
-}
-
-.garage-hero__badge {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-dim, #9aa7c7);
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.10);
-  backdrop-filter: blur(6px);
-  box-shadow: none;
-  text-shadow: none;
 }
 
 .garage-hero__canvas {
@@ -353,44 +286,52 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 8px 24px 10px;
+  gap: var(--sp-6);
+  padding: var(--sp-3) var(--sp-5);
   background: transparent;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--line);
   border-bottom: none;
   box-shadow: none;
 }
 
+/* 文本导航：无边框、无底色、无胶囊。层级只靠文字明度与 2px 指示线。 */
 .garage-nav__item {
+  position: relative;
   appearance: none;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
-  color: var(--text-dim, #9aa7c7);
+  border: 0;
+  background: none;
+  color: var(--text-dim);
   cursor: pointer;
-  height: 36px;
-  padding: 0 20px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  height: auto;
+  padding: var(--sp-2) 0;
+  border-radius: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   white-space: nowrap;
-  transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease,
-    background 0.18s ease, transform 0.12s ease;
+  transition: color var(--dur) var(--ease);
+}
+
+.garage-nav__item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
 }
 
 .garage-nav__item:hover {
-  color: #eafcff;
-  border-color: rgba(0,0,0,0.4);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.238);
-  transform: translateY(-1px);
+  color: var(--text);
 }
 
-/* 激活态：柔和上浮 + 极淡发丝描边 + 一道克制的强调色下划线，不发光 */
 .garage-nav__item.active {
-  color: #f3f6fb;
-  border-color: rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.07);
-  box-shadow: inset 0 -2px 0 rgba(150,170,210,0.7);
+  color: var(--text);
+}
+.garage-nav__item.active::after {
+  background: var(--text);
 }
 
 /* ---------------- 分页容器 ---------------- */
@@ -1063,21 +1004,21 @@
   color: var(--text-faint);
 }
 .garage-empty__icon {
-  font-size: 44px;
-  margin-bottom: 12px;
-  opacity: 0.7;
-  filter:;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--sp-4);
+  color: var(--text-faint);
 }
 .garage-empty__title {
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 800;
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-h2);
+  font-weight: 600;
   color: var(--text);
-  
 }
 .garage-empty__hint {
-  margin: 0 0 18px;
-  font-size: 13px;
+  margin: 0 0 var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
 }
 
 /* ---------------- 响应式 ---------------- */
@@ -1129,14 +1070,12 @@
   }
   /* 窄屏：导航收缩间距，4 项仍保持一行平级（不改成下拉，避免多一次点击） */
   .garage-nav {
-    gap: 6px;
-    padding: 8px 12px;
+    gap: var(--sp-5);
+    padding: var(--sp-2) var(--sp-3);
   }
   .garage-nav__item {
-    height: 32px;
-    padding: 0 12px;
-    font-size: 12px;
-    letter-spacing: 0.06em;
+    padding: var(--sp-2) 0;
+    font-size: var(--fs-xs);
   }
   .garage-page {
     padding: 16px 18px 40px;
@@ -1423,26 +1362,26 @@
   display: grid;
   grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.15fr);
   align-items: center;
-  gap: var(--sp-8);
-  padding: var(--sp-9) 0 var(--sp-8);
+  gap: var(--sp-7);
+  padding: var(--sp-8) 0;
 }
 .garage-hero__text {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
 }
 .garage-hero__title {
   font-size: var(--fs-display);
-  font-weight: 650;
-  line-height: 1.08;
-  letter-spacing: -0.03em; /* 大字号必须收紧字距，否则显松散 */
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 .garage-hero__sub {
   max-width: 34ch;
   margin: 0;
-  font-size: var(--fs-h3);
+  font-size: var(--fs-body);
   font-weight: 400;
   line-height: 1.6;
   color: var(--text-dim);
@@ -1453,27 +1392,27 @@
   gap: var(--sp-4);
   margin-top: var(--sp-3);
 }
-/* 主按钮：暖金实底，全站唯一的高饱和动作 */
+/* 主按钮：单色实底，无光晕、无位移；次按钮退化为文字链 */
 .gb-btn.primary {
-  padding: 12px 26px;
+  height: 42px;
+  padding: 0 var(--sp-5);
   border: none;
   border-radius: var(--r-md);
   background: var(--accent);
-  color: #0d0d10; /* off-white 按钮上的深色文字，对比度足够 */
+  color: #0d0d10; /* 浅色模式下由 theme.css 反白 */
   font-family: var(--font-sans);
   font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease);
 }
 .gb-btn.primary:hover {
   background: var(--accent-strong);
-  transform: translateY(-1px);
 }
-/* 次按钮：退化为文字链，不再与主按钮争夺注意力 */
 .gb-btn.ghost {
-  padding: 12px 4px;
+  height: 42px;
+  padding: 0 var(--sp-2);
   border: none;
   background: none;
   color: var(--text-dim);
@@ -1485,23 +1424,36 @@
 .gb-btn.ghost:hover {
   color: var(--text);
 }
-/* 预览画布：无框，让车"浮"在底色上 */
+/* 预览画布：无框，无光斑；只用极淡的单色明度阶梯 */
 .garage-hero__preview {
   position: relative;
   border: none;
   border-radius: var(--r-lg);
-  background: radial-gradient(120% 100% at 50% 0%, var(--panel-2) 0%, var(--bg) 72%);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
 }
 .garage-hero__badge {
-  padding: 5px 12px;
-  border: 1px solid var(--line-2);
+  position: absolute;
+  top: var(--sp-4);
+  left: var(--sp-4);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line);
   border-radius: var(--r-full);
   background: transparent;
   color: var(--text-dim);
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.garage-hero__badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--text-faint);
 }
 .garage-hero__canvas {
   border: none;
@@ -1540,4 +1492,21 @@
     padding: 0 10px;
     font-size: 11.5px;
   }
+}
+
+/* ---------------- 页脚备案号（工信部要求公示，须链接 beian.miit.gov.cn） ----------------
+ * 与协议入口同级展示在页脚，字号更小、不加下划线，避免抢视觉。
+ * 公安备案号通过后与其并列追加在同一行。 */
+
+.garage-legal__icp {
+  color: #4f5c73;
+  text-decoration: none;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease;
+}
+.garage-legal__icp:hover {
+  color: var(--neon-cyan, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

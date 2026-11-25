@@ -2716,7 +2716,7 @@ function showPresetGuide(show) {
   presetGuideEl.className = 'preset-guide';
   presetGuideEl.innerHTML = `
     <div class="preset-guide__text">
-      这是一台示例车，在左下角「整车」上传照片生成自己的 3D 车模后即可开始改装。
+      示例车 · 上传照片生成你的 3D 车模
     </div>
   `;
   (document.getElementById('stage') || document.body).appendChild(presetGuideEl);

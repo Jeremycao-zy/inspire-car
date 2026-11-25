@@ -486,7 +486,7 @@ function createCard(plan, onClick, onDelete, index = 0) {
     del,
     stage,
     info,
-    el('div', { class: 'plan-card__cta' }, '进入改装', el('span', { class: 'plan-card__cta-arrow' }, '→'))
+    el('div', { class: 'plan-card__cta' }, '改装', el('span', { class: 'plan-card__cta-arrow' }, '→'))
   );
 
   // 卡片进入 DOM 后再挂载预览（需要 clientWidth/Height）
@@ -521,7 +521,7 @@ function createBlankCard(index, onClick) {
     { class: 'plan-card plan-card--blank', onClick },
     stage,
     info,
-    el('div', { class: 'plan-card__cta' }, '开始创作', el('span', { class: 'plan-card__cta-arrow' }, '→'))
+    el('div', { class: 'plan-card__cta' }, '新建', el('span', { class: 'plan-card__cta-arrow' }, '→'))
   );
 }
 
@@ -541,10 +541,13 @@ function createEmptyState(onNew) {
   return el(
     'div',
     { class: 'garage-empty' },
-    el('div', { class: 'garage-empty__icon' }, '🏎️'),
+    el('div', {
+      class: 'garage-empty__icon',
+      html: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l1.6-4.2A2 2 0 0 1 6.5 7.5h11a2 2 0 0 1 1.9 1.3L21 13"/><path d="M3 13h18v4.5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1V17H6.5v.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V13Z"/><circle cx="7" cy="15" r="1"/><circle cx="17" cy="15" r="1"/></svg>',
+    }),
     el('h3', { class: 'garage-empty__title' }, '还没有改装方案'),
-    el('p', { class: 'garage-empty__hint' }, '上传一张照片，开始你的第一个 3D 改装方案'),
-    el('button', { class: 'gb-btn primary', onClick: onNew }, '+ 新建方案')
+    el('p', { class: 'garage-empty__hint' }, '上传照片，开始改装'),
+    el('button', { class: 'gb-btn primary', onClick: onNew }, '新建方案')
   );
 }
 
@@ -666,20 +669,19 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
     el(
       'div',
       { class: 'garage-hero__text' },
-      el('div', { class: 'garage-hero__eyebrow' }, 'INSPIRE CAR'),
       el('h2', { class: 'garage-hero__title' }, '把灵感，变现实'),
-      el('p', { class: 'garage-hero__sub' }, '看见每一套轮毂与姿态方案。'),
+      el('p', { class: 'garage-hero__sub' }, '3D 实时预览，所见即所得'),
       el(
         'div',
         { class: 'garage-hero__actions' },
-        el('button', { class: 'gb-btn primary', onClick: () => onEnter?.(null) }, '+ 新建改装方案'),
-        el('button', { class: 'gb-btn ghost', onClick: () => $('#garage-grid')?.scrollIntoView({ behavior: 'smooth' }) }, '查看我的方案')
+        el('button', { class: 'gb-btn primary', onClick: () => onEnter?.(null) }, '新建方案'),
+        el('button', { class: 'gb-btn ghost', onClick: () => $('#garage-grid')?.scrollIntoView({ behavior: 'smooth' }) }, '查看方案')
       )
     ),
     el(
       'div',
       { class: 'garage-hero__preview' },
-      el('span', { class: 'garage-hero__badge' }, '● 实时 3D 预览'),
+      el('span', { class: 'garage-hero__badge' }, '实时预览'),
       heroCanvas
     )
   );
@@ -689,7 +691,7 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
   const body = el(
     'main',
     { class: 'garage-body' },
-    el('h2', { class: 'garage-section-title' }, 'INSPIRATION GARAGE'),
+    el('h2', { class: 'garage-section-title' }, '我的方案'),
     grid
   );
 
@@ -729,18 +731,8 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
   pageGarage.appendChild(hero);
   pageGarage.appendChild(body);
 
-  // 分页头：轮毂 / 论坛 / 资讯三页统一改用与车库页同款的「英文 wordmark」小标题
-  // （.garage-section-title：大写 + 字距 + 浅灰），不再用单独的盒状版块条 / 副标题 / 边框。
-  // 模块内部标题（.gw-head / .cm-toolbar__title）已由 garage.css 隐藏，避免重复。
-  pageWheels.appendChild(
-    el('h2', { class: 'garage-section-title' }, 'WHEEL WAREHOUSE')
-  );
-  pageForum.appendChild(
-    el('h2', { class: 'garage-section-title' }, 'COMMUNITY')
-  );
-  pageNews.appendChild(
-    el('h2', { class: 'garage-section-title' }, 'NEWS FEED')
-  );
+  // 轮毂 / 论坛 / 资讯三页不再重复放大标题：导航项的激活态已经表明所在分页，
+  // 再放一排英文 wordmark 只是装饰性重复。模块自身即内容主体。
   const forumMount = el('div', { class: 'garage-page__mount' });
   const newsMount = el('div', { class: 'garage-page__mount' });
   pageForum.appendChild(forumMount);
@@ -867,6 +859,22 @@ export function mountGarage({ onEnter, onLogin, onNewWheel, user: initialUser, m
       el('button', { class: 'garage-legal__link', type: 'button', onClick: () => openLegalModal(key) }, label)
     );
   }
+
+  /* ICP 备案号（工信部硬性要求）：网站底部必须悬挂备案号，且链接指向 beian.miit.gov.cn。
+   * 公安联网备案通过后再在下方补一条公安备案号（形如「冀公网安备 XXXXXXXX 号」，
+   * 链接 https://beian.mps.gov.cn），两者并列展示，勿删本节点。 */
+  legalFoot.appendChild(
+    el(
+      'a',
+      {
+        class: 'garage-legal__icp',
+        href: 'https://beian.miit.gov.cn',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+      '冀ICP备2026051099号-1'
+    )
+  );
   root.appendChild(legalFoot);
 
   // 首页发光点阵球（AI 对话入口）：独立轻量 WebGL，挂在 body 上

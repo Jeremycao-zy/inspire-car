@@ -48,7 +48,7 @@ export function mountWheelWarehouse({ onEquip, onNewWheel } = {}) {
       'div',
       { class: 'gw-head__text' },
       h('h2', { class: 'garage-section-title' }, '轮毂仓库'),
-      h('p', { class: 'gw-sub' }, '已拥有的轮毂，随时悬空选装到任意车')
+      h('p', { class: 'gw-sub' }, '已拥有的轮毂，随时换装')
     ),
     countBadge
   );
@@ -56,7 +56,7 @@ export function mountWheelWarehouse({ onEquip, onNewWheel } = {}) {
   /* 展示台：大图 3D 全息 + 名称 + 操作 */
   const previewCanvas = h('div', { class: 'gw-preview__canvas' });
   const previewName = h('div', { class: 'gw-preview__name' }, '—');
-  const previewMeta = h('div', { class: 'gw-preview__meta' }, '● 3D 实时预览');
+  const previewMeta = h('div', { class: 'gw-preview__meta' }, '实时预览');
   const equipBtn = h('button', { class: 'gw-preview__equip', onclick: () => equip() }, '装到当前车');
   const delBtn = h(
     'button',

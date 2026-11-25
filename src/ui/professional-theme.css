@@ -39,16 +39,16 @@ body { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", s
 }
 .garage-userchip__btn { background: var(--accent); color: #0d0d10; }
 
-.gb-btn { border-radius: 10px; height: 46px; font-weight: 750; }
+.gb-btn { border-radius: var(--r-md); height: 42px; font-weight: 600; }
 .gb-btn.primary {
   color: #0d0d10;
   background: var(--accent);
   border: 0;
-  box-shadow: 0 10px 30px rgba(212,180,131,.14);
+  box-shadow: none;
 }
-.gb-btn.primary:hover { box-shadow: 0 12px 36px rgba(212,180,131,.22); }
-.gb-btn.ghost { color: var(--text); background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.17); }
-.gb-btn.ghost:hover { background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(212,180,131,.6); }
+.gb-btn.primary:hover { background: var(--accent-strong); box-shadow: none; }
+.gb-btn.ghost { color: var(--text-dim); background: transparent; box-shadow: none; }
+.gb-btn.ghost:hover { color: var(--text); background: rgba(255,255,255,.04); box-shadow: none; }
 
 /* Tuning studio: the 3D vehicle remains the hero, controls read like an instrument panel. */
 #stage { background: radial-gradient(ellipse at 50% 46%, #1e1e22 0%, #121214 42%, var(--bg) 78%); }

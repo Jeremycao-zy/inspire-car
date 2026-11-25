@@ -139,40 +139,39 @@
   margin: 0 0 24px;
 }
 
-/* 提示卡片（暗紫机体 + 霓虹描边 + 辉光，仿车库收藏卡；横向紧凑排） */
+/* 提示卡：发丝边框 + 纯色分层，靠留白与明度建立层级，不用光晕 */
 .photo-guide__tips {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
 }
 
 .photo-guide__tip {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 16px;
-  background: linear-gradient(170deg, var(--panel-2) 0%, var(--panel) 55%, var(--bg) 100%);
-  border: 1px solid var(--line-2);
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.45),
-    0 4px 12px rgba(0,0,0,0.112),
-    inset 0 6px 24px rgba(0,0,0,0.068),
-    0 4px 18px rgba(0,0,0,0.102);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
 
+/* 01 / 02 / 03：等宽序号替代 emoji，统一全站图标语言 */
 .photo-guide__tip-icon {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: var(--accent);
-  color: #fff;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-faint);
   display: grid;
   place-items: center;
-  font-size: 16px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.34);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .photo-guide__tip-content {
@@ -180,17 +179,16 @@
 }
 
 .photo-guide__tip-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #eafcff;
-  margin: 0 0 4px;
-  
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--sp-1);
 }
 
 .photo-guide__tip-text {
-  font-size: 12px;
-  color: var(--text-dim, #9aa7c7);
-  line-height: 1.55;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.6;
   margin: 0;
 }
 

@@ -289,8 +289,8 @@ export function createCopilotPanel({ app, panel }) {
     el('div', { class: 'cop-bar' }, input, micBtn, sendBtn)
   );
 
-  // 开场白：告诉用户它能干什么
-  bubble('assistant', '我在旁边看着呢。想改什么直接说——比如「轮毂换20寸，ET 25」「来个低趴姿态」「车漆改哑光黑」。说完我直接给你改上去。');
+  // 开场白：一句话说明能力，示例留给输入框 placeholder
+  bubble('assistant', '说出你要的改装，我直接改。');
 
   setupVoice();
   setBusy(false);
